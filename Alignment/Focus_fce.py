@@ -6,11 +6,12 @@ from time import sleep
 import csv
 import random
 import matplotlib.pyplot as plt
+import pyrbac
 
 
 bgImages = []
 japc = pyjapc.PyJapc(selector = '', incaAcceleratorName = '')
-japc.rbacLogin(loginDialog = True)
+#japc.rbacLogin(loginDialog = True)
 
 def gaussian(x, amp, cen, wid, const):
   return amp*np.exp(-(x-cen)**2/(2*wid**2))+const
@@ -187,12 +188,12 @@ class Camera:
       
       return resX[0], resY[0]
 
-def get_positions(range: tuple[int, int], ref: int, steps: int) -> list:
+def get_positions(pot_range: tuple[int, int], ref: int, steps: int) -> list:
     """
     Get a list of positions based on specified range and number of points.
     """
-    if (ref >= range[0] and ref <= range[1]): # ref is in the desired range
-            points = np.linspace(range[0], range[1], steps)
+    if (ref >= pot_range[0] and ref <= pot_range[1]): # ref is in the desired range
+            points = np.linspace(pot_range[0], pot_range[1], steps)
             candidates = np.where(points >= ref)[0]
             if len(candidates) > 0:
                 closest_idx = candidates[0]  # first point >= ref
@@ -203,20 +204,20 @@ def get_positions(range: tuple[int, int], ref: int, steps: int) -> list:
             positions = np.concatenate((up_part, down_part))
             return positions.tolist()
     else:
-        closer_index = np.argmin(np.abs(ref - range))
+        closer_index = np.argmin(np.abs(ref - pot_range))
         if (closer_index == 0): # min is closer
-            return list(range(range[0], range[1] + 1))
+            return list(range(pot_range[0], pot_range[1] + 1))
         else: # max is closer
-            return list(range(range[1], range[0] - 1, -1))
+            return list(range(pot_range[1], pot_range[0] - 1, -1))
         
 
-def focus(motor: Motor, camera: Camera, range: tuple[int, int], steps: int):
+def focus(motor: Motor, camera: Camera, pot_range: tuple[int, int], steps: int):
     """
     Focuses a beam.
 
     :param motor: Motor of the camera to be moved to focus the beam.
     :param camera: Camera to focus the beam on.
-    :param range: Range of positions to move the motor in.
+    :param pot_range: Range of positions to move the motor in.
     :param steps: Number of steps.
 
     :return: A picture with horizontal and vertical sigma values depending on the motor position.
@@ -235,7 +236,7 @@ def focus(motor: Motor, camera: Camera, range: tuple[int, int], steps: int):
     original_ref = ref
 
     # get positions (x axis of the graph)
-    positions = get_positions(range, ref, steps)
+    positions = get_positions(pot_range, ref, steps)
 
     # move motor to starting point
     start_pos = positions[0]
@@ -246,19 +247,25 @@ def focus(motor: Motor, camera: Camera, range: tuple[int, int], steps: int):
     sigmas_y = []
     for i in range(len(positions)):
         image = camera.captureImage()
-        gBounds = ([0, 0, 1, 10],[np.inf, len(projection_x), np.inf, np.inf])
-
+        
         projection_x = np.sum(image, axis=0)
+        gBounds = ([0, 0, 1, 10],[np.inf, len(projection_x), np.inf, np.inf])
         resX, _ = curve_fit(gaussian, range(len(projection_x)), projection_x, (6e4, np.argmax(projection_x), 10.0, 300.0), bounds = gBounds)
         sigma_x = resX[2]
         sigmas_x.append(sigmas_x)
 
         projection_y = np.sum(image, axis=1)
+        gBounds = ([0, 0, 1, 10],[np.inf, len(projection_y), np.inf, np.inf])
         resY, _ = curve_fit(gaussian, range(len(projection_y)), projection_y, (6e4, np.argmax(projection_y), 10.0, 300.0), bounds = gBounds)
         sigma_y = resY[2]
         sigmas_y.append(sigmas_y)
-
+        
+        if (i == len(positions) - 1):
+            motor.setAbsPosition(original_ref) # return to the beginning
+            break
+        sleep(3) # this could depend on number of steps/plot_range
         motor.setAbsPosition(positions[i+1])
+        print("position " + str(i+1) + " out of " + str(steps))
     
     # sort results
     combined = list(zip(positions, sigmas_x, sigmas_y))
@@ -312,12 +319,16 @@ def graph_focused(positions, sigmas_x, sigmas_y):
     plt.show()
 
 def main():
+    client = pyrbac.AuthenticationClient()
+    token = client.login_kerberos()
+    japc.rbacLogin(token=token)
+    
     motor = Motor("TST.cfv-375-bsrdev.mot.3-1")
     camera = Camera("TST.BSRH.CAM.CM")
     japc.startSubscriptions()
-    sleep(0.2)
+    # sleep(0.2)
 
-    focus(motor, camera, (10000, 50000), 5000)
+    focus(motor, camera, (10000, 50000), 10)
 
     japc.stopSubscriptions()
 
