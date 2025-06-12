@@ -92,32 +92,21 @@ def saver_worker():
     print("[Saver] Worker exiting.")
     
     
-def setter_worker(japc, path, value, freq):
-    global scanning
+def setter_worker(japc, path, value):
     print("[Setter] Worker started.")
-    japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting2#triggerDecimation', '0')
-    interval = 1.0 / freq-0.005  #compensating for the set time
+    japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting2#triggerDecimation', '0') #Take SW trigger only
     while setter_running.is_set():
-      if scanning:
         if not camera_arrived.wait(timeout = 2):
           continue
-        
+
         try:
           japc.setParam(path,value)
-          
         except Exception as e:
             print(f"[Setter] Error setting parameter: {e}")
-        
+
         camera_arrived.clear()
-      
-      else:
-        try:
-            japc.setParam(path, value)
-            # Synchronization point: can add checks against saver_running or other events here
-            time.sleep(interval)
-        except Exception as e:
-            print(f"[Setter] Error setting parameter: {e}")
-    japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting2#triggerDecimation', '11245')
+
+    japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting2#triggerDecimation', '11245') #Put back the 1Hz trigger
     print("[Setter] Worker exiting.")
 
 
@@ -160,12 +149,9 @@ class AcquisitionGUI(QWidget):
         self.freq_input = QSpinBox()
         self.freq_input.setRange(1, 5)
         self.freq_input.setValue(1)
+        self.freq_input.valueChanged.connect(self.on_frequency_change)
         controls_layout.addWidget(self.freq_label)
         controls_layout.addWidget(self.freq_input)
-        
-        self.setter_btn = QPushButton("Start Setter")
-        self.setter_btn.clicked.connect(self.toggle_setter)
-        controls_layout.addWidget(self.setter_btn)
 
         self.acq_btn = QPushButton("Start Acquisition")
         self.acq_btn.clicked.connect(self.toggle_acquisition)
@@ -227,7 +213,7 @@ class AcquisitionGUI(QWidget):
         with cache_lock:
             data_cache[name] = value
 
-    def intensifier_callback(self, name, value, header=None):
+    def intensifier_callback(self, name, value):
         if scanning:
           ##Here sending trigger
           camera_arrived.set()
@@ -243,6 +229,7 @@ class AcquisitionGUI(QWidget):
         # on camera trigger, assemble event from cache snapshot plus image
         with cache_lock:
             snapshot = data_cache.copy()
+        #In case of scanning bunches, we change the delaySlots after we make the copy which slows everything down... Could we think about making it faster? The camera could acquire images during the saving time...
         if scanning:
           if self.bunchIndex+1 < len(self.bunchSlots):
             self.bunchIndex = self.bunchIndex + 1
@@ -274,7 +261,7 @@ class AcquisitionGUI(QWidget):
             return
         item = QTreeWidgetItem([text, ""])
         item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-        item.setCheckState(0, Qt.Checked)
+        item.setCheckState(1, Qt.Checked)
         self.bunch_tree.addTopLevelItem(item)
         self.new_bunch_input.clear()
 
@@ -290,10 +277,12 @@ class AcquisitionGUI(QWidget):
                   continue
       self.bunchSlots = checked
       return checked
+    def on_frequency_change(self, value):
+        triggerDecimation = int(11245/value)
+        self.japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting2#triggerDecimation', triggerDecimation)
 
     def scan_bunches(self):
         global scanning
-        
         if not scanning:
           print(self.get_checked_bunches())
           if self.bunchSlots == []:
@@ -305,9 +294,7 @@ class AcquisitionGUI(QWidget):
             self.toggle_setter()
           if saver_running.is_set() == False:
             self.toggle_acquisition()
-            
-          
-          self.setter_btn.setEnabled(False)
+
           self.acq_btn.setEnabled(False)
           scanning = True
           self.scan_bunches_btn.setText("Stop bunch scan")
@@ -316,8 +303,8 @@ class AcquisitionGUI(QWidget):
           
         else:
           scanning = False
+          self.toggle_setter()
           self.freq_input.setReadOnly(False)
-          self.setter_btn.setEnabled(True)
           self.acq_btn.setEnabled(True)
           self.scan_bunches_btn.setText("Scan bunches")
         
@@ -352,17 +339,15 @@ class AcquisitionGUI(QWidget):
     def toggle_setter(self):
         if not self.setting:
             try:
-                freq = self.freq_input.value()
                 setter_running.set()
                 setter_path = 'LHC.BSRH.GATE-GEN.5L4.B2/Trig#triggerSW'
                 setter_value = 2
                 self.setter_thread = threading.Thread(
                     target=setter_worker,
-                    args=(self.japc, setter_path, setter_value, freq),
+                    args=(self.japc, setter_path, setter_value),
                     daemon=True
                 )
                 self.setter_thread.start()
-                self.setter_btn.setText("Stop Setter")
                 self.setting = True
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to start setter:\n{e}")
@@ -371,7 +356,6 @@ class AcquisitionGUI(QWidget):
                 setter_running.clear()
                 if self.setter_thread:
                     self.setter_thread.join(timeout=2)
-                self.setter_btn.setText("Start Setter")
                 self.setting = False
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to stop setter:{e}")
