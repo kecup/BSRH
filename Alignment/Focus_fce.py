@@ -98,16 +98,16 @@ class Camera:
       while self.motorX.isBusy():
         sleep(0.2)
     
-    cycle = 0
-    while lastUpdate == self.updated and cycle < 10:
-      sleep(0.2)
-      cycle = cycle + 1
+    # cycle = 0
+    # while lastUpdate == self.updated and cycle < 10:
+    #   sleep(0.2)
+    #   cycle = cycle + 1
       
-    if cycle >= 10:
-      print('Getting image timed-out.')
-      outImage = []
-    else:
-      outImage = self.image
+    # if cycle >= 10:
+    #   print('Getting image timed-out.')
+    #   outImage = []
+    # else:
+    outImage = self.image
     
     ##Testing to send the position out again?
     if self.movableAxis>0 and MoveOut == True:
@@ -268,7 +268,7 @@ def focus(motor: Motor, camera: Camera, range: tuple[int, int], steps: int):
     sorted_sigmas_x = list(sorted_sigmas_x)
     sorted_sigmas_y = list(sorted_sigmas_y)
 
-    return sorted_positions, sorted_sigmas_x, sorted_sigmas_y
+    graph_focused(sorted_positions, sorted_sigmas_x, sorted_sigmas_y)
 
 def graph_focused(positions, sigmas_x, sigmas_y):
     """
