@@ -235,7 +235,7 @@ def focus(motor: Motor, camera: Camera, range: tuple[int, int], steps: int):
     original_ref = ref
 
     # get positions (x axis of the graph)
-    positions = get_positions(range, ref)
+    positions = get_positions(range, ref, steps)
 
     # move motor to starting point
     start_pos = positions[0]
