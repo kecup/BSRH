@@ -311,5 +311,10 @@ def graph_focused(positions, sigmas_x, sigmas_y):
     plt.tight_layout()
     plt.show()
 
-# positions = get_positions([10000, 50000], 16000, 9)
-# print(positions)
+def main():
+    motor = Motor("TST.cfv-375-bsrdev.mot.3-1")
+    camera = Camera("TST.BSRH.CAM.CM")
+    focus(motor, camera, (10000, 50000), 5000)
+
+if __name__ == "__main__":
+    main()
