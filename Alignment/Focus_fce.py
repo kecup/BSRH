@@ -315,6 +315,7 @@ def main():
     motor = Motor("TST.cfv-375-bsrdev.mot.3-1")
     camera = Camera("TST.BSRH.CAM.CM")
     japc.startSubscriptions()
+    sleep(0.2)
 
     focus(motor, camera, (10000, 50000), 5000)
 
