@@ -4,12 +4,16 @@
 
 ########LIBRARIES############################
 import pyjapc
+import pyrbac
 import datetime as dt
 import numpy as np
 from scipy.optimize import curve_fit
 from time import sleep
 import csv
 import random
+
+import sys
+import select
 
 import torch
 import torch.nn as nn
@@ -25,7 +29,9 @@ import joblib
 bgImages = []
 
 japc = pyjapc.PyJapc(selector = '', incaAcceleratorName = '')
-japc.rbacLogin(loginDialog = True)
+client = pyrbac.AuthenticationClient()
+token = client.login_kerberos()
+japc.rbacLogin(token=token)
 
 def gaussian(x, amp, cen, wid, const):
   return amp*np.exp(-(x-cen)**2/(2*wid**2))+const
@@ -156,7 +162,7 @@ class Camera:
       projection_y = []
       
     ##Prepare bounds for fits:
-    gBounds = ([1000, 0, 1, 10],[1e5, 960, 30, 1e3])
+    gBounds = ([1e4, 0, 1, 10],[1e7, 960, 100, 2e4])
     
     try:
       #resX = [np.max(projection_x), np.argmax(projection_x)]
@@ -249,10 +255,14 @@ class BeamSteerer:
       
 ##We should have most components ready, let's get data for training:
 ##BackLash
-M3X = Motor('TST.cfv-375-bsrdev.mot.3-4', 168)
-M3Y = Motor('TST.cfv-375-bsrdev.mot.3-5', 125)
+#M3X = Motor('TST.cfv-375-bsrdev.mot.3-4', 168) #ISR
+#M3Y = Motor('TST.cfv-375-bsrdev.mot.3-5', 125) #ISR
 
-cam1 = Camera('TST.BSRH.CAM.CM')
+M3X = Motor('LHC.BSRH.M3-PHI.B2', 35)  #LHC
+M3Y = Motor('LHC.BSRH.M3-THETA.B2', 30) #LHC
+
+#cam1 = Camera('TST.BSRH.CAM.CM') #ISR
+cam1 = Camera('LHC.BSRH.CAM.CM.B2') #LHC
 
 target = [484, 304]
 
@@ -266,17 +276,23 @@ steerer = BeamSteerer(model, lr = 0.1, iters = 20)
 
 japc.startSubscriptions()
 
-M3X.setRelPosition(160)
-M3Y.setRelPosition(125)
+M3X.setRelPosition(30)
+M3Y.setRelPosition(30)
 
 
 done = False
-while not done:
-  steerer.step(M3X, M3Y, cam1, target)
-  sleep(2)
+while True:
+
+  if select.select([sys.stdin], [], [], 0.0)[0]:
+        print("Key pressed! Exiting loop.")
+        break
+  
   camX, camY = cam1.getBeamPosition()
-  if np.abs(camX-target[0]) < 5 and np.abs(camY-target[1]) < 5:
-    done = True
+  if np.abs(camX-target[0]) > 5 and np.abs(camY-target[1]) > 5:
+    steerer.step(M3X, M3Y, cam1, target)
+    print('Moving, distance to target = ', np.sqrt((camX-target[0])**2+(camY-target[1])**2))
+    sleep(2)
+  sleep(1)
   
 japc.stopSubscriptions()
 print('')
