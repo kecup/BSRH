@@ -3,8 +3,6 @@ import datetime as dt
 import numpy as np
 from scipy.optimize import curve_fit
 from time import sleep
-import csv
-import random
 import matplotlib.pyplot as plt
 import pyrbac
 
@@ -35,7 +33,7 @@ class Motor:
   def getPosition(self): ## This is NEW
     while japc.getParam(self.name+'/Acquisition#motor_busy') == True:
       sleep(0.5)
-    self.position = japc.getParam(self.name+'/Acquisition#position_counter') #Uses position in steps! So carefull with movements...
+    self.position = japc.getParam(self.name+'/Acquisition#position_counter') #Uses position in steps! So careful with movements...
     return self.position
    
   def setAbsPosition(self, absPosition): #This is motion in absolute raw steps! No backlash taken into account!!!
@@ -158,33 +156,17 @@ class Camera:
       return resX, resY
 
 
-def get_positions(plot_range: tuple[int, int], ref: int, steps: int) -> list:
+def get_positions(plot_range: tuple[int, int], steps: int) -> list:
     """
-    Get a list of positions based on specified range and number of points.
-    """
-    if (ref >= plot_range[0] and ref <= plot_range[1]): # ref is in the desired range
-            points = np.linspace(plot_range[0], plot_range[1], steps)
-            candidates = np.where(points >= ref)[0]
-            print(candidates)
-            if len(candidates) > 0:
-                closest_idx = candidates[0]  # first point >= ref
-            else:
-                closest_idx = len(points) - 1
-            print(closest_idx)
-            up_part = points[closest_idx:]      # from closest to max
-            down_part = points[:closest_idx][::-1]  # from just below closest down to min
-            positions = np.concatenate((up_part, down_part))
-            return positions.tolist()
-    else: # is wrong now
-        closer_index = min(range(len(plot_range)), key=lambda i: abs(plot_range[i] - ref))
-        if (closer_index == 0): # min is closer
-            return list(range(plot_range[0], plot_range[1] + 1))
-        else: # max is closer
-            return list(range(plot_range[1], plot_range[0] - 1, -1))
+    Generates a list of positions in a given range with length steps.
 
-def get_positions_simple(plot_range: tuple[int, int], ref: int, steps: int) -> list:
+    :param plot_range: Minimum and maximum position of the list.
+    :param steps: Number of elements in the list.
+
+    :return: A list of positions.
+    """
     positions = np.linspace(plot_range[0], plot_range[1], steps)
-    return positions
+    return list(positions)
         
 
 def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int):
@@ -201,23 +183,23 @@ def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int)
     # check is beam exists
     amplitude_threshold = 1001 # maybe set this better
     res_x, res_y = camera.getBeamInfo()
-    print("amplitude: " + str(res_x[0]) + " " + str(res_y[0]))
-    if (res_x[0] < amplitude_threshold or res_y[0] < amplitude_threshold):
+    print("init amplitude: " + str(res_x[0]) + " " + str(res_y[0]))
+    if res_x[0] < amplitude_threshold or res_y[0] < amplitude_threshold:
         print("There is currently no beam!")
         return
     
-    # get ref (current position of motor)
-    ref = motor.getPosition()
+    # # get ref (current position of motor)
+    # ref = motor.getPosition()
+    #
+    # # save original configuration
+    # original_ref = ref
 
-    # save original configuration
-    original_ref = ref
-
-    # get positions (x-axis of the graph)
-    positions = get_positions_simple(plot_range, ref, steps)
+    # get positions (x-axis values of the graph)
+    positions = get_positions(plot_range, steps)
 
     # move motor to starting point
-    start_pos = positions[0]
-    while (motor.isBusy()):
+    start_pos = positions[0] # minimum of given range
+    while motor.isBusy():
         sleep(2)
     motor.setAbsPosition(start_pos)
 
@@ -228,34 +210,34 @@ def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int)
         image = camera.captureImage()
         
         projection_x = np.sum(image, axis=0)
-        gBounds = ([0, 0, 1, 10],[np.inf, len(projection_x), np.inf, np.inf])
-        resX, _ = curve_fit(gaussian, range(len(projection_x)), projection_x, (6e4, np.argmax(projection_x), 10.0, 300.0), bounds = gBounds)
-        sigma_x = resX[2]
-        if (resX[0] < amplitude_threshold):
+        g_bounds_x = ([0, 0, 1, 10],[np.inf, len(projection_x), np.inf, np.inf])
+        res_x, _ = curve_fit(gaussian, range(len(projection_x)), projection_x, (6e4, np.argmax(projection_x), 10.0, 300.0), bounds = g_bounds_x)
+        sigma_x = res_x[2]
+        if res_x[0] < amplitude_threshold:
             break
         sigmas_x.append(sigma_x)
 
         projection_y = np.sum(image, axis=1)
-        gBounds = ([0, 0, 1, 10],[np.inf, len(projection_y), np.inf, np.inf])
-        resY, _ = curve_fit(gaussian, range(len(projection_y)), projection_y, (6e4, np.argmax(projection_y), 10.0, 300.0), bounds = gBounds)
-        sigma_y = resY[2]
+        g_bounds_y = ([0, 0, 1, 10],[np.inf, len(projection_y), np.inf, np.inf])
+        res_y, _ = curve_fit(gaussian, range(len(projection_y)), projection_y, (6e4, np.argmax(projection_y), 10.0, 300.0), bounds = g_bounds_y)
+        sigma_y = res_y[2]
         sigmas_y.append(sigma_y)
         
-        if (i == len(positions) - 1):
+        if i == len(positions) - 1:
             print("position " + str(i+1) + " out of " + str(steps))
             break
 
-        while (motor.isBusy()):
+        while motor.isBusy():
             sleep(2)
         motor.setAbsPosition(positions[i+1])
         print("position " + str(i+1) + " out of " + str(steps))
 
     positions = list(positions)
-    if (len(positions) != len(sigmas_x)): # if there was premature cut-off
+    if len(positions) != len(sigmas_x): # if there was premature cut-off
         positions = positions[:len(sigmas_x)]
 
     min_idx_x = sigmas_x.index(min(sigmas_x))
-    while (motor.isBusy()):
+    while motor.isBusy():
         sleep(2)
     motor.setAbsPosition(positions[min_idx_x]) # go to min sigma x
     graph_focused(positions, sigmas_x, sigmas_y)
@@ -265,7 +247,7 @@ def graph_focused(positions, sigmas_x, sigmas_y):
     """
     Graph vertical and horizontal sigma values depending on the motor position.
     """
-    if (positions == [] or sigmas_x == [] or sigmas_y == []):
+    if positions == [] or sigmas_x == [] or sigmas_y == []:
         print("There is nothing to graph.")
         return
     
