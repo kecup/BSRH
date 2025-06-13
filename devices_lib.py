@@ -11,20 +11,33 @@ class Motor:
     def __init__(self, name, japc, backlash_steps=0):
         self.name = name
         self.position = -1
+        self.desiredAbsPosition = -1
+        self.busy = True
         self.lastMotionRel = 0
         self.backlash_steps = backlash_steps
         self.japc = japc
-        try:
-            if self.japc.getParam(self.name + '/Acquisition#motor_busy') == False:
-                self.position = self.japc.getParam(
-                    self.name + '/Acquisition#position')  # This is just to test that acquisition can be made
-            else:
-                print("Motor is moving!")
-        except:
-            print('Invalid name!')
+        self.japc.subscribeParam(self.name+'/Acquisition#position_counter', self.callbackPosition)
+        self.japc.subscribeParam(self.name + '/Acquisition#motor_busy', self.callbackBusy)
+        # try:
+        #     if self.japc.getParam(self.name + '/Acquisition#motor_busy') == False:
+        #         self.position = self.japc.getParam(
+        #             self.name + '/Acquisition#position')  # This is just to test that acquisition can be made
+        #     else:
+        #         print("Motor is moving!")
+        # except:
+        #     print('Invalid name!')
 
     def isBusy(self):
-        return self.japc.getParam(self.name + '/Acquisition#motor_busy')
+        return self.busy
+
+    def callbackPosition(self, name, value):
+        self.position = value
+
+    def callbackBusy(self, name, value):
+        if self.position == self.desiredAbsPosition:
+            self.busy = value
+        else:
+            self.busy = True
 
     def getPosition(self):  ## This is NEW
         while self.japc.getParam(self.name + '/Acquisition#motor_busy') == True:
@@ -34,9 +47,15 @@ class Motor:
         return self.position
 
     def setAbsPosition(self, absPosition):  # This is motion in absolute raw steps! No backlash taken into account!!!
+        absPosition = int(absPosition)
+        self.desiredAbsPosition = absPosition
         if self.japc.getParam(self.name + '/Acquisition#motor_busy') == False:
             mv = {'value': absPosition, 'mode': 2, 'units': 2}
             self.japc.setParam(self.name + '/Move', mv)
+            self.busy = True
+            #while absPosition != self.position:
+            #    sleep(0.5)
+
         else:
             print('Cannot comply, motor is busy!')
 
