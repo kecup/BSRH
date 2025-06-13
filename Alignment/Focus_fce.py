@@ -55,12 +55,10 @@ def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int)
 
     # move motor to starting point
     start_pos = positions[0] # minimum of given range
-    while motor.isBusy():
-        sleep(0.2)
+
     motor.setAbsPosition(start_pos)
     while motor.isBusy():
         sleep(0.2)
-    sleep(1)
 
     # fit gaussian for every position
     sigmas_x = []
@@ -86,25 +84,26 @@ def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int)
             print("position " + str(i+1) + " out of " + str(steps))
             break
 
-        while motor.isBusy():
-            sleep(0.2)
+        print("position " + str(i + 1) + " out of " + str(steps))
+
         motor.setAbsPosition(positions[i+1])
         while motor.isBusy():
             sleep(0.2)
         sleep(1)
-        print("position " + str(i+1) + " out of " + str(steps))
+
 
     positions = list(positions)
     if len(positions) != len(sigmas_x): # if there was premature cut-off
         positions = positions[:len(sigmas_x)]
 
     min_idx_x = sigmas_x.index(min(sigmas_x))
+    min_idx_y = sigmas_y.index(min(sigmas_y))
+    focused_pos = (positions[min_idx_x] + positions[min_idx_y]) // 2
+    motor.setAbsPosition(focused_pos) # go to min sigma x
     while motor.isBusy():
         sleep(0.2)
-    motor.setAbsPosition(positions[min_idx_x]) # go to min sigma x
-    while motor.isBusy():
-        sleep(0.2)
-    graph_focused(positions, sigmas_x, sigmas_y)
+
+    return positions, sigmas_x, sigmas_y
 
 
 def graph_focused(positions, sigmas_x, sigmas_y):
@@ -118,16 +117,16 @@ def graph_focused(positions, sigmas_x, sigmas_y):
     plt.figure(figsize=(8, 5))
 
     # Plot curves
-    plt.plot(positions, sigmas_x, '-o', label='Sigmas X', color='blue', linewidth=2)
-    plt.plot(positions, sigmas_y, '-s', label='Sigmas Y', color='red', linewidth=2)
+    plt.plot(positions, sigmas_x, '-o', markersize=3, label='Sigmas X', color='blue', linewidth=2)
+    plt.plot(positions, sigmas_y, '-s', markersize=3, label='Sigmas Y', color='red', linewidth=2)
 
     # Find minima
     min_idx_x = sigmas_x.index(min(sigmas_x))
     min_idx_y = sigmas_y.index(min(sigmas_y))
 
     # Mark minima points
-    plt.plot(positions[min_idx_x], sigmas_x[min_idx_x], 'bo', markersize=10, label='Min X')
-    plt.plot(positions[min_idx_y], sigmas_y[min_idx_y], 'rs', markersize=10, label='Min Y')
+    plt.plot(positions[min_idx_x], sigmas_x[min_idx_x], 'bo', markersize=5, label='Min X')
+    plt.plot(positions[min_idx_y], sigmas_y[min_idx_y], 'rs', markersize=5, label='Min Y')
 
     # Annotate positions under points
     plt.annotate(f'{positions[min_idx_x]}', 
@@ -155,13 +154,19 @@ def main():
     token = client.login_kerberos()
     japc.rbacLogin(token=token)
     
-    motor = Motor("TST.cfv-375-bsrdev.mot.3-1", japc)
-    camera = Camera("TST.BSRH.CAM.CM", japc)
+    motor = Motor("TST.cfv-375-bsrdev.mot.3-1", japc) # ISR motor
+    camera = Camera("TST.BSRH.CAM.CM", japc) # ISR camera
+    # motor = Motor("LHC.BSRH.M.., japc)  # LHC motor
+    # camera = Camera("LHC.BSRH...", japc)  # LHC camera
+
     japc.startSubscriptions()
 
-    focus(motor, camera, (40000, 60000), 20)
+    positions, sigmas_x, sigmas_y = focus(motor, camera, (44000, 46000), 10)
 
     japc.stopSubscriptions()
+    japc.clearSubscriptions()
+
+    graph_focused(positions, sigmas_x, sigmas_y)
 
 if __name__ == "__main__":
     main()
