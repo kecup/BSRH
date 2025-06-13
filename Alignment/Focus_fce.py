@@ -118,114 +118,91 @@ class Camera:
        
     return outImage
 
-  def getBeamPosition(self):
-    ##Get an image that we will analyse:
-    image = self.captureImage()
-    ##Perform a 1D fit of projections:
-    try:
-      projection_x = np.sum(image, axis=0)
-      projection_y = np.sum(image, axis=1)
-    except:
-      projection_x = []
-      projection_y = []
-      
-    ##Prepare bounds for fits:
-    gBounds = ([1000, 0, 1, 10],[1e5, 960, 30, 1e3])
-    
-    try:
-      #resX = [np.max(projection_x), np.argmax(projection_x)]
-      resX, _ = curve_fit(gaussian, range(len(projection_x)), projection_x, (6e4, np.argmax(projection_x), 10.0, 300.0), bounds = gBounds)
-      if resX[0] < 2e4:
-        resX[1] = -1      
-    except:
-      print("Did not fit in X.")
-      resX = [-1, -1, -1]
-
-
-    try:
-      #resY = [np.max(projection_y), np.argmax(projection_y)]
-      resY, _ = curve_fit(gaussian, range(len(projection_y)), projection_y, (6e4, np.argmax(projection_y), 10.0, 300.0), bounds = gBounds)
-      if resY[0] < 2e4:
-        resY[1] = -1
-    except:
-      print("Did not fit in Y.")
-      resY = [-1, -1, -1]
-    
-    return resX[1], resY[1]
-  
-  def getBeamSize(self):
+  def getBeamInfo(self):
+      """
+      :returns: resX. resY ([amplitude, center, sigma])
+      """
       ##Get an image that we will analyse:
       image = self.captureImage()
       ##Perform a 1D fit of projections:
       try:
-        projection_x = np.sum(image, axis=0)
-        projection_y = np.sum(image, axis=1)
+          projection_x = np.sum(image, axis=0)
+          projection_y = np.sum(image, axis=1)
       except:
-        projection_x = []
-        projection_y = []
-        
+          projection_x = []
+          projection_y = []
+
       ##Prepare bounds for fits:
-      gBounds = ([1000, 0, 1, 10],[1e5, 960, 30, 1e3])
-      
-      try:
-        #resX = [np.max(projection_x), np.argmax(projection_x)]
-        resX, _ = curve_fit(gaussian, range(len(projection_x)), projection_x, (6e4, np.argmax(projection_x), 10.0, 300.0), bounds = gBounds)
-        if resX[0] < 2e4:
-          resX[1] = -1      
-      except:
-        print("Did not fit in X.")
-        resX = [-1, -1, -1]
-
+      gBounds = ([1000, 0, 1, 10], [1e5, 960, 30, 1e3])
 
       try:
-        #resY = [np.max(projection_y), np.argmax(projection_y)]
-        resY, _ = curve_fit(gaussian, range(len(projection_y)), projection_y, (6e4, np.argmax(projection_y), 10.0, 300.0), bounds = gBounds)
-        if resY[0] < 2e4:
-          resY[1] = -1
+          # resX = [np.max(projection_x), np.argmax(projection_x)]
+          resX, _ = curve_fit(gaussian, range(len(projection_x)), projection_x,
+                              (6e4, np.argmax(projection_x), 10.0, 300.0), bounds=gBounds)
+          if resX[0] < 2e4:
+              resX[1] = -1
       except:
-        print("Did not fit in Y.")
-        resY = [-1, -1, -1]
-      
-      return resX[0], resY[0]
+          print("Did not fit in X.")
+          resX = [-1, -1, -1]
 
-def get_positions(pot_range: tuple[int, int], ref: int, steps: int) -> list:
+      try:
+          # resY = [np.max(projection_y), np.argmax(projection_y)]
+          resY, _ = curve_fit(gaussian, range(len(projection_y)), projection_y,
+                              (6e4, np.argmax(projection_y), 10.0, 300.0), bounds=gBounds)
+          if resY[0] < 2e4:
+              resY[1] = -1
+      except:
+          print("Did not fit in Y.")
+          resY = [-1, -1, -1]
+
+      return resX, resY
+
+
+def get_positions(plot_range: tuple[int, int], ref: int, steps: int) -> list:
     """
     Get a list of positions based on specified range and number of points.
     """
-    if (ref >= pot_range[0] and ref <= pot_range[1]): # ref is in the desired range
-            points = np.linspace(pot_range[0], pot_range[1], steps)
+    if (ref >= plot_range[0] and ref <= plot_range[1]): # ref is in the desired range
+            points = np.linspace(plot_range[0], plot_range[1], steps)
             candidates = np.where(points >= ref)[0]
+            print(candidates)
             if len(candidates) > 0:
                 closest_idx = candidates[0]  # first point >= ref
             else:
                 closest_idx = len(points) - 1
+            print(closest_idx)
             up_part = points[closest_idx:]      # from closest to max
             down_part = points[:closest_idx][::-1]  # from just below closest down to min
             positions = np.concatenate((up_part, down_part))
             return positions.tolist()
-    else:
-        closer_index = np.argmin(np.abs(ref - pot_range))
+    else: # is wrong now
+        closer_index = min(range(len(plot_range)), key=lambda i: abs(plot_range[i] - ref))
         if (closer_index == 0): # min is closer
-            return list(range(pot_range[0], pot_range[1] + 1))
+            return list(range(plot_range[0], plot_range[1] + 1))
         else: # max is closer
-            return list(range(pot_range[1], pot_range[0] - 1, -1))
+            return list(range(plot_range[1], plot_range[0] - 1, -1))
+
+def get_positions_simple(plot_range: tuple[int, int], ref: int, steps: int) -> list:
+    positions = np.linspace(plot_range[0], plot_range[1], steps)
+    return positions
         
 
-def focus(motor: Motor, camera: Camera, pot_range: tuple[int, int], steps: int):
+def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int):
     """
     Focuses a beam.
 
     :param motor: Motor of the camera to be moved to focus the beam.
     :param camera: Camera to focus the beam on.
-    :param pot_range: Range of positions to move the motor in.
+    :param plot_range: Range of positions to move the motor in.
     :param steps: Number of steps.
 
     :return: A picture with horizontal and vertical sigma values depending on the motor position.
     """
     # check is beam exists
-    amplitude_threshold = 1000
-    ampl_x, ampl_y = camera.getBeamSize()
-    if (ampl_x < amplitude_threshold or ampl_y < amplitude_threshold):
+    amplitude_threshold = 1001 # maybe set this better
+    res_x, res_y = camera.getBeamInfo()
+    print("amplitude: " + str(res_x[0]) + " " + str(res_y[0]))
+    if (res_x[0] < amplitude_threshold or res_y[0] < amplitude_threshold):
         print("There is currently no beam!")
         return
     
@@ -235,11 +212,13 @@ def focus(motor: Motor, camera: Camera, pot_range: tuple[int, int], steps: int):
     # save original configuration
     original_ref = ref
 
-    # get positions (x axis of the graph)
-    positions = get_positions(pot_range, ref, steps)
+    # get positions (x-axis of the graph)
+    positions = get_positions_simple(plot_range, ref, steps)
 
     # move motor to starting point
     start_pos = positions[0]
+    while (motor.isBusy()):
+        sleep(2)
     motor.setAbsPosition(start_pos)
 
     # fit gaussian for every position
@@ -252,30 +231,35 @@ def focus(motor: Motor, camera: Camera, pot_range: tuple[int, int], steps: int):
         gBounds = ([0, 0, 1, 10],[np.inf, len(projection_x), np.inf, np.inf])
         resX, _ = curve_fit(gaussian, range(len(projection_x)), projection_x, (6e4, np.argmax(projection_x), 10.0, 300.0), bounds = gBounds)
         sigma_x = resX[2]
-        sigmas_x.append(sigmas_x)
+        if (resX[0] < amplitude_threshold):
+            break
+        sigmas_x.append(sigma_x)
 
         projection_y = np.sum(image, axis=1)
         gBounds = ([0, 0, 1, 10],[np.inf, len(projection_y), np.inf, np.inf])
         resY, _ = curve_fit(gaussian, range(len(projection_y)), projection_y, (6e4, np.argmax(projection_y), 10.0, 300.0), bounds = gBounds)
         sigma_y = resY[2]
-        sigmas_y.append(sigmas_y)
+        sigmas_y.append(sigma_y)
         
         if (i == len(positions) - 1):
-            motor.setAbsPosition(original_ref) # return to the beginning
+            print("position " + str(i+1) + " out of " + str(steps))
             break
-        sleep(3) # this could depend on number of steps/plot_range
+
+        while (motor.isBusy()):
+            sleep(2)
         motor.setAbsPosition(positions[i+1])
         print("position " + str(i+1) + " out of " + str(steps))
-    
-    # sort results
-    combined = list(zip(positions, sigmas_x, sigmas_y))
-    combined_sorted = sorted(combined, key=lambda x: x[0])
-    sorted_positions, sorted_sigmas_x, sorted_sigmas_y = zip(*combined_sorted)
-    sorted_positions = list(sorted_positions)
-    sorted_sigmas_x = list(sorted_sigmas_x)
-    sorted_sigmas_y = list(sorted_sigmas_y)
 
-    graph_focused(sorted_positions, sorted_sigmas_x, sorted_sigmas_y)
+    positions = list(positions)
+    if (len(positions) != len(sigmas_x)): # if there was premature cut-off
+        positions = positions[:len(sigmas_x)]
+
+    min_idx_x = sigmas_x.index(min(sigmas_x))
+    while (motor.isBusy()):
+        sleep(2)
+    motor.setAbsPosition(positions[min_idx_x]) # go to min sigma x
+    graph_focused(positions, sigmas_x, sigmas_y)
+
 
 def graph_focused(positions, sigmas_x, sigmas_y):
     """
@@ -312,7 +296,7 @@ def graph_focused(positions, sigmas_x, sigmas_y):
 
     plt.xlabel('Positions')
     plt.ylabel('Sigma Values')
-    plt.title('Sigma vs Positions with Minima Marked')
+    plt.title('Sigma vs Positions of the Motor')
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
@@ -326,9 +310,8 @@ def main():
     motor = Motor("TST.cfv-375-bsrdev.mot.3-1")
     camera = Camera("TST.BSRH.CAM.CM")
     japc.startSubscriptions()
-    # sleep(0.2)
 
-    focus(motor, camera, (10000, 50000), 10)
+    focus(motor, camera, (20000, 60000), 20)
 
     japc.stopSubscriptions()
 
