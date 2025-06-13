@@ -1,0 +1,263 @@
+## Script to perform automatic alignment of the BSRH - up to the LS as the final focus is pretty difficult to do...
+#First get motor positions of everything that we will move
+#Then capture the beam on all targets
+
+########LIBRARIES############################
+import pyjapc
+import datetime as dt
+import numpy as np
+from scipy.optimize import curve_fit
+from time import sleep
+import csv
+import random
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+import torch.autograd as autograd
+from torch.autograd import Variable
+
+########Parameters and names#################
+
+bgImages = []
+
+japc = pyjapc.PyJapc(selector = '', incaAcceleratorName = '')
+japc.rbacLogin(loginDialog = True)
+
+def gaussian(x, amp, cen, wid, const):
+  return amp*np.exp(-(x-cen)**2/(2*wid**2))+const
+
+#def CheckSystem():#Function which will check all coms and acq statuses
+#  for cam in Cameras:
+#    if japc.getParam(cam+'/Acquisition#AcqOK'):
+#      japc.getParam(cam+'/Acquisition#image1_clkcnt')
+
+class Motor:
+  def __init__(self, name, backlash_steps = 0):
+    self.name = name
+    self.position = -1
+    self.lastMotionRel = 0
+    self.backlash_steps = backlash_steps
+    try:
+      if japc.getParam(self.name+'/Acquisition#motor_busy') == False:
+        self.position = japc.getParam(self.name+'/Acquisition#position') #This is just to test that acquisition can be made
+      else:
+        print("Motor is moving!")
+    except:
+      print('Invalid name!')
+  def isBusy(self):
+    return japc.getParam(self.name+'/Acquisition#motor_busy')
+ 
+  #def getPosition(self): ## This is OLD
+  #  if japc.getParam(self.name+'/Acquisition#motor_busy') == False:
+  #    self.position = japc.getParam(self.name+'/Acquisition#position_counter') #Uses position in steps! So carefull with movements...
+  #  else:
+  #    self.position = -1
+  #    print('Motor still busy!!')
+  #  return self.position
+  
+  def getPosition(self): ## This is NEW
+    while japc.getParam(self.name+'/Acquisition#motor_busy') == True:
+      sleep(0.5)
+    self.position = japc.getParam(self.name+'/Acquisition#position_counter') #Uses position in steps! So carefull with movements...
+    return self.position
+   
+  def setAbsPosition(self, absPosition): #This is motion in absolute raw steps! No backlash taken into account!!!
+    if japc.getParam(self.name+'/Acquisition#motor_busy') == False:
+      mv = {'value': absPosition, 'mode': 2, 'units': 2}
+      japc.setParam(self.name+'/Move', mv)
+    else:
+      print('Cannot comply, motor is busy!')
+   
+  def setRelPosition(self, relPosition): #Motion in relative steps!
+    if japc.getParam(self.name+'/Acquisition#motor_busy') == False:  
+      
+      if relPosition*self.lastMotionRel < 0: #Change of sign
+        self.lastMotionRel = relPosition
+        relPosition = relPosition + np.sign(relPosition)*self.backlash_steps
+      else:
+        self.lastMotionRel = relPosition
+      
+      mv = {'value': relPosition, 'mode': 1, 'units': 2}
+      japc.setParam(self.name+'/Move', mv)
+      
+    else:
+      print('Cannot comply, motor is busy!')
+
+class Camera:
+  def __init__(self, name, inPos = None, outPos = None, motorX = None, motorY = None): ## Provide motors as Class and positions in steps...
+    self.name = name
+    self.motorX = motorX
+    self.motorY = motorY
+    self.inPos = inPos
+    self.outPos = outPos
+    self.updated = dt.datetime.now()
+    self.image = []
+    if inPos != None and outPos != None:
+      self.movableAxis = len(inPos)
+    else:
+      self.movableAxis = 0
+    self.isIn = -1
+    self.subscription = japc.subscribeParam(self.name+'/LastImage#image2D', self.updateImage)
+    
+  def updateImage(self, parameter, value):
+    self.image = value  
+    self.updated = dt.datetime.now()
+    
+  def checkIn(self):
+    output = False
+    if (self.movableAxis > 0 and motorX.getPosition() == inPos[0]) and (self.movableAxis == 1 or motorY.getPosition() == inPos[1]) or self.movableAxis == 0:
+      output = True
+    return output
+  
+  def captureImage(self, MoveOut = False):## Should think whether subscription is the way forward or not...
+    lastUpdate = self.updated
+    if self.checkIn() == False: #Checking if the camera/target is in.
+      ##This means that we have to move motor(s)
+      motorX.setAbsPosition(inPos[0]) #at least one motor must be present
+      if movableAxis == 2:
+        motorY.setAbsPosition(inPos[1])
+        while motorX.isBusy() or motorY.isBusy():
+          sleep(0.2)
+      while motorX.isBusy():
+        sleep(0.2)
+    
+    cycle = 0
+    while lastUpdate == self.updated and cycle < 10:
+      sleep(0.2)
+      cycle = cycle + 1
+      
+    if cycle >= 10:
+      print('Getting image timed-out.')
+      outImage = []
+    else:
+      outImage = self.image
+    
+    ##Testing to send the position out again?
+    if self.movableAxis>0 and MoveOut == True:
+      motorX.setAbsPosition(outPos[0]) #at least one motor must be present
+      if movableAxis == 2:
+        motorY.setAbsPosition(outPos[1])
+       
+    return outImage
+
+  def getBeamPosition(self):
+    ##Get an image that we will analyse:
+    image = self.captureImage()
+    ##Perform a 1D fit of projections:
+    try:
+      projection_x = np.sum(image, axis=0)
+      projection_y = np.sum(image, axis=1)
+    except:
+      projection_x = []
+      projection_y = []
+      
+    ##Prepare bounds for fits:
+    gBounds = ([1e4, 0, 1, 10],[1e7, 960, 100, 2e4])
+    
+    try:
+      #resX = [np.max(projection_x), np.argmax(projection_x)]
+      resX, _ = curve_fit(gaussian, range(len(projection_x)), projection_x, (6e5, np.argmax(projection_x), 30.0, 3000.0), bounds = gBounds)
+      #print(resX)
+      if resX[0] < 2e4:
+        resX[1] = -1      
+    except:
+      print("Did not fit in X.")
+      resX = [-1, -1, -1]
+
+
+    try:
+      #resY = [np.max(projection_y), np.argmax(projection_y)]
+      resY, _ = curve_fit(gaussian, range(len(projection_y)), projection_y, (6e5, np.argmax(projection_y), 30.0, 3000.0), bounds = gBounds)
+      #print(resY)
+      if resY[0] < 2e4:
+        resY[1] = -1
+    except:
+      print("Did not fit in Y.")
+      resY = [-1, -1, -1]
+    
+    return resX[1], resY[1]
+    
+
+##We should have most components ready, let's get data for training:
+##BackLash
+FoldingX = Motor('LHC.BSRH.FOLDING-H.B2', 45)
+FoldingY = Motor('LHC.BSRH.FOLDING-V.B2', 0)
+
+cam = Camera('LHC.BSRH.BTVDC-CAM.MAIN')
+
+MotorRangeX = 50#How many steps the motor can make from reference to keep the image on the camera
+MotorRangeY = 50
+
+
+japc.startSubscriptions()
+sleep(2)
+##Save references so we can go back in case we lose the beam
+
+refX = FoldingX.getPosition()
+refY = FoldingY.getPosition()
+
+PosX, PosY = cam.getBeamPosition()
+
+
+##Open a csv file that we will use to save the training data:
+TrainingFile = open('MainCamData.csv', 'a')
+writeTraining = csv.writer(TrainingFile)
+
+
+camX, camY = cam.getBeamPosition()
+##Now let's generate training data:
+for i in range(5000):
+  if camX == -1 or camY == -1:
+    print('Did not find beam, sending to references') ## This does not account for summing up the backlash...
+
+    FoldingX.setRelPosition(refX-FoldingX.getPosition())
+    FoldingY.setRelPosition(refY-FoldingY.getPosition())
+    sleep(2)
+    camX, camY = cam.getBeamPosition()
+    if camX == -1 or camY == -1:
+      print('Cannot find beam at reference location, stopping now')
+      break
+  
+  mX = FoldingX.getPosition() #This might take long as it waits for motor to stop...
+  mY = FoldingY.getPosition() #This might take long as it waits for motor to stop...
+  
+  stepsX = random.randint(-int(2*camX/968.0*MotorRangeX), int(2*(968.0-camX)*MotorRangeX/968.0), )
+  stepsY = random.randint(-int(2*(608.0-camY)/608.0*MotorRangeY),int(2*camY/608.0*MotorRangeY))
+  
+  FoldingX.setRelPosition(stepsX)
+  FoldingY.setRelPosition(stepsY)
+  
+  while FoldingX.isBusy() or FoldingY.isBusy():
+    sleep(0.2)
+  sleep(1)
+  tX, tY = cam.getBeamPosition()
+  
+  if tX != -1 and tY != -1:
+    #Prepare the row that will be written
+    row = []
+    row.append(camX)
+    row.append(camY)
+    row.append(mX)
+    row.append(mY)
+    row.append(tX)
+    row.append(tY)
+    row.append(stepsX)
+    row.append(stepsY)
+    
+    writeTraining.writerow(row)
+    
+  camX = tX #what was target is 
+  camY = tY
+  print('Done {} movements. '.format(i), end = '\r')
+
+
+FoldingX.setAbsPosition(refX)
+FoldingY.setAbsPosition(refY)
+japc.stopSubscriptions()
+
+TrainingFile.close()
+print('')
+print(i)
+#At some point we have to call japc.startSubscriptions()!!

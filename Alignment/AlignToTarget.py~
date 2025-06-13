@@ -183,7 +183,6 @@ class Camera:
       print("Did not fit in Y.")
       resY = [-1, -1, -1]
     
-    print(resX, resY)
     return resX[1], resY[1]
     
 class FeedbackNN(nn.Module): #Not used here
