@@ -5,24 +5,19 @@
 ########LIBRARIES############################
 import pyjapc
 import pyrbac
-import datetime as dt
 import numpy as np
-from scipy.optimize import curve_fit
 from time import sleep
-import csv
-import random
-
 import sys
-import select
+import os
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, parent_dir)
 
+import select
+from devices_lib import Camera, Motor
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-import torch.autograd as autograd
-from torch.autograd import Variable
-
-import joblib
 
 ########Parameters and names#################
 
@@ -33,170 +28,20 @@ client = pyrbac.AuthenticationClient()
 token = client.login_kerberos()
 japc.rbacLogin(token=token)
 
-def gaussian(x, amp, cen, wid, const):
-  return amp*np.exp(-(x-cen)**2/(2*wid**2))+const
 
-#def CheckSystem():#Function which will check all coms and acq statuses
-#  for cam in Cameras:
-#    if japc.getParam(cam+'/Acquisition#AcqOK'):
-#      japc.getParam(cam+'/Acquisition#image1_clkcnt')
-
-class Motor:
-  def __init__(self, name, backlash_steps = 0):
-    self.name = name
-    self.position = -1
-    self.lastMotionRel = 0
-    self.backlash_steps = backlash_steps
-    try:
-      if japc.getParam(self.name+'/Acquisition#motor_busy') == False:
-        self.position = japc.getParam(self.name+'/Acquisition#position') #This is just to test that acquisition can be made
-      else:
-        print("Motor is moving!")
-    except:
-      print('Invalid name!')
-  def isBusy(self):
-    return japc.getParam(self.name+'/Acquisition#motor_busy')
- 
-  #def getPosition(self): ## This is OLD
-  #  if japc.getParam(self.name+'/Acquisition#motor_busy') == False:
-  #    self.position = japc.getParam(self.name+'/Acquisition#position_counter') #Uses position in steps! So carefull with movements...
-  #  else:
-  #    self.position = -1
-  #    print('Motor still busy!!')
-  #  return self.position
-  
-  def getPosition(self): ## This is NEW
-    while japc.getParam(self.name+'/Acquisition#motor_busy') == True:
-      sleep(0.5)
-    self.position = japc.getParam(self.name+'/Acquisition#position_counter') #Uses position in steps! So carefull with movements...
-    return self.position
-   
-  def setAbsPosition(self, absPosition): #This is motion in absolute raw steps! No backlash taken into account!!!
-    if japc.getParam(self.name+'/Acquisition#motor_busy') == False:
-      mv = {'value': absPosition, 'mode': 2, 'units': 2}
-      japc.setParam(self.name+'/Move', mv)
-    else:
-      print('Cannot comply, motor is busy!')
-   
-  def setRelPosition(self, relPosition): #Motion in relative steps!
-    if japc.getParam(self.name+'/Acquisition#motor_busy') == False:  
-      
-      if relPosition*self.lastMotionRel < 0: #Change of sign
-        self.lastMotionRel = relPosition
-        relPosition = relPosition + np.sign(relPosition)*self.backlash_steps
-      else:
-        self.lastMotionRel = relPosition
-      
-      mv = {'value': relPosition, 'mode': 1, 'units': 2}
-      japc.setParam(self.name+'/Move', mv)
-      
-    else:
-      print('Cannot comply, motor is busy!')
-
-class Camera:
-  def __init__(self, name, inPos = None, outPos = None, motorX = None, motorY = None): ## Provide motors as Class and positions in steps...
-    self.name = name
-    self.motorX = motorX
-    self.motorY = motorY
-    self.inPos = inPos
-    self.outPos = outPos
-    self.updated = dt.datetime.now()
-    self.image = []
-    if inPos != None and outPos != None:
-      self.movableAxis = len(inPos)
-    else:
-      self.movableAxis = 0
-    self.isIn = -1
-    self.subscription = japc.subscribeParam(self.name+'/Acquisition#image1', self.updateImage)
-    
-  def updateImage(self, parameter, value):
-    self.image = value  
-    self.updated = dt.datetime.now()
-    
-  def checkIn(self):
-    output = False
-    if (self.movableAxis > 0 and motorX.getPosition() == inPos[0]) and (self.movableAxis == 1 or motorY.getPosition() == inPos[1]) or self.movableAxis == 0:
-      output = True
-    return output
-  
-  def captureImage(self, MoveOut = False):## Should think whether subscription is the way forward or not...
-    lastUpdate = self.updated
-    if self.checkIn() == False: #Checking if the camera/target is in.
-      ##This means that we have to move motor(s)
-      motorX.setAbsPosition(inPos[0]) #at least one motor must be present
-      if movableAxis == 2:
-        motorY.setAbsPosition(inPos[1])
-        while motorX.isBusy() or motorY.isBusy():
-          sleep(0.2)
-      while motorX.isBusy():
-        sleep(0.2)
-    
-    cycle = 0
-    while lastUpdate == self.updated and cycle < 10:
-      sleep(0.2)
-      cycle = cycle + 1
-      
-    if cycle >= 10:
-      print('Getting image timed-out.')
-      outImage = []
-    else:
-      outImage = self.image
-    
-    ##Testing to send the position out again?
-    if self.movableAxis>0 and MoveOut == True:
-      motorX.setAbsPosition(outPos[0]) #at least one motor must be present
-      if movableAxis == 2:
-        motorY.setAbsPosition(outPos[1])
-       
-    return outImage
-
-  def getBeamPosition(self):
-    ##Get an image that we will analyse:
-    image = self.captureImage()
-    ##Perform a 1D fit of projections:
-    try:
-      projection_x = np.sum(image, axis=0)
-      projection_y = np.sum(image, axis=1)
-    except:
-      projection_x = []
-      projection_y = []
-      
-    ##Prepare bounds for fits:
-    gBounds = ([1e4, 0, 1, 10],[1e7, 960, 100, 2e4])
-    
-    try:
-      #resX = [np.max(projection_x), np.argmax(projection_x)]
-      resX, _ = curve_fit(gaussian, range(len(projection_x)), projection_x, (6e4, np.argmax(projection_x), 10.0, 300.0), bounds = gBounds)
-      if resX[0] < 2e4:
-        resX[1] = -1      
-    except:
-      print("Did not fit in X.")
-      resX = [-1, -1, -1]
-
-
-    try:
-      #resY = [np.max(projection_y), np.argmax(projection_y)]
-      resY, _ = curve_fit(gaussian, range(len(projection_y)), projection_y, (6e4, np.argmax(projection_y), 10.0, 300.0), bounds = gBounds)
-      if resY[0] < 2e4:
-        resY[1] = -1
-    except:
-      print("Did not fit in Y.")
-      resY = [-1, -1, -1]
-    
-    return resX[1], resY[1]
     
 class FeedbackNN(nn.Module): #Not used here
   def __init__(self, state_size, action_size, seed = 45) -> None:
       self.NNsize = 16
       super(FeedbackNN, self).__init__()
       self.seed = torch.manual_seed(seed)
-      self.fc1 = nn.Linear(state_size, self.NNsize) #First Neuron layer
-      self.fc2 = nn.Linear(self.NNsize,self.NNsize)#Next Neuron layer
-      self.fc3 = nn.Linear(self.NNsize,self.NNsize)#Next Neuron layer
-      self.fc4 = nn.Linear(self.NNsize, action_size)#Last Neuron layer
+      self.fc1 = nn.Linear(state_size, self.NNsize) # First Neuron layer
+      self.fc2 = nn.Linear(self.NNsize,self.NNsize) # Next Neuron layer
+      self.fc3 = nn.Linear(self.NNsize,self.NNsize) # Next Neuron layer
+      self.fc4 = nn.Linear(self.NNsize, action_size) # Last Neuron layer
 
   def forward(self, state):
-      x = self.fc1(state) #output of the first layer
+      x = self.fc1(state) # output of the first layer
       x = F.relu(x) # rectify function of the output
 
       y = self.fc2(x)
@@ -255,14 +100,14 @@ class BeamSteerer:
       
 ##We should have most components ready, let's get data for training:
 ##BackLash
-#M3X = Motor('TST.cfv-375-bsrdev.mot.3-4', 168) #ISR
-#M3Y = Motor('TST.cfv-375-bsrdev.mot.3-5', 125) #ISR
+M3X = Motor('TST.cfv-375-bsrdev.mot.3-4', japc, 168) #ISR
+M3Y = Motor('TST.cfv-375-bsrdev.mot.3-5', japc, 125) #ISR
 
-M3X = Motor('LHC.BSRH.M3-PHI.B2', 35)  #LHC
-M3Y = Motor('LHC.BSRH.M3-THETA.B2', 30) #LHC
+# M3X = Motor('LHC.BSRH.M3-PHI.B2', 35)  #LHC
+# M3Y = Motor('LHC.BSRH.M3-THETA.B2', 30) #LHC
 
-#cam1 = Camera('TST.BSRH.CAM.CM') #ISR
-cam1 = Camera('LHC.BSRH.CAM.CM.B2') #LHC
+cam1 = Camera('TST.BSRH.CAM.CM', japc) #ISR
+# cam1 = Camera('LHC.BSRH.CAM.CM.B2') #LHC
 
 target = [484, 304]
 
