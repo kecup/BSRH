@@ -202,7 +202,8 @@ PosX, PosY = cam.getBeamPosition()
 ##Open a csv file that we will use to save the training data:
 TrainingFile = open('MainCamData.csv', 'a')
 writeTraining = csv.writer(TrainingFile)
-
+header = ["camX", "camY", "mX", "mY", "tX", "tY", "stepsX", "stepsY"]
+writeTraining.writerow(header)
 
 camX, camY = cam.getBeamPosition()
 ##Now let's generate training data:
