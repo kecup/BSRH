@@ -200,8 +200,10 @@ def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int)
     # move motor to starting point
     start_pos = positions[0] # minimum of given range
     while motor.isBusy():
-        sleep(2)
+        sleep(0.2)
     motor.setAbsPosition(start_pos)
+    while motor.isBusy():
+        sleep(0.2)
 
     # fit gaussian for every position
     sigmas_x = []
@@ -227,9 +229,10 @@ def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int)
             print("position " + str(i+1) + " out of " + str(steps))
             break
 
-        while motor.isBusy():
-            sleep(2)
         motor.setAbsPosition(positions[i+1])
+        while motor.isBusy():
+            sleep(0.2)
+        sleep(1)
         print("position " + str(i+1) + " out of " + str(steps))
 
     positions = list(positions)
@@ -238,7 +241,7 @@ def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int)
 
     min_idx_x = sigmas_x.index(min(sigmas_x))
     while motor.isBusy():
-        sleep(2)
+        sleep(0.2)
     motor.setAbsPosition(positions[min_idx_x]) # go to min sigma x
     graph_focused(positions, sigmas_x, sigmas_y)
 
@@ -289,11 +292,13 @@ def main():
     token = client.login_kerberos()
     japc.rbacLogin(token=token)
     
-    motor = Motor("TST.cfv-375-bsrdev.mot.3-1")
-    camera = Camera("TST.BSRH.CAM.CM")
+    #motor = Motor("TST.cfv-375-bsrdev.mot.3-1")
+    #camera = Camera("TST.BSRH.CAM.CM")
+    motor = Motor("LHC.BSRH.M3-Z-TSZ100.B2")
+    camera = Camera("LHC.BSRH.CAM.CM.B2")
     japc.startSubscriptions()
 
-    focus(motor, camera, (20000, 60000), 20)
+    focus(motor, camera, (45000, 55000), 20)
 
     japc.stopSubscriptions()
 
