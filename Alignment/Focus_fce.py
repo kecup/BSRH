@@ -46,7 +46,6 @@ def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int)
     
     # # get ref (current position of motor)
     # ref = motor.getPosition()
-    #
     # # save original configuration
     # original_ref = ref
 
