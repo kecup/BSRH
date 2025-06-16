@@ -58,6 +58,10 @@ def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int)
     motor.setAbsPosition(start_pos)
     while motor.isBusy():
         sleep(0.2)
+    motor.setAbsPosition(start_pos)
+    while motor.isBusy():
+        sleep(0.2)
+        sleep(0.2)
 
     # fit gaussian for every position
     sigmas_x = []
@@ -83,13 +87,14 @@ def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int)
             print("position " + str(i+1) + " out of " + str(steps))
             break
 
+        motor.setAbsPosition(positions[i+1])
         print("position " + str(i + 1) + " out of " + str(steps))
 
         motor.setAbsPosition(positions[i+1])
         while motor.isBusy():
             sleep(0.2)
         sleep(1)
-
+        print("position " + str(i+1) + " out of " + str(steps))
 
     positions = list(positions)
     if len(positions) != len(sigmas_x): # if there was premature cut-off

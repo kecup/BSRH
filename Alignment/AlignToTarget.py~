@@ -269,7 +269,7 @@ target = [484, 304]
 ##Now load our NN:
 
 model = FeedbackNN(4,2)
-model.load_state_dict(torch.load('best_feedback_model.pth'))
+model.load_state_dict(torch.load('CM_feedbackModel.pth'))
 model.eval()
 
 steerer = BeamSteerer(model, lr = 0.1, iters = 20)

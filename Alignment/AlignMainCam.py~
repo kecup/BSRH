@@ -107,7 +107,7 @@ class Camera:
     else:
       self.movableAxis = 0
     self.isIn = -1
-    self.subscription = japc.subscribeParam(self.name+'/Acquisition#image1', self.updateImage)
+    self.subscription = japc.subscribeParam(self.name+'/LastImage#image2D', self.updateImage)
     
   def updateImage(self, parameter, value):
     self.image = value  
@@ -250,34 +250,36 @@ class BeamSteerer:
 
         # 3) send to hardware
         motion = u_opt.tolist()
+        
+        if x0_np[0] == -1 or x0_np[1] == -1: #Do not move if you don't see the beam
+          motion = [0,0]
         motorX.setRelPosition(motion[0])
         motorY.setRelPosition(motion[1])
       
 ##We should have most components ready, let's get data for training:
 ##BackLash
 
-M3X = Motor('LHC.BSRH.M3-PHI.B2', 35)  #LHC
-M3Y = Motor('LHC.BSRH.M3-THETA.B2', 30) #LHC
+M3X = Motor('LHC.BSRH.FOLDING-H.B2', 45)  #LHC
+M3Y = Motor('LHC.BSRH.FOLDING-V.B2', 0) #LHC
 
-cam1 = Camera('LHC.BSRH.CAM.CM.B2') #LHC
+cam1 = Camera('LHC.BSRH.BTVDC-CAM.MAIN') #LHC
 
 target = [484, 304]
 
 ##Now load our NN:
 
 model = FeedbackNN(4,2)
-model.load_state_dict(torch.load('CM_feedbackModel.pth'))
+model.load_state_dict(torch.load('MainCamModel.pth'))
 model.eval()
 
 steerer = BeamSteerer(model, lr = 0.1, iters = 20)
 
 japc.startSubscriptions()
 
-M3X.setRelPosition(30)
-M3Y.setRelPosition(30)
+M3X.setRelPosition(10)
+M3Y.setRelPosition(10)
 
-
-done = False
+count = 0
 while True:
 
   if select.select([sys.stdin], [], [], 0.0)[0]:
@@ -285,16 +287,20 @@ while True:
     break
   
   camX, camY = cam1.getBeamPosition()
-  if camX == -1 and camY == -1:
+  if camX == -1 and camY == -1: # Any other way we can implement not doing anything unless we have a nice beam?
     print('Could not find the beam, stopping alignment')
     break
   
+  if count == 10:
+    print("Distance to target = ", np.round(np.sqrt((camX-target[0])**2+(camY-target[1])**2),2))
+    count = 0
   if np.abs(camX-target[0]) > 5 and np.abs(camY-target[1]) > 5:
     steerer.step(M3X, M3Y, cam1, target)
-    print('Moving, distance to target = ', np.sqrt((camX-target[0])**2+(camY-target[1])**2))
+    print('Moving, distance to target = ', np.round(np.sqrt((camX-target[0])**2+(camY-target[1])**2),2), dt.datetime.now())
     sleep(2)
-  sleep(1)
   
+  sleep(1)
+  count = count + 1
 japc.stopSubscriptions()
 print('')
 #At some point we have to call japc.startSubscriptions()!!

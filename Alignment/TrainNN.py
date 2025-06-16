@@ -81,7 +81,7 @@ class ResidualMLP(nn.Module):
 """
 
 ##Open a csv file that we will use to save the training data:
-df = pd.read_csv('BackLashData.csv')
+df = pd.read_csv('MainCamData.csv')
 
 #data = df[['CamX', 'MotX', 'TgtX', 'CamY', 'MotY', 'TgtY']].values
 data = df[['CamX', 'CamY', 'StepsX', 'StepsY']].values
@@ -140,6 +140,6 @@ for epoch in range(1, num_epochs+1):
     # — Optional: save best model
     if val_loss < best_val_loss:
         best_val_loss = val_loss
-        torch.save(model.state_dict(), 'best_feedback_model.pth')
+        torch.save(model.state_dict(), 'MainCamModel.pth')
     #    joblib.dump(scaler, 'scaler.pkl')
 
