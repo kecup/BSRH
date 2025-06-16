@@ -68,9 +68,10 @@ run_number = 0
 
 
 class AllData:
-    def __init__(self, timestamp, cam_data, device_data):
+    def __init__(self, timestamp, cam_data, bws_data, device_data):
         self.timestamp = timestamp
         self.cam_data = cam_data
+        self.bws_data = bws_data
         self.device_data = device_data
 
 # Background saver thread: takes events from queue and writes them in chunks
@@ -111,6 +112,7 @@ def setter_worker(japc, path, value):
 
 
 def write_chunk(events):
+    global run_number
     ts = time.strftime('%Y_%m_%d', time.localtime())
     filename = f"{ts}_run_{run_number:02d}_chunk_{int(time.time())}.pkl.zst"
     path = os.path.join(DATA_PATH_ROOT, time.strftime('%Y/%m/%d/', time.localtime()))
