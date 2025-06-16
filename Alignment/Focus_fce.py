@@ -23,7 +23,11 @@ def get_positions(plot_range: tuple[int, int], steps: int) -> list:
     """
     positions = np.linspace(plot_range[0], plot_range[1], steps)
     return list(positions)
-        
+
+def wait_for_motor_to_finish(motor: Motor):
+    while motor.isBusy():
+        # sleep(0.2)
+        continue
 
 def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int):
     """
@@ -55,13 +59,9 @@ def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int)
     # move motor to starting point
     start_pos = positions[0] # minimum of given range
 
+    # wait_for_motor_to_finish(motor) # so it doesn't move at the beginning
     motor.setAbsPosition(start_pos)
-    while motor.isBusy():
-        sleep(0.2)
-    motor.setAbsPosition(start_pos)
-    while motor.isBusy():
-        sleep(0.2)
-        sleep(0.2)
+    wait_for_motor_to_finish(motor)
 
     # fit gaussian for every position
     sigmas_x = []
@@ -88,12 +88,9 @@ def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int)
             break
 
         motor.setAbsPosition(positions[i+1])
-        print("position " + str(i + 1) + " out of " + str(steps))
+        wait_for_motor_to_finish(motor)
 
-        motor.setAbsPosition(positions[i+1])
-        while motor.isBusy():
-            sleep(0.2)
-        sleep(1)
+        # sleep(1)
         print("position " + str(i+1) + " out of " + str(steps))
 
     positions = list(positions)
@@ -104,8 +101,7 @@ def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int)
     min_idx_y = sigmas_y.index(min(sigmas_y))
     focused_pos = (positions[min_idx_x] + positions[min_idx_y]) // 2
     motor.setAbsPosition(focused_pos) # go to min sigma x
-    while motor.isBusy():
-        sleep(0.2)
+    # wait_for_motor_to_finish(motor)
 
     return positions, sigmas_x, sigmas_y
 
@@ -165,7 +161,7 @@ def main():
 
     japc.startSubscriptions()
 
-    positions, sigmas_x, sigmas_y = focus(motor, camera, (44000, 46000), 10)
+    positions, sigmas_x, sigmas_y = focus(motor, camera, (40000, 55000), 10)
 
     japc.stopSubscriptions()
     japc.clearSubscriptions()
