@@ -1,6 +1,5 @@
 import pyjapc
 import pyrbac
-import numpy as np
 from time import sleep
 import sys
 import os
@@ -88,17 +87,16 @@ class BeamSteerer:
             motor.setRelPosition(u_opt[i].item())  # convert tensor to float
 
 
-# use
 # Define motors
 # M_X = Motor('LHC.BSRH.M3-PHI.B2', backlash_steps=35)
 # M_Y = Motor('LHC.BSRH.M3-THETA.B2', backlash_steps=30)
 # M_Phi = Motor('LHC.BSRH.LENS-PHI.B2', backlash_steps=20)
 # M_Theta = Motor('LHC.BSRH.LENS-THETA.B2', backlash_steps=20)
 
-M_X = Motor('TST.cfv-375-bsrdev.mot.3-2', japc, backlash_steps=35) # I hope the names are correct
-M_Y = Motor('TST.cfv-375-bsrdev.mot.3-3', japc, backlash_steps=30)
-M_Phi = Motor('TST.cfv-375-bsrdev.mot.3-4', japc, backlash_steps=20)
-M_Theta = Motor('TST.cfv-375-bsrdev.mot.3-5', japc, backlash_steps=20)
+M_X = Motor('TST.cfv-375-bsrdev.mot.3-2', japc, backlash_steps=5)
+M_Y = Motor('TST.cfv-375-bsrdev.mot.3-3', japc, backlash_steps=5)
+M_Phi = Motor('TST.cfv-375-bsrdev.mot.3-4', japc, backlash_steps=168)
+M_Theta = Motor('TST.cfv-375-bsrdev.mot.3-5', japc, backlash_steps=125)
 
 motors = [M_X, M_Y, M_Phi, M_Theta]
 
@@ -113,7 +111,7 @@ cameras = [cam1, cam2]
 
 # Targets for each camera
 target1 = [484, 304]  # cam1 target (x, y)
-target2 = [500, 320]  # cam2 target (x, y) though I don't know the target?
+target2 = [550, 210]  # cam2 target (x, y)
 
 targets = [target1, target2]
 
