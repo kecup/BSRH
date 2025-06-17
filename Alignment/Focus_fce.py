@@ -59,7 +59,7 @@ def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int)
     # move motor to starting point
     start_pos = positions[0] # minimum of given range
 
-    # wait_for_motor_to_finish(motor) # so it doesn't move at the beginning
+    # wait_for_motor_to_finish(motor) # so it doesn't move at the beginning - I don't get it, it stopped working
     motor.setAbsPosition(start_pos)
     wait_for_motor_to_finish(motor)
 
@@ -101,7 +101,7 @@ def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int)
     min_idx_y = sigmas_y.index(min(sigmas_y))
     focused_pos = (positions[min_idx_x] + positions[min_idx_y]) // 2
     motor.setAbsPosition(focused_pos) # go to min sigma x
-    # wait_for_motor_to_finish(motor)
+    wait_for_motor_to_finish(motor)
 
     return positions, sigmas_x, sigmas_y
 
