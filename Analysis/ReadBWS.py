@@ -19,7 +19,7 @@ import zstandard as zstd
 japc = pyjapc.PyJapc(selector='', incaAcceleratorName='') #Stupid Java VM must be running to open the java values... We have to retype this...
 
 dctx = zstd.ZstdDecompressor()
-directory = '/user/jpucek/BWS/Data/2025/06/16/'
+directory = '/user/jpucek/BWS/Data/Vertical/2025/06/16/'
 files = os.listdir(directory)
 files = sorted(files)
 
