@@ -26,8 +26,8 @@ def get_positions(plot_range: tuple[int, int], steps: int) -> list:
 
 def wait_for_motor_to_finish(motor: Motor):
     while motor.isBusy():
-        # sleep(0.2)
-        continue
+        sleep(0.2)
+        # continue
 
 def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int):
     """
@@ -161,7 +161,7 @@ def main():
 
     japc.startSubscriptions()
 
-    positions, sigmas_x, sigmas_y = focus(motor, camera, (40000, 55000), 10)
+    positions, sigmas_x, sigmas_y = focus(motor, camera, (43000, 46000), 10)
 
     japc.stopSubscriptions()
     japc.clearSubscriptions()
