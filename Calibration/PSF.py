@@ -48,15 +48,41 @@ timeV = dt.datetime.fromtimestamp(BWS_V.value['gmtTimestampAcquireIn_ns']/1e9)
 print('BWS Acq Time H: ', timeH)
 print('BWS Acq Time V: ', timeV)
 
-nFiles = len(filesBSRH)
-h = open(directoryBSRH+filesBSRH[nFiles-1], 'rb') #Open last known file
-with dctx.stream_reader(h) as reader:
-    BSRH = pickle.load(reader)
+count = 1
+while True:
+    nFiles = len(filesBSRH)
+    h = open(directoryBSRH+filesBSRH[nFiles-count], 'rb') #Open last known file
+    with dctx.stream_reader(h) as reader:
+        BSRH = pickle.load(reader)
 
-#Now get time of first and last BSRH event:
-tFirstEvent = dt.datetime.fromtimestamp(BSRH[0].cam_data['imageTimeStamp']/1e9)
-tLastEvent = dt.datetime.fromtimestamp(BSRH[-1].cam_data['imageTimeStamp']/1e9)
-print('First event in the BSRH file: ', tFirstEvent)
-print('Last event in the BSRH file:', tLastEvent)
+    #Now get time of first and last BSRH event:
+    tFirstEvent = dt.datetime.fromtimestamp(BSRH[0].cam_data['imageTimeStamp']/1e9)
+    tLastEvent = dt.datetime.fromtimestamp(BSRH[-1].cam_data['imageTimeStamp']/1e9)
+    print('First event in the BSRH file: ', tFirstEvent)
+    print('Last event in the BSRH file:', tLastEvent)
 
-#So let's see whether the time of BWS is within our file:
+    #So let's see whether the time of BWS is within our file:
+    if tFirstEvent < timeH < tLastEvent:
+        print('The correct file is loaded!')
+        break
+    elif tFirstEvent > timeH:
+        print('Must load earlier file...')
+        count = count + 1 # As long as we don't go below nFiles...
+        if count > nFiles: #Whoops, the BSRH file does not exist!
+            print('BSRH file count not be found')
+            break
+    elif tLastEvent < timeH:
+        print('The scan took place later than latest file available, waiting for new files')
+        while nFiles == len(os.listdir(directoryBSRH)):
+            time.sleep(2)
+        filesBSRH = os.listdir(directoryBSRH)
+        count = 1
+##Here we are
+if count > nFiles:
+    print('Cannot analyse H!')
+
+else:
+    # h is the correct file! So let's get the H profiles :)
+    profileH = []
+
+    profileH.append(np.sum(h.cam_data['image2D'], axis = 0))

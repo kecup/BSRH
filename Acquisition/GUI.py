@@ -285,7 +285,7 @@ class AcquisitionGUI(QWidget):
     def scan_bunches(self):
         global scanning
         if not scanning:
-          #print(self.get_checked_bunches())
+          self.get_checked_bunches()
           if self.bunchSlots == []:
             print('Bunches are empty!')
             return
