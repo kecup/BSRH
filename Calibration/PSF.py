@@ -43,8 +43,8 @@ filesBSRH = os.listdir(directoryBSRH)
 filesBSRH = sorted(filesBSRH)
 ##### So we have the BWS data, let's find the corresponding BSRH - we want one image for H and one image for V:
 
-timeH = BWS_H.header['acqStamp'] #Or use 'gmtTimestampAcquireIn_ns'
-timeV = BWS_V.header['acqStamp']
+timeH = dt.datetime.fromtimestamp(BWS_H.value['gmtTimestampAcquireIn_ns']/1e9) #Or use 'gmtTimestampAcquireIn_ns'
+timeV = dt.datetime.fromtimestamp(BWS_V.value['gmtTimestampAcquireIn_ns']/1e9)
 print('BWS Acq Time H: ', timeH)
 print('BWS Acq Time V: ', timeV)
 

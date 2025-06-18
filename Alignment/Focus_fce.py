@@ -72,10 +72,12 @@ def focus(motor: Motor, camera: Camera, aligner: Aligner, plot_range: tuple[int,
 
     # fit gaussian for every position
     sigmas_x = []
+    vars_x = []
     sigmas_y = []
+    vars_y = []
     align_pos = []
     for i in range(len(positions)):
-        align_positions = aligner.align(3)
+        align_positions = aligner.align(2)
         align_pos.append(align_positions)
         curr_sigmas_x = []
         curr_sigmas_y = []
@@ -101,8 +103,10 @@ def focus(motor: Motor, camera: Camera, aligner: Aligner, plot_range: tuple[int,
 
         sigma_x = np.mean(curr_sigmas_x)
         sigmas_x.append(sigma_x)
+        vars_x.append(np.std(curr_sigmas_x))
         sigma_y = np.mean(curr_sigmas_y)
         sigmas_y.append(sigma_y)
+        vars_y.append(np.std(curr_sigmas_y))
 
         if i == len(positions) - 1:
             print("position " + str(i+1) + " out of " + str(steps))
@@ -130,10 +134,10 @@ def focus(motor: Motor, camera: Camera, aligner: Aligner, plot_range: tuple[int,
     aligner.motor_y.setAbsPosition(align_pos[min_idx][1])
     wait_for_motor_to_finish(motor)
 
-    return positions, sigmas_x, sigmas_y
+    return positions, sigmas_x, sigmas_y, vars_x, vars_y
 
 
-def graph_focused(positions, sigmas_x, sigmas_y):
+def graph_focused(positions, sigmas_x, sigmas_y, vars_x, vars_y):
     """
     Graph vertical and horizontal sigma values depending on the motor position.
     """
@@ -144,8 +148,8 @@ def graph_focused(positions, sigmas_x, sigmas_y):
     plt.figure(figsize=(8, 5))
 
     # Plot curves
-    plt.plot(positions, sigmas_x, '-o', markersize=3, label='Sigmas X', color='blue', linewidth=2)
-    plt.plot(positions, sigmas_y, '-s', markersize=3, label='Sigmas Y', color='red', linewidth=2)
+    plt.errorbar(positions, sigmas_x, vars_x, fmt = '-o', markersize=3, label='Sigmas X', color='blue', linewidth=2)
+    plt.errorbar(positions, sigmas_y, vars_y, fmt = '-s', markersize=3, label='Sigmas Y', color='red', linewidth=2)
 
     # Find minima
     min_idx_x = sigmas_x.index(min(sigmas_x))
@@ -205,12 +209,12 @@ def main():
     motor_x.setRelPosition(30)
     motor_y.setRelPosition(30)
 
-    positions, sigmas_x, sigmas_y = focus(motor_z, camera, aligner, (40000, 50000), 5, 3)
+    positions, sigmas_x, sigmas_y, vars_x, vars_y = focus(motor_z, camera, aligner, (35000, 55000), 21, 10)
 
     japc.stopSubscriptions()
     japc.clearSubscriptions()
 
-    graph_focused(positions, sigmas_x, sigmas_y)
+    graph_focused(positions, sigmas_x, sigmas_y, vars_x, vars_y)
 
 if __name__ == "__main__":
     main()

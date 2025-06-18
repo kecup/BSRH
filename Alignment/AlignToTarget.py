@@ -119,13 +119,16 @@ class Aligner:
             #     break
 
             camX, camY = self.camera.getBeamPosition()
-            if np.abs(camX - self.target[0]) > 5 and np.abs(camY - self.target[1]) > 5:
+            if np.abs(camX - self.target[0]) > 14 and np.abs(camY - self.target[1]) > 14:
                 self.steerer.step(self.motor_x, self.motor_y, self.camera, self.target)
                 print('Moving, distance to target = ', np.sqrt((camX - self.target[0]) ** 2 + (camY - self.target[1]) ** 2))
                 sleep(2)
-            sleep(1)
-        align_pos_x, align_pos_y = self.camera.getBeamPosition()
-        return (align_pos_x, align_pos_y)
+            else:
+                break
+
+        align_pos_x = self.motor_x.getPosition()
+        align_pos_y = self.motor_y.getPosition()
+        return align_pos_x, align_pos_y
 
 
 
