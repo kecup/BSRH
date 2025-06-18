@@ -52,7 +52,7 @@ def focus(motor: Motor, camera: Camera, aligner: Aligner, plot_range: tuple[int,
         return [], [], []
 
     # align to center
-    aligner.align(1)
+    aligner.align(3)
     
     # # get ref (current position of motor)
     # ref = motor.getPosition()
@@ -73,7 +73,7 @@ def focus(motor: Motor, camera: Camera, aligner: Aligner, plot_range: tuple[int,
     sigmas_x = []
     sigmas_y = []
     for i in range(len(positions)):
-        aligner.align(1)
+        aligner.align(3)
         image = camera.captureImage()
         
         projection_x = np.sum(image, axis=0)
@@ -175,13 +175,13 @@ def main():
     motor_x = Motor('LHC.BSRH.M3-PHI.B2', japc, 35)  # LHC
     motor_y = Motor('LHC.BSRH.M3-THETA.B2', japc, 30)  # LHC
 
-    target = [484, 304] # ISR or LHC?
+    target = [484, 304] # Camera center
     print(target)
     model = FeedbackNN(4, 2)
     model.load_state_dict(torch.load('CM_feedbackModel.pth'))
     model.eval()
 
-    steerer = BeamSteerer(model, lr=0.1, iters=5)
+    steerer = BeamSteerer(model, lr=0.1, iters=30)
 
     aligner = Aligner(motor_x, motor_y, camera, target, model, steerer)
 
@@ -190,7 +190,7 @@ def main():
     motor_x.setRelPosition(30)
     motor_y.setRelPosition(30)
 
-    positions, sigmas_x, sigmas_y = focus(motor_z, camera, aligner, (40000, 50000), 20)
+    positions, sigmas_x, sigmas_y = focus(motor_z, camera, aligner, (40000, 60000), 10)
 
     japc.stopSubscriptions()
     japc.clearSubscriptions()

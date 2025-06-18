@@ -68,10 +68,9 @@ run_number = 0
 
 
 class AllData:
-    def __init__(self, timestamp, cam_data, bws_data, device_data):
+    def __init__(self, timestamp, cam_data, device_data):
         self.timestamp = timestamp
         self.cam_data = cam_data
-        self.bws_data = bws_data
         self.device_data = device_data
 
 # Background saver thread: takes events from queue and writes them in chunks
@@ -286,7 +285,7 @@ class AcquisitionGUI(QWidget):
     def scan_bunches(self):
         global scanning
         if not scanning:
-          print(self.get_checked_bunches())
+          #print(self.get_checked_bunches())
           if self.bunchSlots == []:
             print('Bunches are empty!')
             return

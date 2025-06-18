@@ -28,7 +28,7 @@ def saveData(name, value, header):
         write_chunk(data)
     else:
         write_chunk(data, False)
-    print('Saved ', name, ' data to NFS at ', dt.datetime.now())
+    print('Saved ', name, 'to NFS at ', dt.datetime.now())
 
 def write_chunk(events, vertical = True):
     global run_number
@@ -46,7 +46,7 @@ def write_chunk(events, vertical = True):
             pickle.dump(events, compressor)
 
 def get_last_run_number():
-    today_dir = os.path.join(DATA_PATH_ROOT, time.strftime('%Y/%m/%d/', time.localtime()))
+    today_dir = os.path.join(DATA_PATH_ROOT+'/Vertical', time.strftime('%Y/%m/%d/', time.localtime()))
     if not os.path.isdir(today_dir): return 0
     files = os.listdir(today_dir)
     runs = []
@@ -62,8 +62,8 @@ def main():
     client = pyrbac.AuthenticationClient()
     token = client.login_kerberos()
     japc.rbacLogin(token=token)
-    #global run_number
-    #run_number = get_last_run_number()+1
+    global run_number
+    run_number = get_last_run_number()+1
     print('Current run number = ', run_number)
     japc.subscribeParam(BWS_V+"/Acquisition", saveData, getHeader=True)
     japc.subscribeParam(BWS_H+"/Acquisition", saveData, getHeader=True)
