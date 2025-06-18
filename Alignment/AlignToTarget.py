@@ -9,6 +9,11 @@ import numpy as np
 from time import sleep
 import sys
 import os
+
+# from skimage.data import camera
+
+# from Alignment.align_two_cameras import motors
+
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, parent_dir)
 
@@ -97,48 +102,72 @@ class BeamSteerer:
         motion = u_opt.tolist()
         motorX.setRelPosition(motion[0])
         motorY.setRelPosition(motion[1])
-      
-##We should have most components ready, let's get data for training:
-##BackLash
-#M3X = Motor('TST.cfv-375-bsrdev.mot.3-4', japc, 168) #ISR
-#M3Y = Motor('TST.cfv-375-bsrdev.mot.3-5', japc, 125) #ISR
 
-M3X = Motor('LHC.BSRH.M3-PHI.B2', japc, 35)  #LHC
-M3Y = Motor('LHC.BSRH.M3-THETA.B2', japc, 30) #LHC
+class Aligner:
+    def __init__(self, motor_x: Motor, motor_y: Motor, camera: Camera, target: list, model: FeedbackNN, steerer: BeamSteerer):
+        self.motor_x = motor_x
+        self.motor_y = motor_y
+        self.camera = camera
+        self.target = target
+        self.model = model
+        self.steerer = steerer
 
-#cam1 = Camera('TST.BSRH.CAM.CM', japc) #ISR
-cam1 = Camera('LHC.BSRH.CAM.CM.B2', japc) #LHC
+    def align(self, iter: int):
+        for i in range(iter):
+            # if select.select([sys.stdin], [], [], 0.0)[0]:
+            #     print("Key pressed! Exiting loop.")
+            #     break
 
-target = [484, 304]
-
-##Now load our NN:
-
-model = FeedbackNN(4,2)
-model.load_state_dict(torch.load('CM_feedbackModel.pth'))
-model.eval()
-
-steerer = BeamSteerer(model, lr = 0.1, iters = 20)
-
-japc.startSubscriptions()
-
-M3X.setRelPosition(30)
-M3Y.setRelPosition(30)
+            camX, camY = self.camera.getBeamPosition()
+            if np.abs(camX - self.target[0]) > 5 and np.abs(camY - self.target[1]) > 5:
+                self.steerer.step(self.motor_x, self.motor_y, self.camera, self.target)
+                print('Moving, distance to target = ', np.sqrt((camX - self.target[0]) ** 2 + (camY - self.target[1]) ** 2))
+                sleep(2)
+            sleep(1)
 
 
-done = False
-while True:
 
-  if select.select([sys.stdin], [], [], 0.0)[0]:
-        print("Key pressed! Exiting loop.")
-        break
-  
-  camX, camY = cam1.getBeamPosition()
-  if np.abs(camX-target[0]) > 5 and np.abs(camY-target[1]) > 5:
-    steerer.step(M3X, M3Y, cam1, target)
-    print('Moving, distance to target = ', np.sqrt((camX-target[0])**2+(camY-target[1])**2))
-    sleep(2)
-  sleep(1)
-  
-japc.stopSubscriptions()
-print('')
-#At some point we have to call japc.startSubscriptions()!!
+# ##We should have most components ready, let's get data for training:
+# ##BackLash
+# M3X = Motor('TST.cfv-375-bsrdev.mot.3-4', japc, 168) #ISR
+# M3Y = Motor('TST.cfv-375-bsrdev.mot.3-5', japc, 125) #ISR
+#
+# # M3X = Motor('LHC.BSRH.M3-PHI.B2', japc, 35)  #LHC
+# # M3Y = Motor('LHC.BSRH.M3-THETA.B2', japc, 30) #LHC
+#
+# cam1 = Camera('TST.BSRH.CAM.CM', japc) #ISR
+# # cam1 = Camera('LHC.BSRH.CAM.CM.B2', japc) #LHC
+#
+# target = [484, 304]
+#
+# ##Now load our NN:
+#
+# model = FeedbackNN(4,2)
+# model.load_state_dict(torch.load('CM_feedbackModel.pth'))
+# model.eval()
+#
+# steerer = BeamSteerer(model, lr = 0.1, iters = 20)
+#
+# japc.startSubscriptions()
+#
+# M3X.setRelPosition(30)
+# M3Y.setRelPosition(30)
+#
+#
+# done = False
+# while True:
+#
+#   if select.select([sys.stdin], [], [], 0.0)[0]:
+#         print("Key pressed! Exiting loop.")
+#         break
+#
+#   camX, camY = cam1.getBeamPosition()
+#   if np.abs(camX-target[0]) > 5 and np.abs(camY-target[1]) > 5:
+#     steerer.step(M3X, M3Y, cam1, target)
+#     print('Moving, distance to target = ', np.sqrt((camX-target[0])**2+(camY-target[1])**2))
+#     sleep(2)
+#   sleep(1)
+#
+# japc.stopSubscriptions()
+# print('')
+# #At some point we have to call japc.startSubscriptions()!!

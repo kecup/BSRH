@@ -5,6 +5,8 @@ parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, parent_dir)
 
 from devices_lib import Camera, Motor, gaussian
+from AlignToTarget import Aligner, FeedbackNN, BeamSteerer
+import torch
 import numpy as np
 from scipy.optimize import curve_fit
 from time import sleep
@@ -29,12 +31,13 @@ def wait_for_motor_to_finish(motor: Motor):
         sleep(0.2)
         # continue
 
-def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int):
+def focus(motor: Motor, camera: Camera, aligner: Aligner, plot_range: tuple[int, int], steps: int):
     """
     Focuses a beam.
 
     :param motor: Motor of the camera to be moved to focus the beam.
     :param camera: Camera to focus the beam on.
+    :param aligner: Align beam to the center before focusing.
     :param plot_range: Range of positions to move the motor in.
     :param steps: Number of steps.
 
@@ -46,7 +49,10 @@ def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int)
     print("init amplitude: " + str(res_x[0]) + " " + str(res_y[0]))
     if res_x[0] < amplitude_threshold or res_y[0] < amplitude_threshold:
         print("There is currently no beam!")
-        return
+        return [], [], []
+
+    # align to center
+    aligner.align(1)
     
     # # get ref (current position of motor)
     # ref = motor.getPosition()
@@ -67,6 +73,7 @@ def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int)
     sigmas_x = []
     sigmas_y = []
     for i in range(len(positions)):
+        aligner.align(1)
         image = camera.captureImage()
         
         projection_x = np.sum(image, axis=0)
@@ -91,10 +98,13 @@ def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int)
         motor.setAbsPosition(positions[i+1])
         wait_for_motor_to_finish(motor)
 
-        # sleep(1)
+        sleep(0.2)
         print("position " + str(i+1) + " out of " + str(steps))
 
     positions = list(positions)
+    if len(sigmas_x) == 0:
+        print("There is currently no beam!")
+        return [], [], []
     if len(positions) != len(sigmas_x): # if there was premature cut-off
         positions = positions[:len(sigmas_x)]
 
@@ -155,14 +165,32 @@ def main():
     token = client.login_kerberos()
     japc.rbacLogin(token=token)
     
-    #motor = Motor("TST.cfv-375-bsrdev.mot.3-1", japc) # ISR motor
-    #camera = Camera("TST.BSRH.CAM.CM", japc) # ISR camera
-    motor = Motor("LHC.BSRH.M3-Z-TSZ100.B2", japc)  # LHC motor
+    # motor_z = Motor("TST.cfv-375-bsrdev.mot.3-1", japc) # ISR motor
+    # camera = Camera("TST.BSRH.CAM.CM", japc) # ISR camera
+    motor_z = Motor("LHC.BSRH.M3-Z-TSZ100.B2", japc)  # LHC motor
     camera = Camera("LHC.BSRH.CAM.CM.B2", japc)  # LHC camera
+
+    # motor_x = Motor('TST.cfv-375-bsrdev.mot.3-4', japc, 168) # ISR
+    # motor_y = Motor('TST.cfv-375-bsrdev.mot.3-5', japc, 125) # ISR
+    motor_x = Motor('LHC.BSRH.M3-PHI.B2', japc, 35)  # LHC
+    motor_y = Motor('LHC.BSRH.M3-THETA.B2', japc, 30)  # LHC
+
+    target = [484, 304] # ISR or LHC?
+    print(target)
+    model = FeedbackNN(4, 2)
+    model.load_state_dict(torch.load('CM_feedbackModel.pth'))
+    model.eval()
+
+    steerer = BeamSteerer(model, lr=0.1, iters=5)
+
+    aligner = Aligner(motor_x, motor_y, camera, target, model, steerer)
 
     japc.startSubscriptions()
 
-    positions, sigmas_x, sigmas_y = focus(motor, camera, (40000, 50000), 20)
+    motor_x.setRelPosition(30)
+    motor_y.setRelPosition(30)
+
+    positions, sigmas_x, sigmas_y = focus(motor_z, camera, aligner, (40000, 50000), 20)
 
     japc.stopSubscriptions()
     japc.clearSubscriptions()
