@@ -124,6 +124,8 @@ class Aligner:
                 print('Moving, distance to target = ', np.sqrt((camX - self.target[0]) ** 2 + (camY - self.target[1]) ** 2))
                 sleep(2)
             sleep(1)
+        align_pos_x, align_pos_y = self.camera.getBeamPosition()
+        return (align_pos_x, align_pos_y)
 
 
 
