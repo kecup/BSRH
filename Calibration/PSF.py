@@ -40,5 +40,7 @@ print('BWS_V loaded')
 
 timeH = BWS_H.header['acqStamp']
 timeV = BWS_V.header['acqStamp']
+print('BWS Acq Time H: ', timeH)
+print('BWS Acq Time V: ', timeV)
 
 nFiles = len(filesBSRH)

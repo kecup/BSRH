@@ -100,14 +100,14 @@ class BeamSteerer:
       
 ##We should have most components ready, let's get data for training:
 ##BackLash
-M3X = Motor('TST.cfv-375-bsrdev.mot.3-4', japc, 168) #ISR
-M3Y = Motor('TST.cfv-375-bsrdev.mot.3-5', japc, 125) #ISR
+#M3X = Motor('TST.cfv-375-bsrdev.mot.3-4', japc, 168) #ISR
+#M3Y = Motor('TST.cfv-375-bsrdev.mot.3-5', japc, 125) #ISR
 
-# M3X = Motor('LHC.BSRH.M3-PHI.B2', japc, 35)  #LHC
-# M3Y = Motor('LHC.BSRH.M3-THETA.B2', japc, 30) #LHC
+M3X = Motor('LHC.BSRH.M3-PHI.B2', japc, 35)  #LHC
+M3Y = Motor('LHC.BSRH.M3-THETA.B2', japc, 30) #LHC
 
-cam1 = Camera('TST.BSRH.CAM.CM', japc) #ISR
-# cam1 = Camera('LHC.BSRH.CAM.CM.B2', japc) #LHC
+#cam1 = Camera('TST.BSRH.CAM.CM', japc) #ISR
+cam1 = Camera('LHC.BSRH.CAM.CM.B2', japc) #LHC
 
 target = [484, 304]
 

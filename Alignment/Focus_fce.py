@@ -73,6 +73,7 @@ def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int)
         g_bounds_x = ([0, 0, 1, 10],[np.inf, len(projection_x), np.inf, np.inf])
         res_x, _ = curve_fit(gaussian, range(len(projection_x)), projection_x, (6e4, np.argmax(projection_x), 10.0, 300.0), bounds = g_bounds_x)
         sigma_x = res_x[2]
+        
         if res_x[0] < amplitude_threshold:
             break
         sigmas_x.append(sigma_x)
@@ -82,7 +83,7 @@ def focus(motor: Motor, camera: Camera, plot_range: tuple[int, int], steps: int)
         res_y, _ = curve_fit(gaussian, range(len(projection_y)), projection_y, (6e4, np.argmax(projection_y), 10.0, 300.0), bounds = g_bounds_y)
         sigma_y = res_y[2]
         sigmas_y.append(sigma_y)
-        
+        print(res_x[0], res_y[0])
         if i == len(positions) - 1:
             print("position " + str(i+1) + " out of " + str(steps))
             break
@@ -154,14 +155,14 @@ def main():
     token = client.login_kerberos()
     japc.rbacLogin(token=token)
     
-    motor = Motor("TST.cfv-375-bsrdev.mot.3-1", japc) # ISR motor
-    camera = Camera("TST.BSRH.CAM.CM", japc) # ISR camera
-    # motor = Motor("LHC.BSRH.M.., japc)  # LHC motor
-    # camera = Camera("LHC.BSRH...", japc)  # LHC camera
+    #motor = Motor("TST.cfv-375-bsrdev.mot.3-1", japc) # ISR motor
+    #camera = Camera("TST.BSRH.CAM.CM", japc) # ISR camera
+    motor = Motor("LHC.BSRH.M3-Z-TSZ100.B2", japc)  # LHC motor
+    camera = Camera("LHC.BSRH.CAM.CM.B2", japc)  # LHC camera
 
     japc.startSubscriptions()
 
-    positions, sigmas_x, sigmas_y = focus(motor, camera, (43000, 46000), 10)
+    positions, sigmas_x, sigmas_y = focus(motor, camera, (40000, 50000), 20)
 
     japc.stopSubscriptions()
     japc.clearSubscriptions()
