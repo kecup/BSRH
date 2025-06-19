@@ -28,22 +28,22 @@ haloV = [[]]
 haloH = [[]]
 
 #Touch this...
-maskX = 484 ##Change here the mask position
-maskY = 304
-maskR = 5
+maskX = 452 ##Change here the mask position
+maskY = 280
+maskR = 35
 sigma = 3.5 #From where you want to calculate the charge
 
 ##Maybe don't touch this unless you know what you are doing...
 SIGMA_TO_MM_X = 263.0  # previously hardcoded as 263.0
 SIGMA_TO_MM_Y = 361.0
 INTENSIFIER_GAIN = 5623
-cPc = 55 #This is the charge per count constant, should not need to be changed...
+cPc = 30 #This is the charge per count constant, should not need to be changed...
 pixelSizeH = 21.0
 pixelSizeV = 19.5
-x1 = 350
-x2 = 650
-y1 = 200
-y2 = 400
+x1 = 284
+x2 = 684
+y1 = 154
+y2 = 454
 
 plt.figure(1)
 plt.figure(2)
