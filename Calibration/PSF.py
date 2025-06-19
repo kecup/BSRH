@@ -30,8 +30,10 @@ def gaussian(x, amp, cen, wid):  # , const):
 
 def moving_average(a, n=3):
     ret = np.cumsum(a, dtype=float)
-    ret[n:] = ret[n:] - ret[:-n]
-    return ret[n - 1:] / n
+    ret[n:] -= ret[:-n]
+    result = ret[n - 1:] / n
+    pad = [result[0]] * (n - 1)
+    return np.array(pad + list(result))
 
 
 def CoolFuncH(params, bwsArray, bsrhArray, n=12):  # Params[0] = PSF, Params[1] = pixel size, Params[2] = (scale of bsrh) tail of the PSF, arrays come already as 1000 points from -4 to 4
@@ -92,7 +94,8 @@ if filesH == None:
 else:
     filesH = sorted(filesH)
     # Let's start with horizontal BWS:
-    f = open(directoryH + filesH[-1], 'rb')  # Open last file with the latest BWS profile...
+    #Change to file 23
+    f = open(directoryH + filesH[23], 'rb')  # Open last file with the latest BWS profile...
     with dctx.stream_reader(f) as reader:
         BWS_H = pickle.load(reader)
     print('BWS_H loaded')
@@ -103,7 +106,7 @@ if filesV == None:
     print('There are no vertical BWS today...')
 else:
     filesV = sorted(filesV)
-    g = open(directoryV + filesV[-1], 'rb')
+    g = open(directoryV + filesV[25], 'rb')
     with dctx.stream_reader(g) as reader:
         BWS_V = pickle.load(reader)
     print('BWS_V loaded')
@@ -127,8 +130,8 @@ while True:
         BSRH = pickle.load(reader)
 
     #Now get time of first and last BSRH event:
-    tFirstEvent = dt.datetime.fromtimestamp(BSRH[0].cam_data['imageTimeStamp']/1e9)+dt.timedelta(hours=2)
-    tLastEvent = dt.datetime.fromtimestamp(BSRH[-1].cam_data['imageTimeStamp']/1e9)+dt.timedelta(hours=2)
+    tFirstEvent = dt.datetime.fromtimestamp(BSRH[0].cam_data['imageTimeStamp']/1e9)#+dt.timedelta(hours=2)
+    tLastEvent = dt.datetime.fromtimestamp(BSRH[-1].cam_data['imageTimeStamp']/1e9)#+dt.timedelta(hours=2)
 
     print('First event in the BSRH file: ', tFirstEvent)
     print('Last event in the BSRH file:', tLastEvent)
@@ -161,6 +164,7 @@ else:
         count = 1
         while bunchN[0] != BSRH[count].device_data['GATE-INT']['delaySlots']:
             bunchN.append(BSRH[count].device_data['GATE-INT']['delaySlots'])
+            count += 1
     bunchN = sorted(bunchN)
     start = 0
     for k in range(len(bunchN)):
@@ -171,7 +175,9 @@ else:
             print('Did not find bunch: ', bunchN[k])
             profilesBSRH_H.append([])
         else:
-            profilesBSRH_H.append(np.sum(BSRH[start].cam_data['image2D'], axis = 0))
+            prof = np.sum(BSRH[start].cam_data['image2D'], axis = 0)
+            prof = prof - np.mean(prof[:50])
+            profilesBSRH_H.append(prof)
 
     #Now we want to get the BWS H profiles that correspond to the BSRH ones:
     PointNumber = BWS_H.value['nbPtsPerProjInSet2']
@@ -229,17 +235,18 @@ else:
         print('PSF = ', out[0])
         print('Pixel size = ', out[1])
 
-        fig, ax = plt.subplots(len(profilesBSRH_H), figsize=(5, 10))
+    fig, ax = plt.subplots(len(profilesBSRH_H), figsize=(5, 10))
 
-        tmpPSF = gaussian(newX, 1 / (out[0] * np.sqrt(2 * np.pi)), 0, out[0])
-        tmpPSF = tmpPSF / np.sum(tmpPSF)
+    tmpPSF = gaussian(newX, 1 / (out[0] * np.sqrt(2 * np.pi)), 0, out[0])
+    tmpPSF = tmpPSF / np.sum(tmpPSF)
 
-        for bunch in range(len(profilesBSRH_H)):
-            bsrh = np.interp(newX, out[1] / 1000 * Hbsrh[bunch][0], Hbsrh[bunch][1])
+    for bunch in range(len(profilesBSRH_H)):
+        bsrh = np.interp(newX, out[1] / 1000 * Hbsrh[bunch][0], Hbsrh[bunch][1])
         bws = np.convolve(Hbws[bunch], tmpPSF, 'same')
         ax[bunch].plot(np.sum(bws) / np.sum(bsrh) * bsrh)
         ax[bunch].plot(bws)
 
+    # plt.show()
 
 #Now vertical
 count = 1
@@ -283,6 +290,7 @@ else:
         count = 1
         while bunchN[0] != BSRH[count].device_data['GATE-INT']['delaySlots']:
             bunchN.append(BSRH[count].device_data['GATE-INT']['delaySlots'])
+            count += 1
     bunchN = sorted(bunchN)
     start = 0
     for k in range(len(bunchN)):
@@ -293,7 +301,9 @@ else:
             print('Did not find bunch: ', bunchN[k])
             profilesBSRH_V.append([])
         else:
-            profilesBSRH_V.append(np.sum(BSRH[start].cam_data['image2D'], axis=1))
+            prof = np.sum(BSRH[start].cam_data['image2D'], axis=1)
+            prof = prof - np.mean(prof[:50])
+            profilesBSRH_V.append(prof)
 
     # Now we want to get the BWS H profiles that correspond to the BSRH ones:
     PointNumber = BWS_V.value['nbPtsPerProjInSet2']
@@ -328,7 +338,7 @@ else:
 
         Vbws = []
         Vbsrh = []
-        for bunchIndex in range(len(profilesBWS_H)):
+        for bunchIndex in range(len(profilesBWS_V)):
             x = BWS_V_x
             y = profilesBWS_V[bunchIndex]
             out, _ = curve_fit(gaussian, x, y, (1000, 0.5, 0.35))
@@ -351,13 +361,15 @@ else:
         print('PSF = ', out[0])
         print('Pixel size = ', out[1])
 
-        fig, ax = plt.subplots(len(profilesBSRH_V), figsize=(5, 10))
+    fig, ax = plt.subplots(len(profilesBSRH_V), figsize=(5, 10))
 
-        tmpPSF = gaussian(newX, 1 / (out[0] * np.sqrt(2 * np.pi)), 0, out[0])
-        tmpPSF = tmpPSF / np.sum(tmpPSF)
+    tmpPSF = gaussian(newX, 1 / (out[0] * np.sqrt(2 * np.pi)), 0, out[0])
+    tmpPSF = tmpPSF / np.sum(tmpPSF)
 
-        for bunch in range(len(profilesBSRH_H)):
-            bsrh = np.interp(newX, out[1] / 1000 * Vbsrh[bunch][0], Vbsrh[bunch][1])
+    for bunch in range(len(profilesBSRH_H)):
+        bsrh = np.interp(newX, out[1] / 1000 * Vbsrh[bunch][0], Vbsrh[bunch][1])
         bws = np.convolve(Vbws[bunch], tmpPSF, 'same')
         ax[bunch].plot(np.sum(bws) / np.sum(bsrh) * bsrh)
         ax[bunch].plot(bws)
+
+    plt.show()
