@@ -213,7 +213,7 @@ def main():
     motor_x.setRelPosition(30)
     motor_y.setRelPosition(30)
 
-    positions, sigmas_x, sigmas_y, vars_x, vars_y = focus(motor_z, camera, aligner, (40000, 50000), 5, 10)
+    positions, sigmas_x, sigmas_y, vars_x, vars_y = focus(motor_z, camera, aligner, (30000, 50000), 21, 10)
 
     japc.stopSubscriptions()
     japc.clearSubscriptions()

@@ -19,12 +19,19 @@ import zstandard as zstd
 japc = pyjapc.PyJapc(selector='', incaAcceleratorName='') #Stupid Java VM must be running to open the java values... We have to retype this...
 
 dctx = zstd.ZstdDecompressor()
-directory = '/user/jpucek/BWS/Data/Vertical/2025/06/16/'
+directory = '/user/jpucek/BWS/Data/Vertical/2025/06/19/'
 files = os.listdir(directory)
 files = sorted(files)
 
+sigma = 4.7
+verSize = 386
+#horSize = 257
+bunchStart = 160
+bunchStop = 800
 
-for nFile in range(0, 1):#len(files)):
+
+for nFile in range(0, len(files)):
     f = open(directory + files[nFile], 'rb')
     with dctx.stream_reader(f) as reader:
         a = pickle.load(reader)
+

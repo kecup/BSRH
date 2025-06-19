@@ -34,9 +34,26 @@ def moving_average(a, n=3):
     return ret[n - 1:] / n
 
 
-def CoolFunc(params, bwsArray, bsrhArray, n=12):  # Params[0] = PSF, Params[1] = pixel size, Params[2] = (scale of bsrh) tail of the PSF, arrays come already as 1000 points from -4 to 4
+def CoolFuncH(params, bwsArray, bsrhArray, n=12):  # Params[0] = PSF, Params[1] = pixel size, Params[2] = (scale of bsrh) tail of the PSF, arrays come already as 1000 points from -4 to 4
     newX = np.linspace(-4, 4, 1000)
     crop = 570 ###change here if needed
+    tmpPSF = gaussian(newX, 1 / (params[0] * np.sqrt(2 * np.pi)), 0, params[0])
+    tmpPSF = tmpPSF / np.sum(tmpPSF)
+
+    # tmpPSF = specGauss(newX, 1, 0, params[0], params[3])
+    # tmpPSF = tmpPSF/np.sum(tmpPSF)s
+    n = len(bwsArray)
+    totalSquares = 0
+    for bunch in range(n):
+        bsrh = np.interp(newX, params[1] / 1000 * bsrhArray[bunch][0], bsrhArray[bunch][1])
+        bws = np.convolve(bwsArray[bunch], tmpPSF, 'same')
+        # totalSquares+= chi2(params[2]*bsrh[:crop],bws[:crop])
+        totalSquares += chi2(np.sum(bws[:crop]) / np.sum(bsrh[:crop]) * bsrh[:crop], bws[:crop])
+    return totalSquares
+
+def CoolFuncV(params, bwsArray, bsrhArray, n=12):  # Params[0] = PSF, Params[1] = pixel size, Params[2] = (scale of bsrh) tail of the PSF, arrays come already as 1000 points from -4 to 4
+    newX = np.linspace(-4, 4, 1000)
+    crop = -1 ###change here if needed
     tmpPSF = gaussian(newX, 1 / (params[0] * np.sqrt(2 * np.pi)), 0, params[0])
     tmpPSF = tmpPSF / np.sum(tmpPSF)
 
@@ -110,8 +127,9 @@ while True:
         BSRH = pickle.load(reader)
 
     #Now get time of first and last BSRH event:
-    tFirstEvent = dt.datetime.fromtimestamp(BSRH[0].cam_data['imageTimeStamp']/1e9)
-    tLastEvent = dt.datetime.fromtimestamp(BSRH[-1].cam_data['imageTimeStamp']/1e9)
+    tFirstEvent = dt.datetime.fromtimestamp(BSRH[0].cam_data['imageTimeStamp']/1e9)+dt.timedelta(hours=2)
+    tLastEvent = dt.datetime.fromtimestamp(BSRH[-1].cam_data['imageTimeStamp']/1e9)+dt.timedelta(hours=2)
+
     print('First event in the BSRH file: ', tFirstEvent)
     print('Last event in the BSRH file:', tLastEvent)
 
@@ -204,7 +222,7 @@ else:
             Hbsrh.append([x, y])
 
         initGuess = [0.4, 42.5, 0.07, 1.4]
-        resultH = minimize(CoolFunc, initGuess, args=(Hbws, Hbsrh), bounds=((0.1, 0.8), (10, 80), (0.005, 2), (0.1, 4)))  # , method = 'L-BFGS-B')
+        resultH = minimize(CoolFuncH, initGuess, args=(Hbws, Hbsrh), bounds=((0.1, 0.8), (10, 80), (0.005, 2), (0.1, 4)))  # , method = 'L-BFGS-B')
         print(resultH)
 
         out = resultH.x
@@ -326,7 +344,7 @@ else:
             Vbsrh.append([x, y])
 
         initGuess = [0.4, 42.5, 0.07, 1.4]
-        resultV = minimize(CoolFunc, initGuess, args=(Vbws, Vbsrh),bounds=((0.1, 0.8), (10, 80), (0.005, 2), (0.1, 4)))  # , method = 'L-BFGS-B')
+        resultV = minimize(CoolFuncV, initGuess, args=(Vbws, Vbsrh),bounds=((0.1, 0.8), (10, 80), (0.005, 2), (0.1, 4)))  # , method = 'L-BFGS-B')
         print(resultV)
 
         out = resultV.x
