@@ -86,6 +86,8 @@ profilesBWS_H = []
 profilesBSRH_V = []
 profilesBWS_V = []
 
+results = {}
+
 #Open last file of each BWS:
 directoryH = os.path.join(DATA_PATH_BWS+'/Horizontal', time.strftime('%Y/%m/%d/', time.localtime()))
 filesH = os.listdir(directoryH)
@@ -95,7 +97,7 @@ else:
     filesH = sorted(filesH)
     # Let's start with horizontal BWS:
     #Change to file 23
-    f = open(directoryH + filesH[23], 'rb')  # Open last file with the latest BWS profile...
+    f = open(directoryH + filesH[-1], 'rb')  # Open last file with the latest BWS profile...
     with dctx.stream_reader(f) as reader:
         BWS_H = pickle.load(reader)
     print('BWS_H loaded')
@@ -106,7 +108,7 @@ if filesV == None:
     print('There are no vertical BWS today...')
 else:
     filesV = sorted(filesV)
-    g = open(directoryV + filesV[25], 'rb')
+    g = open(directoryV + filesV[-1], 'rb')
     with dctx.stream_reader(g) as reader:
         BWS_V = pickle.load(reader)
     print('BWS_V loaded')
@@ -227,15 +229,17 @@ else:
             x = x - out[1]
             Hbsrh.append([x, y])
 
-        initGuess = [0.4, 42.5, 0.07, 1.4]
-        resultH = minimize(CoolFuncH, initGuess, args=(Hbws, Hbsrh), bounds=((0.1, 0.8), (10, 80), (0.005, 2), (0.1, 4)))  # , method = 'L-BFGS-B')
-        print(resultH)
+    initGuess = [0.4, 42.5, 0.07, 1.4]
+    resultH = minimize(CoolFuncH, initGuess, args=(Hbws, Hbsrh), bounds=((0.1, 0.8), (10, 80), (0.005, 2), (0.1, 4)))  # , method = 'L-BFGS-B')
+    # print(resultH)
 
-        out = resultH.x
-        print('PSF = ', out[0])
-        print('Pixel size = ', out[1])
+    out = resultH.x
+    results["horizontal"] = (out[0], out[1])
+    print('PSF = ', out[0])
+    print('Pixel size = ', out[1])
 
     fig, ax = plt.subplots(len(profilesBSRH_H), figsize=(5, 10))
+    fig.suptitle("Horizontal Comparison of BSRH and BWS Profiles")
 
     tmpPSF = gaussian(newX, 1 / (out[0] * np.sqrt(2 * np.pi)), 0, out[0])
     tmpPSF = tmpPSF / np.sum(tmpPSF)
@@ -243,8 +247,10 @@ else:
     for bunch in range(len(profilesBSRH_H)):
         bsrh = np.interp(newX, out[1] / 1000 * Hbsrh[bunch][0], Hbsrh[bunch][1])
         bws = np.convolve(Hbws[bunch], tmpPSF, 'same')
-        ax[bunch].plot(np.sum(bws) / np.sum(bsrh) * bsrh)
-        ax[bunch].plot(bws)
+        scale = (np.sum(bws) / np.sum(bsrh)) * bsrh
+        ax[bunch].plot(scale, label="BSRH")
+        ax[bunch].plot(bws, label="BWS")
+        ax[bunch].set_title("Bunch: " + str(bunch))
 
     # plt.show()
 
@@ -332,8 +338,8 @@ else:
             profilesBWS_V.append(moving_average(np.asarray(y), 3))
 
         # CHECK we have the same number of bunches in BWS and BSRH#
-        # We have the BSRH profiles and we have BWS profiles in horizontal...
-        if len(profilesBWS_H) == len(profilesBSRH_H):
+        # We have the BSRH profiles and we have BWS profiles in vertical...
+        if len(profilesBWS_V) == len(profilesBSRH_V):
             print('The number of bunch slots in BWS and BSRH is the same...')
 
         Vbws = []
@@ -346,30 +352,36 @@ else:
             newY = np.interp(newX, x, y)
             Vbws.append(newY)
 
-        for bunchIndex in range(len(profilesBSRH_H)):
+        for bunchIndex in range(len(profilesBSRH_V)):
             y = np.asarray(profilesBSRH_V[bunchIndex])
             x = np.arange(len(y))
             out, _ = curve_fit(gaussian, x, y, (60000, 480, 25.0))
             x = x - out[1]
             Vbsrh.append([x, y])
 
-        initGuess = [0.4, 42.5, 0.07, 1.4]
-        resultV = minimize(CoolFuncV, initGuess, args=(Vbws, Vbsrh),bounds=((0.1, 0.8), (10, 80), (0.005, 2), (0.1, 4)))  # , method = 'L-BFGS-B')
-        print(resultV)
+    initGuess = [0.4, 42.5, 0.07, 1.4]
+    resultV = minimize(CoolFuncV, initGuess, args=(Vbws, Vbsrh),bounds=((0.1, 0.8), (10, 80), (0.005, 2), (0.1, 4)))  # , method = 'L-BFGS-B')
+    # print(resultV)
 
-        out = resultV.x
-        print('PSF = ', out[0])
-        print('Pixel size = ', out[1])
+    out = resultV.x
+    results["vertical"] = (out[0], out[1])
+    print('PSF = ', out[0])
+    print('Pixel size = ', out[1])
 
     fig, ax = plt.subplots(len(profilesBSRH_V), figsize=(5, 10))
+    fig.suptitle("Vertical Comparison of BSRH and BWS Profiles")
 
     tmpPSF = gaussian(newX, 1 / (out[0] * np.sqrt(2 * np.pi)), 0, out[0])
     tmpPSF = tmpPSF / np.sum(tmpPSF)
 
-    for bunch in range(len(profilesBSRH_H)):
+    for bunch in range(len(profilesBSRH_V)):
         bsrh = np.interp(newX, out[1] / 1000 * Vbsrh[bunch][0], Vbsrh[bunch][1])
         bws = np.convolve(Vbws[bunch], tmpPSF, 'same')
-        ax[bunch].plot(np.sum(bws) / np.sum(bsrh) * bsrh)
-        ax[bunch].plot(bws)
+        scale = (np.sum(bws) / np.sum(bsrh)) * bsrh
+        ax[bunch].plot(scale, label="BSRH")
+        ax[bunch].plot(bws, label="BWS")
+        ax[bunch].set_title("Bunch: " + str(bunch))
 
+    print("Results: (PSF, Pixel Size)")
+    print(results)
     plt.show()
