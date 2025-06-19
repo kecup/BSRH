@@ -12,6 +12,7 @@ import lmfit
 import dill as pickle
 import pyjapc
 import zstandard as zstd
+import datetime as dt
 
 ### This script opens the data acquired by the BSRH (+ additional devices), sample to be change accordingly
 #### Run in interactive mode...
@@ -29,17 +30,8 @@ bunchN = []
 getBunchN = []
 imageSum = []
 
-for nFile in range(len(files)-1, len(files)):
+for nFile in range(84, 91):
     f = open(directory + files[nFile], 'rb')
     with dctx.stream_reader(f) as reader:
         a = pickle.load(reader)
-
-    for i in range(len(a)):
-        bunchN.append(a[i].device_data['GATE-INT']['delaySlots'])
-        imageSum.append(np.sum(a[i].cam_data['image2D']))
-
-#plt.ion()
-plt.plot(imageSum)
-plt.figure(2)
-plt.plot(bunchN)
-plt.show()
+    print(dt.datetime.fromtimestamp(a[0].cam_data['imageTimeStamp'] / 1e9))

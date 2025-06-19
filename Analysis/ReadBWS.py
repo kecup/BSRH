@@ -12,6 +12,7 @@ import lmfit
 import dill as pickle
 import pyjapc
 import zstandard as zstd
+import datetime as dt
 
 ### This script opens the data acquired by the BWS, sample to be change accordingly
 #### Run in interactive mode...
@@ -29,9 +30,14 @@ verSize = 386
 bunchStart = 160
 bunchStop = 800
 
+now = dt.datetime.now()
+start = dt.datetime.combine(now.date(),dt.time(15,11,54))
+stop = dt.datetime.combine(now.date(),dt.time(15,13,7))
 
 for nFile in range(0, len(files)):
     f = open(directory + files[nFile], 'rb')
     with dctx.stream_reader(f) as reader:
         a = pickle.load(reader)
+    if start <= dt.datetime.fromtimestamp(a.value['gmtTimestampAcquireIn_ns']/1e9)<= stop:
+        print(nFile)
 

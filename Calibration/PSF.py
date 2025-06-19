@@ -38,7 +38,7 @@ def moving_average(a, n=3):
 
 def CoolFuncH(params, bwsArray, bsrhArray, n=12):  # Params[0] = PSF, Params[1] = pixel size, Params[2] = (scale of bsrh) tail of the PSF, arrays come already as 1000 points from -4 to 4
     newX = np.linspace(-4, 4, 1000)
-    crop = 570 ###change here if needed
+    crop = 600 ###change here if needed
     tmpPSF = gaussian(newX, 1 / (params[0] * np.sqrt(2 * np.pi)), 0, params[0])
     tmpPSF = tmpPSF / np.sum(tmpPSF)
 
@@ -97,7 +97,7 @@ else:
     filesH = sorted(filesH)
     # Let's start with horizontal BWS:
     #Change to file 23
-    f = open(directoryH + filesH[-1], 'rb')  # Open last file with the latest BWS profile...
+    f = open(directoryH + filesH[56], 'rb')  # Open last file with the latest BWS profile...
     with dctx.stream_reader(f) as reader:
         BWS_H = pickle.load(reader)
     print('BWS_H loaded')
@@ -108,7 +108,7 @@ if filesV == None:
     print('There are no vertical BWS today...')
 else:
     filesV = sorted(filesV)
-    g = open(directoryV + filesV[-1], 'rb')
+    g = open(directoryV + filesV[59], 'rb')
     with dctx.stream_reader(g) as reader:
         BWS_V = pickle.load(reader)
     print('BWS_V loaded')
@@ -124,7 +124,7 @@ timeV = dt.datetime.fromtimestamp(BWS_V.value['gmtTimestampAcquireIn_ns']/1e9)
 print('BWS Acq Time H: ', timeH)
 print('BWS Acq Time V: ', timeV)
 
-count = 1
+count = len(filesBSRH) - 91
 while True:
     nFiles = len(filesBSRH)
     h = open(directoryBSRH+filesBSRH[nFiles-count], 'rb') #Open last known file
@@ -135,15 +135,15 @@ while True:
     tFirstEvent = dt.datetime.fromtimestamp(BSRH[0].cam_data['imageTimeStamp']/1e9)#+dt.timedelta(hours=2)
     tLastEvent = dt.datetime.fromtimestamp(BSRH[-1].cam_data['imageTimeStamp']/1e9)#+dt.timedelta(hours=2)
 
-    print('First event in the BSRH file: ', tFirstEvent)
-    print('Last event in the BSRH file:', tLastEvent)
+    #print('First event in the BSRH file: ', tFirstEvent)
+    #print('Last event in the BSRH file:', tLastEvent)
 
     #So let's see whether the time of BWS is within our file:
     if tFirstEvent < timeH < tLastEvent:
         print('The correct file is loaded!')
         break
     elif tFirstEvent > timeH:
-        print('Must load earlier file...')
+        #print('Must load earlier file...')
         count = count + 1 # As long as we don't go below nFiles...
         if count > nFiles: #Whoops, the BSRH file does not exist!
             print('BSRH file count not be found')
@@ -229,7 +229,7 @@ else:
             x = x - out[1]
             Hbsrh.append([x, y])
 
-    initGuess = [0.4, 42.5, 0.07, 1.4]
+    initGuess = [0.4, 17.5, 0.07, 1.4]
     resultH = minimize(CoolFuncH, initGuess, args=(Hbws, Hbsrh), bounds=((0.1, 0.8), (10, 80), (0.005, 2), (0.1, 4)))  # , method = 'L-BFGS-B')
     # print(resultH)
 
@@ -238,24 +238,25 @@ else:
     print('PSF = ', out[0])
     print('Pixel size = ', out[1])
 
-    fig, ax = plt.subplots(len(profilesBSRH_H), figsize=(5, 10))
+    plotList = [0, 1, 10, 11, 24, 25]
+    fig, ax = plt.subplots(len(plotList), figsize=(5, 10))
     fig.suptitle("Horizontal Comparison of BSRH and BWS Profiles")
 
     tmpPSF = gaussian(newX, 1 / (out[0] * np.sqrt(2 * np.pi)), 0, out[0])
     tmpPSF = tmpPSF / np.sum(tmpPSF)
 
-    for bunch in range(len(profilesBSRH_H)):
+    for slot, bunch in enumerate(plotList):
         bsrh = np.interp(newX, out[1] / 1000 * Hbsrh[bunch][0], Hbsrh[bunch][1])
         bws = np.convolve(Hbws[bunch], tmpPSF, 'same')
         scale = (np.sum(bws) / np.sum(bsrh)) * bsrh
-        ax[bunch].plot(scale, label="BSRH")
-        ax[bunch].plot(bws, label="BWS")
-        ax[bunch].set_title("Bunch: " + str(bunch))
+        ax[slot].plot(scale, label="BSRH")
+        ax[slot].plot(bws, label="BWS")
+        # ax[bunch].set_title("Bunch: " + str(bunch))
 
     # plt.show()
 
 #Now vertical
-count = 1
+count = len(filesBSRH) - 91
 while True:
     nFiles = len(filesBSRH)
     h = open(directoryBSRH + filesBSRH[nFiles - count], 'rb')  # Open last known file
@@ -265,15 +266,15 @@ while True:
     # Now get time of first and last BSRH event:
     tFirstEvent = dt.datetime.fromtimestamp(BSRH[0].cam_data['imageTimeStamp'] / 1e9)
     tLastEvent = dt.datetime.fromtimestamp(BSRH[-1].cam_data['imageTimeStamp'] / 1e9)
-    print('First event in the BSRH file: ', tFirstEvent)
-    print('Last event in the BSRH file:', tLastEvent)
+    #print('First event in the BSRH file: ', tFirstEvent)
+    #print('Last event in the BSRH file:', tLastEvent)
 
     # So let's see whether the time of BWS is within our file:
     if tFirstEvent < timeV < tLastEvent:
         print('The correct file is loaded!')
         break
     elif tFirstEvent > timeV:
-        print('Must load earlier file...')
+        #print('Must load earlier file...')
         count = count + 1  # As long as we don't go below nFiles...
         if count > nFiles:  # Whoops, the BSRH file does not exist!
             print('BSRH file count not be found')
@@ -359,7 +360,7 @@ else:
             x = x - out[1]
             Vbsrh.append([x, y])
 
-    initGuess = [0.4, 42.5, 0.07, 1.4]
+    initGuess = [0.2, 17.5, 0.07, 1.4]
     resultV = minimize(CoolFuncV, initGuess, args=(Vbws, Vbsrh),bounds=((0.1, 0.8), (10, 80), (0.005, 2), (0.1, 4)))  # , method = 'L-BFGS-B')
     # print(resultV)
 
@@ -368,19 +369,20 @@ else:
     print('PSF = ', out[0])
     print('Pixel size = ', out[1])
 
-    fig, ax = plt.subplots(len(profilesBSRH_V), figsize=(5, 10))
+    plotList = [0,1,10,11,24,25]
+    fig, ax = plt.subplots(len(plotList), figsize=(5, 10))
     fig.suptitle("Vertical Comparison of BSRH and BWS Profiles")
 
     tmpPSF = gaussian(newX, 1 / (out[0] * np.sqrt(2 * np.pi)), 0, out[0])
     tmpPSF = tmpPSF / np.sum(tmpPSF)
 
-    for bunch in range(len(profilesBSRH_V)):
+    for slot, bunch in enumerate(plotList):
         bsrh = np.interp(newX, out[1] / 1000 * Vbsrh[bunch][0], Vbsrh[bunch][1])
         bws = np.convolve(Vbws[bunch], tmpPSF, 'same')
         scale = (np.sum(bws) / np.sum(bsrh)) * bsrh
-        ax[bunch].plot(scale, label="BSRH")
-        ax[bunch].plot(bws, label="BWS")
-        ax[bunch].set_title("Bunch: " + str(bunch))
+        ax[slot].plot(scale, label="BSRH")
+        ax[slot].plot(bws, label="BWS")
+        # ax[bunch].set_title("Bunch: " + str(bunch))
 
     print("Results: (PSF, Pixel Size)")
     print(results)
