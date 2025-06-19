@@ -1,0 +1,7 @@
+print(f"Bunch {bunch}: sum BWS={np.sum(bws):.2f}, sum BSRH={np.sum(bsrh):.2f}, scale={scale:.4f}")
+
+print(f"ax type: {type(ax)}, ax shape: {np.shape(ax)}")
+
+fig, ax = plt.subplots(len(profilesBSRH_H), figsize=(5, 10))
+if len(profilesBSRH_H) == 1:
+    ax = [ax]  # force list so ax[0] works
