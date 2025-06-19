@@ -83,7 +83,7 @@ else:
 directoryV = os.path.join(DATA_PATH_BWS+'/Vertical', time.strftime('%Y/%m/%d/', time.localtime()))
 filesV = os.listdir(directoryV)
 if filesV == None:
-    print('There are no horizontal BWS today...')
+    print('There are no vertical BWS today...')
 else:
     filesV = sorted(filesV)
     g = open(directoryV + filesV[-1], 'rb')
