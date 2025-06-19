@@ -46,7 +46,7 @@ y1 = 200
 y2 = 400
 
 plt.figure(1)
-
+plt.figure(2)
 while True:
     filesBSRH = os.listdir(directoryBSRH)
     if nFiles < len(filesBSRH):
@@ -141,19 +141,79 @@ while True:
 
                     timeH[bunchIndex].append(BSRH[index].timestamp)
                     haloH[bunchIndex].append(chargeX)
+
+                y_temp = []
+                y_temp.extend(range(int(maskY - maskR)))  # Here we should be carefull not to put rubbish..
+                y_temp.extend(range(int(maskY + maskR), 608))
+                # projection_y = projection_y - np.mean(projection_y[:50])
+
+                try:
+                    resY, _ = curve_fit(gaussian, y_temp, projection_y[y_temp],(1000, maskY, 15.0))  # fit SG to get the assumed center
+                    if resY[1] > maskY + maskR or resY[1] < maskY - maskR:
+                        print('Core outside the mask (Y)')
+                        raise Exception('Problem with fit value')
+                except:
+                    resY = [0, maskY, 0]
+                    correct_measurementY_flag = False
+
+                # we know the center, so we can make the interval of XX sigma
+                yl1 = int(resY[1] - sigma * SIGMA_TO_MM_Y / pixelSizeV)
+                yr1 = int(resY[1] + sigma * SIGMA_TO_MM_Y / pixelSizeV)
+
+                if (maskY - maskR) < yl1 < (maskY + maskR):
+                    # This is a problem as the left part is inside the mask and we cannot measure it.
+                    correct_measurementY_flag = False
+
+                if np.min(projection_y[:yl1]) > 0:
+                    yl0 = 0
+                else:
+                    i = yl1
+                    while projection_y[i] > 0 and i > 0:
+                        i = i - 1
+                    yl0 = i
+
+                if (maskY - maskR) < yr1 < (maskY + maskR):
+                    # This is a problem as the left part is inside the mask and we cannot measure it.
+                    correct_measurementY_flag = False
+
+                if np.min(projection_y[yr1:]) > 0:
+                    yr0 = 967
+                else:
+                    i = yr1
+                    while projection_y[i] > 0 and i < 607:
+                        i = i + 1
+                    yr0 = i
+
+                if correct_measurementY_flag:
+                    chargeY = np.sum(projection_y[yl0:yl1]) + np.sum(projection_y[yr1:yr0])
+                    chargeY = chargeY * cPc * INTENSIFIER_GAIN / exposure
+
+                    timeV[bunchIndex].append(BSRH[index].timestamp)
+                    haloV[bunchIndex].append(chargeY)
+
                 if bunchIndex + 1 >= count:
                     bunchIndex = 0
                 else:
                     bunchIndex = bunchIndex+1
 
                 ##ADD VERTICAL halo charge calculation!!!!
-
+        plt.figure(1)
         plt.clf()
         for k in range(count):
             plt.plot(timeH[k], haloH[k], label = str(bunchN[k]))
         plt.legend()
         plt.draw()
         plt.pause(1.0)
+
+        plt.figure(2)
+        plt.clf()
+        for k in range(count):
+            plt.plot(timeV[k], haloV[k], label=str(bunchN[k]))
+        plt.legend()
+        plt.draw()
+        plt.pause(1.0)
+
+
 
     else:
         plt.pause(1.0)

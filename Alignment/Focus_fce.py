@@ -53,7 +53,7 @@ def focus(motor: Motor, camera: Camera, aligner: Aligner, plot_range: tuple[int,
         return [], [], []
 
     # align to center
-    aligner.align(3)
+    #aligner.align(3)
     
     # # get ref (current position of motor)
     # ref = motor.getPosition()
@@ -90,8 +90,8 @@ def focus(motor: Motor, camera: Camera, aligner: Aligner, plot_range: tuple[int,
             res_x, _ = curve_fit(gaussian, range(len(projection_x)), projection_x, (6e4, np.argmax(projection_x), 10.0, 300.0), bounds = g_bounds_x)
             sigma_x = res_x[2]
         
-            # if res_x[0] < amplitude_threshold:
-            #     break
+            if res_x[0] < amplitude_threshold:
+                 break
             curr_sigmas_x.append(sigma_x)
 
             projection_y = np.sum(image, axis=1)
@@ -100,13 +100,16 @@ def focus(motor: Motor, camera: Camera, aligner: Aligner, plot_range: tuple[int,
             sigma_y = res_y[2]
             curr_sigmas_y.append(sigma_y)
             # print(res_x[0], res_y[0])
-
-        sigma_x = np.mean(curr_sigmas_x)
-        sigmas_x.append(sigma_x)
-        vars_x.append(np.std(curr_sigmas_x))
-        sigma_y = np.mean(curr_sigmas_y)
-        sigmas_y.append(sigma_y)
-        vars_y.append(np.std(curr_sigmas_y))
+        if len(curr_sigmas_x) == avg_n_pics:
+            sigma_x = np.mean(curr_sigmas_x)
+            sigmas_x.append(sigma_x)
+            vars_x.append(np.std(curr_sigmas_x))
+            sigma_y = np.mean(curr_sigmas_y)
+            sigmas_y.append(sigma_y)
+            vars_y.append(np.std(curr_sigmas_y))
+        else:
+            print("There is currently no beam!")
+            break
 
         if i == len(positions) - 1:
             print("position " + str(i+1) + " out of " + str(steps))
@@ -128,7 +131,7 @@ def focus(motor: Motor, camera: Camera, aligner: Aligner, plot_range: tuple[int,
     min_idx_x = sigmas_x.index(min(sigmas_x))
     min_idx_y = sigmas_y.index(min(sigmas_y))
     min_idx = (min_idx_x + min_idx_y) // 2
-    # focused_pos = (positions[min_idx_x] + positions[min_idx_y]) // 2
+    #focused_pos = (positions[min_idx_x] + positions[min_idx_y]) // 2
     motor.setAbsPosition(positions[min_idx]) # go to avg min sigma
     aligner.motor_x.setAbsPosition(align_pos[min_idx][0])
     aligner.motor_y.setAbsPosition(align_pos[min_idx][1])
@@ -192,6 +195,7 @@ def main():
     motor_x = Motor('LHC.BSRH.M3-PHI.B2', japc, 35)  # LHC
     motor_y = Motor('LHC.BSRH.M3-THETA.B2', japc, 30)  # LHC
     motor_z = Motor("LHC.BSRH.M3-Z-TSZ100.B2", japc)  # LHC
+    #camera = Camera("LHC.BSRH.BTVDC-CAM.MAIN", japc)
     camera = Camera("LHC.BSRH.CAM.CM.B2", japc)  # LHC camera
 
     target = [484, 304] # Camera center
@@ -209,7 +213,7 @@ def main():
     motor_x.setRelPosition(30)
     motor_y.setRelPosition(30)
 
-    positions, sigmas_x, sigmas_y, vars_x, vars_y = focus(motor_z, camera, aligner, (35000, 55000), 21, 10)
+    positions, sigmas_x, sigmas_y, vars_x, vars_y = focus(motor_z, camera, aligner, (40000, 50000), 5, 10)
 
     japc.stopSubscriptions()
     japc.clearSubscriptions()
