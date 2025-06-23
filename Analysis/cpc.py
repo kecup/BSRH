@@ -29,19 +29,21 @@ def graph_cpc(data):
     axes = axes.flatten()  # flatten in case of 2D array even if 1D needed
 
     colors = ["green", "red", "blue"]
+    label_names = ['High emittance', 'HL emittance', 'Low emittance']
 
     for idx, (run_num, run_data) in enumerate(data.items()):
         ax = axes[idx]
+
         events = run_data['events']
         cpc = run_data['cpcs']
-
+        # ax.plot(events, cpc)
         for mask_idx, mask_name in enumerate(['mask_low', 'mask_mid', 'mask_high']):
             mask = run_data[mask_name]
             ax.scatter(
                 [events[i] for i in mask],  # x-axis values (events)
                 [cpc[i] for i in mask],  # y-axis values (cpc)
                 color=colors[mask_idx],
-                label=f'Group {mask_idx + 1}',
+                label=f'{label_names[mask_idx]}',
                 s=12
             )
 
@@ -73,10 +75,11 @@ def compute_cpc(directory: str, files, runs: list[str]):
         mask_mid = []
         mask_high = []
         run_cpcs = []
+        run_counter = 0
         events_counter = 0
         for file_num in range(len(run_data)):
             a = run_data[file_num]
-            events_counter += len(a) # this is prob wrong
+            events_counter += len(a)
             for event_idx in range(len(a)):
                 event = a[event_idx]
                 img = event.cam_data['image2D']
@@ -89,12 +92,13 @@ def compute_cpc(directory: str, files, runs: list[str]):
                 num_of_pulses = int(event.device_data["GATE-INT"]["numberOfPulses"])
                 cpc = (img_charge * num_of_pulses) / (img_sum * magic_const * in_filter)
                 if (delay_slots <= 120):
-                    mask_low.append(event_idx)
+                    mask_low.append(run_counter)
                 elif (delay_slots > 120 and delay_slots <= 920):
-                    mask_mid.append(event_idx)
+                    mask_mid.append(run_counter)
                 else:
-                    mask_high.append(event_idx)
+                    mask_high.append(run_counter)
                 run_cpcs.append(cpc)
+                run_counter += 1
         run_events = list(range(events_counter))
         run_results = {'cpcs': run_cpcs, 'events': run_events, 'mask_low': mask_low, 'mask_mid': mask_mid, 'mask_high': mask_high}
         results[run] = run_results
@@ -115,4 +119,6 @@ if __name__ == "__main__":
     results = compute_cpc(directory, files, runs)
     # print(results)
     graph_cpc(results)
+
+    #### NOTE: the difference might come from synchronisation issues of the Gate-int. Must be checked whether bunch 0 provides most light w.r.t other high emittance bunches!
 
