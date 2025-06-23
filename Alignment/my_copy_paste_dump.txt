@@ -3,12 +3,13 @@ for idx, (run_num, run_data) in enumerate(data.items()):
     events = run_data['events']
     cpc = run_data['cpc']
     
-    for group_idx, mask in enumerate(masks[run_num]):
+    for mask_idx, mask_name in enumerate(['mask1', 'mask2', 'mask3']):
+        mask = run_data[mask_name]
         ax.scatter(
-            [events[i] for i in mask],  # x-values
-            [cpc[i] for i in mask],     # y-values
-            color=colors[group_idx],
-            label=f'Group {group_idx + 1}'
+            [events[i] for i in mask],  # x-axis values (events)
+            [cpc[i] for i in mask],     # y-axis values (cpc)
+            color=colors[mask_idx],
+            label=f'Group {mask_idx + 1}'
         )
     
     ax.set_title(f'Run {run_num}')
@@ -16,7 +17,7 @@ for idx, (run_num, run_data) in enumerate(data.items()):
     ax.set_ylabel('CPC')
     ax.legend()
 
-# Hide unused subplots
+# Hide unused subplots:
 for i in range(n_runs, len(axes)):
     fig.delaxes(axes[i])
 
