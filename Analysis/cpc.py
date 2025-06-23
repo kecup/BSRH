@@ -21,18 +21,19 @@ def graph_cpc(data):
     n_runs = len(data)
 
     # Determine subplot grid size:
-    n_cols = 2  # e.g. 2 plots per row
-    n_rows = (n_runs + n_cols - 1) // n_cols  # ceiling division to get enough rows
+    n_cols = 3  # e.g. 2 plots per row
+    # n_rows = (n_runs + n_cols - 1) // n_cols  # ceiling division to get enough rows
+    n_rows = 3
 
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
     axes = axes.flatten()  # flatten in case of 2D array even if 1D needed
 
     for idx, (run_num, run_data) in enumerate(data.items()):
         ax = axes[idx]
-        ax.plot(run_data['cpc'], label='CPC')
-        ax.plot(run_data['events'], label='Events')
+        ax.plot(run_data['events'], run_data['cpcs'], marker='o', linestyle='-')
         ax.set_title(f'Run {run_num}')
-        ax.legend()
+        ax.set_xlabel("Events")
+        ax.set_ylabel("cpc")
 
     # Hide unused subplots if any:
     for i in range(n_runs, len(axes)):
@@ -59,21 +60,23 @@ def compute_cpc(directory: str, files, runs: list[str]):
             a = run_data[file_num]
             events_counter += len(a) # this is prob wrong
             for event_idx in range(len(a)):
-                event = run_data[event_idx]
-                for img_num in range(len(event)):
-                    img = event[img_num].cam_data['image2D']
-                    delay_slots = int([img_num].device_data["GATE-INT"]["delaySlots"])
-                    pulse_length = int(event[img_num].device_data["GATE-INT"]["pulseLength"])
-                    img_charge = np.sum(event[img_num].device_data["FBCT1"]["averageBunchIntensities"][delay_slots:delay_slots + pulse_length // 4][0])
-                    img_sum = np.sum(img)
-                    in_filter = 1
-                    magic_const = 5651
-                    num_of_pulses = 1 # forgot how to compute this
-                    cpc = (img_charge * num_of_pulses) / (img_sum * magic_const * in_filter)
-                    run_cpcs.append(cpc)
+                event = a[event_idx]
+                img = event.cam_data['image2D']
+                delay_slots = int(event.device_data["GATE-INT"]["delaySlots"])
+                pulse_length = int(event.device_data["GATE-INT"]["pulseLength"])
+                img_charge = np.sum(event.device_data["FBCT1"]["averageBunchIntensities"][delay_slots:delay_slots + pulse_length // 4][0])
+                img_sum = np.sum(img)
+                in_filter = 1
+                magic_const = 5651
+                num_of_pulses = int(event.device_data["GATE-INT"]["numberOfPulses"])
+                cpc = (img_charge * num_of_pulses) / (img_sum * magic_const * in_filter)
+                run_cpcs.append(cpc)
         run_events = list(range(events_counter))
         run_results = {'cpcs': run_cpcs, 'events': run_events}
         results[run] = run_results
+        # print(run_results)
+        # print(len(run_cpcs))
+        print("Events: " + str(len(run_events)))
     return results
 
 if __name__ == "__main__":
@@ -86,6 +89,6 @@ if __name__ == "__main__":
     files = sorted(files)
 
     results = compute_cpc(directory, files, runs)
-    print(results)
-    graph_cpc((results))
+    # print(results)
+    graph_cpc(results)
 
