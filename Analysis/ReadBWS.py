@@ -20,9 +20,19 @@ import datetime as dt
 japc = pyjapc.PyJapc(selector='', incaAcceleratorName='') #Stupid Java VM must be running to open the java values... We have to retype this...
 
 dctx = zstd.ZstdDecompressor()
-directory = '/user/jpucek/BWS/Data/Vertical/2025/06/19/'
-files = os.listdir(directory)
-files = sorted(files)
+directoryV = '/user/jpucek/BWS/Data/Vertical/2025/06/19/'
+directoryH = '/user/jpucek/BWS/Data/Horizontal/2025/06/19/'
+
+def scanNumber(directory, start, stop):
+    files = os.listdir(directory)
+    files = sorted(files)
+    for nFile in range(0, len(files)):
+        f = open(directory + files[nFile], 'rb')
+        with dctx.stream_reader(f) as reader:
+            a = pickle.load(reader)
+        if start <= dt.datetime.fromtimestamp(a.value['gmtTimestampAcquireIn_ns'] / 1e9) <= stop:
+            print(directory, nFile)
+
 
 sigma = 4.7
 verSize = 386
@@ -31,13 +41,8 @@ bunchStart = 160
 bunchStop = 800
 
 now = dt.datetime.now()
-start = dt.datetime.combine(now.date(),dt.time(15,11,54))
-stop = dt.datetime.combine(now.date(),dt.time(15,13,7))
+start = dt.datetime.combine(dt.date(2025,6,19),dt.time(15,17,9))
+stop = dt.datetime.combine(dt.date(2025,6,19),dt.time(15,18,21))
 
-for nFile in range(0, len(files)):
-    f = open(directory + files[nFile], 'rb')
-    with dctx.stream_reader(f) as reader:
-        a = pickle.load(reader)
-    if start <= dt.datetime.fromtimestamp(a.value['gmtTimestampAcquireIn_ns']/1e9)<= stop:
-        print(nFile)
-
+scanNumber(directoryV, start, stop)
+scanNumber(directoryH, start, stop)

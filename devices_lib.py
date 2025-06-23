@@ -91,7 +91,10 @@ class Camera:
         else:
             self.movableAxis = 0
         self.isIn = -1
-        self.subscription = self.japc.subscribeParam(self.name + '/Acquisition#image1', self.updateImage)
+        try:
+            self.subscription = self.japc.subscribeParam(self.name + '/Acquisition#image1', self.updateImage)
+        except:
+            self.subscription = self.japc.subscribeParam(self.name + '/LastImage#image2D', self.updateImage)
 
     def updateImage(self, parameter, value):
         self.image = value

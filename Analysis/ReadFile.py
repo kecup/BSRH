@@ -30,8 +30,20 @@ bunchN = []
 getBunchN = []
 imageSum = []
 
-for nFile in range(84, 91):
+
+for nFile in range(36, 37):#len(files)):
+    # if 'run_12' in files[nFile]:
+    #     print(nFile)
+
     f = open(directory + files[nFile], 'rb')
     with dctx.stream_reader(f) as reader:
         a = pickle.load(reader)
-    print(dt.datetime.fromtimestamp(a[0].cam_data['imageTimeStamp'] / 1e9))
+    print('File n = ', nFile, ' events: ', len(imageSum), ' to ', len(imageSum)+len(a))
+    for i in range(len(a)):
+        imageSum.append(np.sum(a[i].cam_data['image2D']))
+    # print(dt.datetime.fromtimestamp(a[0].cam_data['imageTimeStamp'] / 1e9))
+    f.close()
+
+#plt.plot(imageSum)
+#plt.show()
+

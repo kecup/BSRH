@@ -294,7 +294,7 @@ while True:
   if count == 10:
     print("Distance to target = ", np.round(np.sqrt((camX-target[0])**2+(camY-target[1])**2),2))
     count = 0
-  if np.abs(camX-target[0]) > 4.0 and np.abs(camY-target[1]) > 4.0:
+  if np.abs(camX-target[0]) > 5.0 and np.abs(camY-target[1]) > 5.0:
     steerer.step(M3X, M3Y, cam1, target)
     print('Moving, distance to target = ', np.round(np.sqrt((camX-target[0])**2+(camY-target[1])**2),2), dt.datetime.now())
     sleep(2)

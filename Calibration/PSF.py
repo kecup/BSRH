@@ -28,6 +28,14 @@ def gaussian(x, amp, cen, wid):  # , const):
     return amp * np.exp(-(x - cen) ** 2 / (2 * wid ** 2))  # +const
 
 
+def specGauss(x, amp, cen, wid, kh):
+    arg = (x - cen) / wid
+    value = np.where(arg <= kh,
+                     amp * np.exp(-0.5 * arg ** 2),
+                     amp * np.exp(0.5 * kh ** 2 - kh * arg))
+    return value
+
+
 def moving_average(a, n=3):
     ret = np.cumsum(a, dtype=float)
     ret[n:] -= ret[:-n]
@@ -36,14 +44,14 @@ def moving_average(a, n=3):
     return np.array(pad + list(result))
 
 
-def CoolFuncH(params, bwsArray, bsrhArray, n=12):  # Params[0] = PSF, Params[1] = pixel size, Params[2] = (scale of bsrh) tail of the PSF, arrays come already as 1000 points from -4 to 4
+def CoolFuncH(params, bwsArray, bsrhArray, fbctArray n=12):  # Params[0] = PSF, Params[1] = pixel size, Params[2] = (scale of bsrh) tail of the PSF, arrays come already as 1000 points from -4 to 4
     newX = np.linspace(-4, 4, 1000)
-    crop = 600 ###change here if needed
+    crop = -1 ###change here if needed
     tmpPSF = gaussian(newX, 1 / (params[0] * np.sqrt(2 * np.pi)), 0, params[0])
     tmpPSF = tmpPSF / np.sum(tmpPSF)
 
     # tmpPSF = specGauss(newX, 1, 0, params[0], params[3])
-    # tmpPSF = tmpPSF/np.sum(tmpPSF)s
+    # tmpPSF = tmpPSF/np.sum(tmpPSF)
     n = len(bwsArray)
     totalSquares = 0
     for bunch in range(n):
@@ -53,7 +61,7 @@ def CoolFuncH(params, bwsArray, bsrhArray, n=12):  # Params[0] = PSF, Params[1] 
         totalSquares += chi2(np.sum(bws[:crop]) / np.sum(bsrh[:crop]) * bsrh[:crop], bws[:crop])
     return totalSquares
 
-def CoolFuncV(params, bwsArray, bsrhArray, n=12):  # Params[0] = PSF, Params[1] = pixel size, Params[2] = (scale of bsrh) tail of the PSF, arrays come already as 1000 points from -4 to 4
+def CoolFuncV(params, bwsArray, bsrhArray, fbctArray n=12):  # Params[0] = PSF, Params[1] = pixel size, Params[2] = (scale of bsrh) tail of the PSF, arrays come already as 1000 points from -4 to 4
     newX = np.linspace(-4, 4, 1000)
     crop = -1 ###change here if needed
     tmpPSF = gaussian(newX, 1 / (params[0] * np.sqrt(2 * np.pi)), 0, params[0])
@@ -66,8 +74,8 @@ def CoolFuncV(params, bwsArray, bsrhArray, n=12):  # Params[0] = PSF, Params[1] 
     for bunch in range(n):
         bsrh = np.interp(newX, params[1] / 1000 * bsrhArray[bunch][0], bsrhArray[bunch][1])
         bws = np.convolve(bwsArray[bunch], tmpPSF, 'same')
-        # totalSquares+= chi2(params[2]*bsrh[:crop],bws[:crop])
-        totalSquares += chi2(np.sum(bws[:crop]) / np.sum(bsrh[:crop]) * bsrh[:crop], bws[:crop])
+        totalSquares+= chi2(params[2]*bsrh[:crop],bws[:crop])
+        # totalSquares += chi2(np.sum(bws[:crop]) / np.sum(bsrh[:crop]) * bsrh[:crop], bws[:crop])
     return totalSquares
 
 japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
@@ -89,7 +97,7 @@ profilesBWS_V = []
 results = {}
 
 #Open last file of each BWS:
-directoryH = os.path.join(DATA_PATH_BWS+'/Horizontal', time.strftime('%Y/%m/%d/', time.localtime()))
+directoryH = os.path.join(DATA_PATH_BWS+'/Horizontal/2025/06/19/')#, time.strftime('%Y/%m/%d/', time.localtime()))
 filesH = os.listdir(directoryH)
 if filesH == None:
     print('There are no horizontal BWS today...')
@@ -97,24 +105,24 @@ else:
     filesH = sorted(filesH)
     # Let's start with horizontal BWS:
     #Change to file 23
-    f = open(directoryH + filesH[56], 'rb')  # Open last file with the latest BWS profile...
+    f = open(directoryH + filesH[60], 'rb')  # Open last file with the latest BWS profile...
     with dctx.stream_reader(f) as reader:
         BWS_H = pickle.load(reader)
     print('BWS_H loaded')
 
-directoryV = os.path.join(DATA_PATH_BWS+'/Vertical', time.strftime('%Y/%m/%d/', time.localtime()))
+directoryV = os.path.join(DATA_PATH_BWS+'/Vertical/2025/06/19/')#, time.strftime('%Y/%m/%d/', time.localtime()))
 filesV = os.listdir(directoryV)
 if filesV == None:
     print('There are no vertical BWS today...')
 else:
     filesV = sorted(filesV)
-    g = open(directoryV + filesV[59], 'rb')
+    g = open(directoryV + filesV[63], 'rb')
     with dctx.stream_reader(g) as reader:
         BWS_V = pickle.load(reader)
     print('BWS_V loaded')
 
 
-directoryBSRH = os.path.join(DATA_PATH_BSRH, time.strftime('%Y/%m/%d/', time.localtime()))
+directoryBSRH = os.path.join(DATA_PATH_BSRH, '2025/06/19/')#time.strftime('%Y/%m/%d/', time.localtime()))
 filesBSRH = os.listdir(directoryBSRH)
 filesBSRH = sorted(filesBSRH)
 ##### So we have the BWS data, let's find the corresponding BSRH - we want one image for H and one image for V:
@@ -124,7 +132,7 @@ timeV = dt.datetime.fromtimestamp(BWS_V.value['gmtTimestampAcquireIn_ns']/1e9)
 print('BWS Acq Time H: ', timeH)
 print('BWS Acq Time V: ', timeV)
 
-count = len(filesBSRH) - 91
+count = len(filesBSRH) - 104
 while True:
     nFiles = len(filesBSRH)
     h = open(directoryBSRH+filesBSRH[nFiles-count], 'rb') #Open last known file
@@ -205,7 +213,7 @@ else:
         else:
             y = Proj_in[k * count:(k + 1) * count]
             y = y - np.mean(y[:50])
-            profilesBWS_H.append(moving_average(np.asarray(y), 3))
+            profilesBWS_H.append(moving_average(np.asarray(y), 1)) #MOVING AVERAGE HERE, change for probably better scaling of the PSF output??
 
         #CHECK we have the same number of bunches in BWS and BSRH#
         # We have the BSRH profiles and we have BWS profiles in horizontal...
@@ -229,14 +237,15 @@ else:
             x = x - out[1]
             Hbsrh.append([x, y])
 
-    initGuess = [0.4, 17.5, 0.07, 1.4]
-    resultH = minimize(CoolFuncH, initGuess, args=(Hbws, Hbsrh), bounds=((0.1, 0.8), (10, 80), (0.005, 2), (0.1, 4)))  # , method = 'L-BFGS-B')
+    initGuess = [0.51, 19.0, 0.00365, 1.4]
+    resultH = minimize(CoolFuncH, initGuess, args=(Hbws, Hbsrh), bounds=((0.1, 0.8), (15, 25), (0.001, 0.1), (0.1, 4)) , method = 'L-BFGS-B')
     # print(resultH)
 
     out = resultH.x
     results["horizontal"] = (out[0], out[1])
-    print('PSF = ', out[0])
-    print('Pixel size = ', out[1])
+    print('PSF = ', np.round(out[0],3))
+    print('Pixel size = ', np.round(out[1],2))
+    print('Proportionality factor = ', np.round(out[2],5))
 
     plotList = [0, 1, 10, 11, 24, 25]
     fig, ax = plt.subplots(len(plotList), figsize=(5, 10))
@@ -256,7 +265,7 @@ else:
     # plt.show()
 
 #Now vertical
-count = len(filesBSRH) - 91
+count = len(filesBSRH) - 104
 while True:
     nFiles = len(filesBSRH)
     h = open(directoryBSRH + filesBSRH[nFiles - count], 'rb')  # Open last known file
@@ -336,7 +345,7 @@ else:
         else:
             y = Proj_in[k * count:(k + 1) * count]
             y = y - np.mean(y[:50])
-            profilesBWS_V.append(moving_average(np.asarray(y), 3))
+            profilesBWS_V.append(moving_average(np.asarray(y), 1))  #MOVING AVERAGE HERE, change for probably better scaling of the PSF output??
 
         # CHECK we have the same number of bunches in BWS and BSRH#
         # We have the BSRH profiles and we have BWS profiles in vertical...
@@ -360,14 +369,15 @@ else:
             x = x - out[1]
             Vbsrh.append([x, y])
 
-    initGuess = [0.2, 17.5, 0.07, 1.4]
-    resultV = minimize(CoolFuncV, initGuess, args=(Vbws, Vbsrh),bounds=((0.1, 0.8), (10, 80), (0.005, 2), (0.1, 4)))  # , method = 'L-BFGS-B')
+    initGuess = [0.27, 19.5, 0.00365, 1.4]
+    resultV = minimize(CoolFuncV, initGuess, args=(Vbws, Vbsrh),bounds=((0.1, 0.6), (10, 25), (0.0001, 0.01), (0.1, 4)))  # , method = 'L-BFGS-B')
     # print(resultV)
 
     out = resultV.x
     results["vertical"] = (out[0], out[1])
-    print('PSF = ', out[0])
-    print('Pixel size = ', out[1])
+    print('PSF = ', np.round(out[0],3))
+    print('Pixel size = ', np.round(out[1],2))
+    print('Proportionality factor = ', np.round(out[2],5))
 
     plotList = [0,1,10,11,24,25]
     fig, ax = plt.subplots(len(plotList), figsize=(5, 10))
@@ -379,7 +389,7 @@ else:
     for slot, bunch in enumerate(plotList):
         bsrh = np.interp(newX, out[1] / 1000 * Vbsrh[bunch][0], Vbsrh[bunch][1])
         bws = np.convolve(Vbws[bunch], tmpPSF, 'same')
-        scale = (np.sum(bws) / np.sum(bsrh)) * bsrh
+        scale = (np.sum(bws) / np.sum(bsrh)) * bsrh #THIS IS NOT OK....
         ax[slot].plot(scale, label="BSRH")
         ax[slot].plot(bws, label="BWS")
         # ax[bunch].set_title("Bunch: " + str(bunch))
