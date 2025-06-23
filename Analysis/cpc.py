@@ -28,14 +28,29 @@ def graph_cpc(data):
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
     axes = axes.flatten()  # flatten in case of 2D array even if 1D needed
 
+    colors = ["green", "red", "blue"]
+
     for idx, (run_num, run_data) in enumerate(data.items()):
         ax = axes[idx]
-        ax.plot(run_data['events'], run_data['cpcs'], marker='o', linestyle='-')
-        ax.set_title(f'Run {run_num}')
-        ax.set_xlabel("Events")
-        ax.set_ylabel("cpc")
+        events = run_data['events']
+        cpc = run_data['cpcs']
 
-    # Hide unused subplots if any:
+        for mask_idx, mask_name in enumerate(['mask_low', 'mask_mid', 'mask_high']):
+            mask = run_data[mask_name]
+            ax.scatter(
+                [events[i] for i in mask],  # x-axis values (events)
+                [cpc[i] for i in mask],  # y-axis values (cpc)
+                color=colors[mask_idx],
+                label=f'Group {mask_idx + 1}',
+                s=12
+            )
+
+        ax.set_title(f'{run_num}')
+        ax.set_xlabel('Events')
+        ax.set_ylabel('CPC')
+        ax.legend()
+
+    # Hide unused subplots:
     for i in range(n_runs, len(axes)):
         fig.delaxes(axes[i])
 
@@ -54,6 +69,9 @@ def compute_cpc(directory: str, files, runs: list[str]):
         run = runs[i]
         print("Running " + run)
         run_data = get_run_data(directory, files, run)
+        mask_low = []
+        mask_mid = []
+        mask_high = []
         run_cpcs = []
         events_counter = 0
         for file_num in range(len(run_data)):
@@ -70,9 +88,15 @@ def compute_cpc(directory: str, files, runs: list[str]):
                 magic_const = 5651
                 num_of_pulses = int(event.device_data["GATE-INT"]["numberOfPulses"])
                 cpc = (img_charge * num_of_pulses) / (img_sum * magic_const * in_filter)
+                if (delay_slots <= 120):
+                    mask_low.append(event_idx)
+                elif (delay_slots > 120 and delay_slots <= 920):
+                    mask_mid.append(event_idx)
+                else:
+                    mask_high.append(event_idx)
                 run_cpcs.append(cpc)
         run_events = list(range(events_counter))
-        run_results = {'cpcs': run_cpcs, 'events': run_events}
+        run_results = {'cpcs': run_cpcs, 'events': run_events, 'mask_low': mask_low, 'mask_mid': mask_mid, 'mask_high': mask_high}
         results[run] = run_results
         # print(run_results)
         # print(len(run_cpcs))
