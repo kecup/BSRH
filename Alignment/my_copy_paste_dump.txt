@@ -1,7 +1,22 @@
-print(f"Bunch {bunch}: sum BWS={np.sum(bws):.2f}, sum BSRH={np.sum(bsrh):.2f}, scale={scale:.4f}")
+n_runs = len(data)
 
-print(f"ax type: {type(ax)}, ax shape: {np.shape(ax)}")
+# Determine subplot grid size:
+n_cols = 2  # e.g. 2 plots per row
+n_rows = (n_runs + n_cols - 1) // n_cols  # ceiling division to get enough rows
 
-fig, ax = plt.subplots(len(profilesBSRH_H), figsize=(5, 10))
-if len(profilesBSRH_H) == 1:
-    ax = [ax]  # force list so ax[0] works
+fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
+axes = axes.flatten()  # flatten in case of 2D array even if 1D needed
+
+for idx, (run_num, run_data) in enumerate(data.items()):
+    ax = axes[idx]
+    ax.plot(run_data['cpc'], label='CPC')
+    ax.plot(run_data['events'], label='Events')
+    ax.set_title(f'Run {run_num}')
+    ax.legend()
+
+# Hide unused subplots if any:
+for i in range(n_runs, len(axes)):
+    fig.delaxes(axes[i])
+
+plt.tight_layout()
+plt.show()
