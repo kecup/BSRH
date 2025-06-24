@@ -8,6 +8,7 @@ import numpy as np
 from scipy.optimize import curve_fit, minimize
 import matplotlib.pyplot as plt
 
+from scipy import stats
 from skimage import restoration
 
 File_H = 53
@@ -200,7 +201,7 @@ else:
             print('Did not find bunch: ', bunchN[k])
             profilesBSRH_H.append([])
         else:
-            prof = np.sum(BSRH[start].cam_data['image2D'], axis = 0)
+            prof = np.sum(BSRH[start].cam_data['image2D'][154:454,:], axis = 0)
             prof = prof - np.mean(prof[:50])
             profilesBSRH_H.append(prof)
             bStart = bunch
@@ -254,6 +255,23 @@ else:
         out, _ = curve_fit(gaussian, x, y, (170000, 511, 25.0))
         x = x - out[1]
         Hbsrh.append([x, y])
+
+
+    ## Here we have our lists prepared, let's make first guess :)
+    sigmaBSRH_H = []
+    sigmaBWS_H = []
+
+    initBWS = [1000, 0.0, 0.03]
+    initBSRH = [170000, 0.0, 25.0]
+    for bindex in range(len(Hbws)):
+        res, _ = curve_fit(gaussian, newX, Hbws[bindex], initBWS) # This has physical units from -4 to 4 mm
+        sigmaBWS_H.append(res[2])
+
+        res, _ = curve_fit(gaussian, Hbsrh[bindex][0], Hbsrh[bindex][1]) # This has not physical units so px...
+        sigmaBSRH_H.append(res[2])
+
+    slope, intercept, r, p, std_err = stats.linregress(np.asarray(sigmaBWS_H)**2, np.asarray(sigmaBSRH_H)**2)
+    print('Magnification = ', np.sqrt(1/slope)*1e3, 'um/px, PSF = ', np.sqrt(intercept/slope)*1e3, 'um')
 
     initGuess = [0.51, 18.0, 1.0, 1.4]
     resultH = minimize(CoolFuncH, initGuess, args=(Hbws, Hbsrh, fbct_H), bounds=((0.1, 0.8), (15, 45), (0.1, 2.0), (0.1, 4))) #, method = 'L-BFGS-B')
@@ -338,7 +356,7 @@ else:
             print('Did not find bunch: ', bunchN[k])
             profilesBSRH_V.append([])
         else:
-            prof = np.sum(BSRH[start].cam_data['image2D'], axis=1)
+            prof = np.sum(BSRH[start].cam_data['image2D'][:,284:684], axis=1)
             prof = prof - np.mean(prof[:50])
             profilesBSRH_V.append(prof)
             bStart = bunch
@@ -393,9 +411,21 @@ else:
         x = x - out[1]
         Vbsrh.append([x, y])
 
+    sigmaBWS_V = []
+    sigmaBSRH_V = []
+    for bindex in range(len(Hbws)):
+        res, _ = curve_fit(gaussian, newX, Vbws[bindex], initBWS) # This has physical units from -4 to 4 mm
+        sigmaBWS_V.append(res[2])
+
+        res, _ = curve_fit(gaussian, Vbsrh[bindex][0], Vbsrh[bindex][1]) # This has not physical units so px...
+        sigmaBSRH_V.append(res[2])
+
+    slope, intercept, r, p, std_err = stats.linregress(np.asarray(sigmaBWS_V)**2, np.asarray(sigmaBSRH_V)**2)
+    print('Magnification = ', np.sqrt(1/slope)*1e3, 'um/px, PSF = ', np.sqrt(intercept/slope)*1e3, 'um')
+
     initGuess = [0.27, 19.5, 1, 1.4]
     resultV = minimize(CoolFuncV, initGuess, args=(Vbws, Vbsrh, fbct_V),bounds=((0.1, 0.5), (10, 22), (0.1, 2.0), (0.1, 4)))  # , method = 'L-BFGS-B')
-    print(resultV)
+    #print(resultV)
 
     out = resultV.x
     results["vertical"] = (out[0], out[1])
