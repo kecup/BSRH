@@ -6,6 +6,15 @@ import os
 import matplotlib.pyplot as plt
 
 
+def get_background(directory: str, file, event):
+    f = open(directory + file, 'rb')
+    with dctx.stream_reader(f) as reader:
+        file_data = pickle.load(reader)
+    image = file_data[event].cam_data['image2D']
+    nOfP = file_data[event].device_data['GATE-INT']['numberOfPulses']
+    return image, nOfP
+
+
 def get_run_data(directory: str, files, run: str):
     data = []
     for file_idx in range(len(files)):
@@ -21,14 +30,14 @@ def graph_cpc(data):
     n_runs = len(data)
 
     # Determine subplot grid size:
-    n_cols = 3  # e.g. 2 plots per row
+    n_cols = 2  # e.g. 2 plots per row
     # n_rows = (n_runs + n_cols - 1) // n_cols  # ceiling division to get enough rows
     n_rows = 3
 
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
     axes = axes.flatten()  # flatten in case of 2D array even if 1D needed
 
-    colors = ["green", "red", "blue"]
+    colors = ["red", "green", "blue"]
     label_names = ['High emittance', 'HL emittance', 'Low emittance']
 
     for idx, (run_num, run_data) in enumerate(data.items()):
@@ -77,6 +86,9 @@ def compute_cpc(directory: str, files, runs: list[str]):
         run_cpcs = []
         run_counter = 0
         events_counter = 0
+
+        bgImage, bgPulses = get_background(directory, files[36], 50)
+
         for file_num in range(len(run_data)):
             a = run_data[file_num]
             events_counter += len(a)
@@ -86,10 +98,14 @@ def compute_cpc(directory: str, files, runs: list[str]):
                 delay_slots = int(event.device_data["GATE-INT"]["delaySlots"])
                 pulse_length = int(event.device_data["GATE-INT"]["pulseLength"])
                 img_charge = np.sum(event.device_data["FBCT1"]["averageBunchIntensities"][delay_slots:delay_slots + pulse_length // 4][0])
-                img_sum = np.sum(img)
+                num_of_pulses = int(event.device_data["GATE-INT"]["numberOfPulses"])
+                img = img - (num_of_pulses / bgPulses) * bgImage
+                img_sum = np.sum(img[154:454, 264:644])
+
                 in_filter = 1
                 magic_const = 5651
-                num_of_pulses = int(event.device_data["GATE-INT"]["numberOfPulses"])
+
+
                 cpc = (img_charge * num_of_pulses) / (img_sum * magic_const * in_filter)
                 if (delay_slots <= 120):
                     mask_low.append(run_counter)
@@ -108,7 +124,7 @@ def compute_cpc(directory: str, files, runs: list[str]):
     return results
 
 if __name__ == "__main__":
-    runs = ['run_06', 'run_07', 'run_08', 'run_09', 'run_10', 'run_11', 'run_12']
+    runs = ['run_06', 'run_08', 'run_09', 'run_10', 'run_11', 'run_12']
     japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')  # Stupid Java VM must be running to open the java values... We have to retype this...
 
     dctx = zstd.ZstdDecompressor()
