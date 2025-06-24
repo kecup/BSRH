@@ -31,8 +31,8 @@ getBunchN = []
 imageSum = []
 
 
-for nFile in range(36, 37):#len(files)):
-    # if 'run_12' in files[nFile]:
+for nFile in range(60, 61):#len(files)):
+    # if 'run_08' in files[nFile]:
     #     print(nFile)
 
     f = open(directory + files[nFile], 'rb')

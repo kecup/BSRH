@@ -22,7 +22,7 @@ def get_run_data(directory: str, files, run: str):
             f = open(directory + files[file_idx], 'rb')
             with dctx.stream_reader(f) as reader:
                 file_data = pickle.load(reader)
-                data.append(file_data)
+            data.append(file_data)
     return data
 
 def graph_cpc(data):
@@ -77,17 +77,24 @@ def compute_cpc(directory: str, files, runs: list[str]):
 
     returns: Dictionary of cpcs, emittance masks and events numbers for every run.
     """
+
+    bgImage, bgPulses = get_background(directory, files[36], 50)
+    print(bgPulses)
+
     results = {}
     for i in range(len(runs)):
         run = runs[i]
-        print("Getting " + run + " data")
+        print("Analysing " + run)
         run_data = get_run_data(directory, files, run)
         mask_low = []
         mask_mid = []
         mask_high = []
         run_cpcs = []
         run_counter = 0
-        bg_image, bg_pulses = get_background(directory, files[36], 50)
+        events_counter = 0
+
+        #print('INT-gain = ', np.round(run_data[0][0].device_data['INTENSIFIER']['gain'],2))
+
 
         for file_num in range(len(run_data)):
             a = run_data[file_num]
@@ -98,9 +105,10 @@ def compute_cpc(directory: str, files, runs: list[str]):
                 pulse_length = int(event.device_data["GATE-INT"]["pulseLength"])
                 img_charge = np.sum(event.device_data["FBCT1"]["averageBunchIntensities"][delay_slots:delay_slots + pulse_length // 4][0])
                 num_of_pulses = int(event.device_data["GATE-INT"]["numberOfPulses"])
-                img = img - (num_of_pulses / bg_pulses) * bg_image
-                img_sum = np.sum(img[154:454, 264:644])
-                in_filter = 1
+                #img = img - (num_of_pulses / bgPulses) * bgImage
+                img_sum = np.sum(img[154:454, 284:684])
+                filter = event.device_data['FILTERS.B2']['channelState']
+                in_filter = pow(12.6,3*filter[0]+2*filter[1]+filter[2])
                 magic_const = 5651
 
                 cpc = (img_charge * num_of_pulses) / (img_sum * magic_const * in_filter)

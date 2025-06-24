@@ -8,8 +8,11 @@ import numpy as np
 from scipy.optimize import curve_fit, minimize
 import matplotlib.pyplot as plt
 
-from Acquisition.BWS_logging import BWS_H
+from skimage import restoration
 
+File_H = 53
+File_V = 55
+File_BSRH = 74
 
 def chi2(a, b):
     p = len(a)
@@ -19,9 +22,9 @@ def chi2(a, b):
     else:
         tmp = 0
         for i in range(p):
-            tmp += ((a[i] - b[i]) ** 2)  # /np.abs(b[i])
+            tmp += ((a[i] - b[i]) ** 2)  #/np.abs(b[i])
             # tmp += (np.abs(a[i]-b[i]))
-    return tmp
+    return tmp/p
 
 
 def gaussian(x, amp, cen, wid):  # , const):
@@ -44,9 +47,9 @@ def moving_average(a, n=3):
     return np.array(pad + list(result))
 
 
-def CoolFuncH(params, bwsArray, bsrhArray, fbctArray n=12):  # Params[0] = PSF, Params[1] = pixel size, Params[2] = (scale of bsrh) tail of the PSF, arrays come already as 1000 points from -4 to 4
+def CoolFuncH(params, bwsArray, bsrhArray, fbctArray, n=12):  # Params[0] = PSF, Params[1] = pixel size, Params[2] = (scale of bsrh) tail of the PSF, arrays come already as 1000 points from -4 to 4
     newX = np.linspace(-4, 4, 1000)
-    crop = -1 ###change here if needed
+    crop = -1#600 ###change here if needed
     tmpPSF = gaussian(newX, 1 / (params[0] * np.sqrt(2 * np.pi)), 0, params[0])
     tmpPSF = tmpPSF / np.sum(tmpPSF)
 
@@ -56,12 +59,17 @@ def CoolFuncH(params, bwsArray, bsrhArray, fbctArray n=12):  # Params[0] = PSF, 
     totalSquares = 0
     for bunch in range(n):
         bsrh = np.interp(newX, params[1] / 1000 * bsrhArray[bunch][0], bsrhArray[bunch][1])
-        bws = np.convolve(bwsArray[bunch], tmpPSF, 'same')
+        bsrh = restoration.richardson_lucy(bsrh, tmpPSF, 5,False)
+        bsrh = fbctArray[bunch]/np.sum(bsrh)*bsrh
+
+        #bws = np.convolve(bwsArray[bunch], tmpPSF, 'same')
+        bws = fbctArray[bunch]/np.sum(bwsArray[bunch])*bwsArray[bunch]
+
         # totalSquares+= chi2(params[2]*bsrh[:crop],bws[:crop])
-        totalSquares += chi2(np.sum(bws[:crop]) / np.sum(bsrh[:crop]) * bsrh[:crop], bws[:crop])
+        totalSquares += chi2(bsrh[:crop], bws[:crop])
     return totalSquares
 
-def CoolFuncV(params, bwsArray, bsrhArray, fbctArray n=12):  # Params[0] = PSF, Params[1] = pixel size, Params[2] = (scale of bsrh) tail of the PSF, arrays come already as 1000 points from -4 to 4
+def CoolFuncV(params, bwsArray, bsrhArray, fbctArray, n=12):  # Params[0] = PSF, Params[1] = pixel size, Params[2] = (scale of bsrh) tail of the PSF, arrays come already as 1000 points from -4 to 4
     newX = np.linspace(-4, 4, 1000)
     crop = -1 ###change here if needed
     tmpPSF = gaussian(newX, 1 / (params[0] * np.sqrt(2 * np.pi)), 0, params[0])
@@ -73,9 +81,15 @@ def CoolFuncV(params, bwsArray, bsrhArray, fbctArray n=12):  # Params[0] = PSF, 
     totalSquares = 0
     for bunch in range(n):
         bsrh = np.interp(newX, params[1] / 1000 * bsrhArray[bunch][0], bsrhArray[bunch][1])
+        # bsrh = restoration.richardson_lucy(bsrh, tmpPSF, 5, False)
+        bsrh = fbctArray[bunch] / np.sum(bsrh) * bsrh
+
         bws = np.convolve(bwsArray[bunch], tmpPSF, 'same')
-        totalSquares+= chi2(params[2]*bsrh[:crop],bws[:crop])
-        # totalSquares += chi2(np.sum(bws[:crop]) / np.sum(bsrh[:crop]) * bsrh[:crop], bws[:crop])
+        bws = fbctArray[bunch]/np.sum(bws)*bws
+        #bws = fbctArray[bunch]/np.sum(bwsArray[bunch])*bwsArray[bunch]
+
+        # totalSquares+= chi2(params[2]*bsrh[:crop],bws[:crop])
+        totalSquares += chi2(bsrh[:crop], bws[:crop])
     return totalSquares
 
 japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
@@ -99,24 +113,24 @@ results = {}
 #Open last file of each BWS:
 directoryH = os.path.join(DATA_PATH_BWS+'/Horizontal/2025/06/19/')#, time.strftime('%Y/%m/%d/', time.localtime()))
 filesH = os.listdir(directoryH)
-if filesH == None:
+if not filesH:
     print('There are no horizontal BWS today...')
 else:
     filesH = sorted(filesH)
     # Let's start with horizontal BWS:
     #Change to file 23
-    f = open(directoryH + filesH[60], 'rb')  # Open last file with the latest BWS profile...
+    f = open(directoryH + filesH[File_H], 'rb')  # Open last file with the latest BWS profile...
     with dctx.stream_reader(f) as reader:
         BWS_H = pickle.load(reader)
     print('BWS_H loaded')
 
 directoryV = os.path.join(DATA_PATH_BWS+'/Vertical/2025/06/19/')#, time.strftime('%Y/%m/%d/', time.localtime()))
 filesV = os.listdir(directoryV)
-if filesV == None:
+if not filesV:
     print('There are no vertical BWS today...')
 else:
     filesV = sorted(filesV)
-    g = open(directoryV + filesV[63], 'rb')
+    g = open(directoryV + filesV[File_V], 'rb')
     with dctx.stream_reader(g) as reader:
         BWS_V = pickle.load(reader)
     print('BWS_V loaded')
@@ -132,7 +146,7 @@ timeV = dt.datetime.fromtimestamp(BWS_V.value['gmtTimestampAcquireIn_ns']/1e9)
 print('BWS Acq Time H: ', timeH)
 print('BWS Acq Time V: ', timeV)
 
-count = len(filesBSRH) - 104
+count = len(filesBSRH) - File_BSRH
 while True:
     nFiles = len(filesBSRH)
     h = open(directoryBSRH+filesBSRH[nFiles-count], 'rb') #Open last known file
@@ -169,6 +183,7 @@ if count > nFiles:
 else:
     # h is the correct file! So let's get the H profiles :) - which ones??
     profilesBSRH_H = []
+    fbct_H = []
     if not bunchN:
         bunchN.append(BSRH[0].device_data['GATE-INT']['delaySlots'])
         count = 1
@@ -188,6 +203,9 @@ else:
             prof = np.sum(BSRH[start].cam_data['image2D'], axis = 0)
             prof = prof - np.mean(prof[:50])
             profilesBSRH_H.append(prof)
+            bStart = bunch
+            bStop = bunch + int(BSRH[start].device_data['GATE-INT']['numberOfPulses']/4.0)
+            fbct_H.append(np.sum(BSRH[start].device_data['FBCT1']['averageBunchIntensities'][bStart:bStop]))
 
     #Now we want to get the BWS H profiles that correspond to the BSRH ones:
     PointNumber = BWS_H.value['nbPtsPerProjInSet2']
@@ -213,33 +231,33 @@ else:
         else:
             y = Proj_in[k * count:(k + 1) * count]
             y = y - np.mean(y[:50])
-            profilesBWS_H.append(moving_average(np.asarray(y), 1)) #MOVING AVERAGE HERE, change for probably better scaling of the PSF output??
+            profilesBWS_H.append(moving_average(np.asarray(y), 3)) #MOVING AVERAGE HERE, change for probably better scaling of the PSF output??
 
-        #CHECK we have the same number of bunches in BWS and BSRH#
-        # We have the BSRH profiles and we have BWS profiles in horizontal...
-        if len(profilesBWS_H) == len(profilesBSRH_H):
-            print('The number of bunch slots in BWS and BSRH is the same...')
+    #CHECK we have the same number of bunches in BWS and BSRH#
+    # We have the BSRH profiles and we have BWS profiles in horizontal...
+    if len(profilesBWS_H) == len(profilesBSRH_H):
+        print('The number of bunch slots in BWS and BSRH is the same...')
 
-        Hbws = []
-        Hbsrh = []
-        for bunchIndex in range(len(profilesBWS_H)):
-            x = BWS_H_x
-            y = profilesBWS_H[bunchIndex]
-            out, _ = curve_fit(gaussian, x, y, (1000, 0.5, 0.35))
-            x = (x - out[1]) * hRatio
-            newY = np.interp(newX, x, y)
-            Hbws.append(newY)
+    Hbws = []
+    Hbsrh = []
+    for bunchIndex in range(len(profilesBWS_H)):
+        x = BWS_H_x
+        y = profilesBWS_H[bunchIndex]
+        out, _ = curve_fit(gaussian, x, y, (1000, 0.3, 0.28))
+        x = (x - out[1]) * hRatio
+        newY = np.interp(newX, x, y)
+        Hbws.append(newY)
 
-        for bunchIndex in range(len(profilesBSRH_H)):
-            y = np.asarray(profilesBSRH_H[bunchIndex])
-            x = np.arange(len(y))
-            out, _ = curve_fit(gaussian, x, y, (60000, 480, 25.0))
-            x = x - out[1]
-            Hbsrh.append([x, y])
+    for bunchIndex in range(len(profilesBSRH_H)):
+        y = np.asarray(profilesBSRH_H[bunchIndex])
+        x = np.arange(len(y))
+        out, _ = curve_fit(gaussian, x, y, (170000, 511, 25.0))
+        x = x - out[1]
+        Hbsrh.append([x, y])
 
-    initGuess = [0.51, 19.0, 0.00365, 1.4]
-    resultH = minimize(CoolFuncH, initGuess, args=(Hbws, Hbsrh), bounds=((0.1, 0.8), (15, 25), (0.001, 0.1), (0.1, 4)) , method = 'L-BFGS-B')
-    # print(resultH)
+    initGuess = [0.51, 18.0, 1.0, 1.4]
+    resultH = minimize(CoolFuncH, initGuess, args=(Hbws, Hbsrh, fbct_H), bounds=((0.1, 0.8), (15, 45), (0.1, 2.0), (0.1, 4))) #, method = 'L-BFGS-B')
+    #print(resultH)
 
     out = resultH.x
     results["horizontal"] = (out[0], out[1])
@@ -256,16 +274,18 @@ else:
 
     for slot, bunch in enumerate(plotList):
         bsrh = np.interp(newX, out[1] / 1000 * Hbsrh[bunch][0], Hbsrh[bunch][1])
+        bsrh = fbct_H[bunch] / np.sum(bsrh) * bsrh
         bws = np.convolve(Hbws[bunch], tmpPSF, 'same')
-        scale = (np.sum(bws) / np.sum(bsrh)) * bsrh
-        ax[slot].plot(scale, label="BSRH")
+        bws = fbct_H[bunch] / np.sum(bws) * bws
+        ax[slot].plot(bsrh, label="BSRH")
         ax[slot].plot(bws, label="BWS")
+        ax[slot].legend()
         # ax[bunch].set_title("Bunch: " + str(bunch))
 
     # plt.show()
 
 #Now vertical
-count = len(filesBSRH) - 104
+count = len(filesBSRH) - File_BSRH
 while True:
     nFiles = len(filesBSRH)
     h = open(directoryBSRH + filesBSRH[nFiles - count], 'rb')  # Open last known file
@@ -301,6 +321,7 @@ if count > nFiles:
 else:
     # h is the correct file! So let's get the H profiles :) - which ones??
     profilesBSRH_V = []
+    fbct_V = []
     if not bunchN:
         bunchN.append(BSRH[0].device_data['GATE-INT']['delaySlots'])
         count = 1
@@ -320,6 +341,9 @@ else:
             prof = np.sum(BSRH[start].cam_data['image2D'], axis=1)
             prof = prof - np.mean(prof[:50])
             profilesBSRH_V.append(prof)
+            bStart = bunch
+            bStop = bunch + int(BSRH[start].device_data['GATE-INT']['numberOfPulses'] / 4.0)
+            fbct_V.append(np.sum(BSRH[start].device_data['FBCT1']['averageBunchIntensities'][bStart:bStop]))
 
     # Now we want to get the BWS H profiles that correspond to the BSRH ones:
     PointNumber = BWS_V.value['nbPtsPerProjInSet2']
@@ -347,31 +371,31 @@ else:
             y = y - np.mean(y[:50])
             profilesBWS_V.append(moving_average(np.asarray(y), 1))  #MOVING AVERAGE HERE, change for probably better scaling of the PSF output??
 
-        # CHECK we have the same number of bunches in BWS and BSRH#
-        # We have the BSRH profiles and we have BWS profiles in vertical...
-        if len(profilesBWS_V) == len(profilesBSRH_V):
-            print('The number of bunch slots in BWS and BSRH is the same...')
+    # CHECK we have the same number of bunches in BWS and BSRH#
+    # We have the BSRH profiles and we have BWS profiles in vertical...
+    if len(profilesBWS_V) == len(profilesBSRH_V):
+        print('The number of bunch slots in BWS and BSRH is the same...')
 
-        Vbws = []
-        Vbsrh = []
-        for bunchIndex in range(len(profilesBWS_V)):
-            x = BWS_V_x
-            y = profilesBWS_V[bunchIndex]
-            out, _ = curve_fit(gaussian, x, y, (1000, 0.5, 0.35))
-            x = (x - out[1]) * hRatio
-            newY = np.interp(newX, x, y)
-            Vbws.append(newY)
+    Vbws = []
+    Vbsrh = []
+    for bunchIndex in range(len(profilesBWS_V)):
+        x = BWS_V_x
+        y = profilesBWS_V[bunchIndex]
+        out, _ = curve_fit(gaussian, x, y, (1000, 0.5, 0.35))
+        x = (x - out[1]) * hRatio
+        newY = np.interp(newX, x, y)
+        Vbws.append(newY)
 
-        for bunchIndex in range(len(profilesBSRH_V)):
-            y = np.asarray(profilesBSRH_V[bunchIndex])
-            x = np.arange(len(y))
-            out, _ = curve_fit(gaussian, x, y, (60000, 480, 25.0))
-            x = x - out[1]
-            Vbsrh.append([x, y])
+    for bunchIndex in range(len(profilesBSRH_V)):
+        y = np.asarray(profilesBSRH_V[bunchIndex])
+        x = np.arange(len(y))
+        out, _ = curve_fit(gaussian, x, y, (60000, 480, 25.0))
+        x = x - out[1]
+        Vbsrh.append([x, y])
 
-    initGuess = [0.27, 19.5, 0.00365, 1.4]
-    resultV = minimize(CoolFuncV, initGuess, args=(Vbws, Vbsrh),bounds=((0.1, 0.6), (10, 25), (0.0001, 0.01), (0.1, 4)))  # , method = 'L-BFGS-B')
-    # print(resultV)
+    initGuess = [0.27, 19.5, 1, 1.4]
+    resultV = minimize(CoolFuncV, initGuess, args=(Vbws, Vbsrh, fbct_V),bounds=((0.1, 0.5), (10, 22), (0.1, 2.0), (0.1, 4)))  # , method = 'L-BFGS-B')
+    print(resultV)
 
     out = resultV.x
     results["vertical"] = (out[0], out[1])
@@ -388,10 +412,12 @@ else:
 
     for slot, bunch in enumerate(plotList):
         bsrh = np.interp(newX, out[1] / 1000 * Vbsrh[bunch][0], Vbsrh[bunch][1])
+        bsrh = fbct_V[bunch]/np.sum(bsrh)*bsrh
         bws = np.convolve(Vbws[bunch], tmpPSF, 'same')
-        scale = (np.sum(bws) / np.sum(bsrh)) * bsrh #THIS IS NOT OK....
-        ax[slot].plot(scale, label="BSRH")
+        bws = fbct_V[bunch]/np.sum(bws)*bws
+        ax[slot].plot(bsrh, label="BSRH")
         ax[slot].plot(bws, label="BWS")
+        ax[slot].legend()
         # ax[bunch].set_title("Bunch: " + str(bunch))
 
     print("Results: (PSF, Pixel Size)")

@@ -36,15 +36,15 @@ def graph_cpc(data):
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
     axes = axes.flatten()  # flatten in case of 2D array even if 1D needed
 
-    colors = ["orange", "green", "skyblue", "purple"]
-    labels  = ["bunch 0", "bunch 40", "bunch 80", "bunch 120"]
+    colors = ["orange", "green", "skyblue", "purple", "pink"]
+    labels  = ["bunch 0", "bunch 40", "bunch 80", "bunch 120", "bunch 160"]
 
     for idx, (run_num, run_data) in enumerate(data.items()):
         ax = axes[idx]
         events = run_data['events']
         cpc = run_data['cpcs']
 
-        for mask_idx, mask_name in enumerate(['mask_0', 'mask_40', 'mask_80', 'mask_120']):
+        for mask_idx, mask_name in enumerate(['mask_0', 'mask_40', 'mask_80', 'mask_120', 'mask_160']):
             mask = run_data[mask_name]
             ax.scatter(
                 [events[i] for i in mask],  # x-axis values (events)
@@ -82,6 +82,7 @@ def compute_cpc(directory: str, files, runs: list[str]):
         mask_40 = []
         mask_80 = []
         mask_120 = []
+        mask_160 = []
         run_cpcs = []
         run_counter = 0
         bg_image, bg_pulses = get_background(directory, files[36], 50)
@@ -108,6 +109,8 @@ def compute_cpc(directory: str, files, runs: list[str]):
                     mask_80.append(run_counter)
                 elif delay_slots == 120:
                     mask_120.append(run_counter)
+                elif delay_slots == 160:
+                    mask_160.append(run_counter)
                 run_cpcs.append(cpc)
                 run_counter += 1
         run_events = list(range(run_counter))
