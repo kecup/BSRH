@@ -11,9 +11,9 @@ import matplotlib.pyplot as plt
 from scipy import stats
 from skimage import restoration
 
-File_H = 47
-File_V = 51
-File_BSRH = 54
+File_H = 60
+File_V = 63
+File_BSRH = 104
 
 def chi2(a, b):
     p = len(a)
@@ -25,7 +25,7 @@ def chi2(a, b):
         for i in range(p):
             tmp += ((a[i] - b[i]) ** 2)  #/np.abs(b[i])
             # tmp += (np.abs(a[i]-b[i]))
-    return tmp/p
+    return tmp
 
 
 def gaussian(x, amp, cen, wid):  # , const):
@@ -50,8 +50,8 @@ def moving_average(a, n=3):
 
 def CoolFuncH(params, bwsArray, bsrhArray, fbctArray, n=12):  # Params[0] = PSF, Params[1] = pixel size, Params[2] = (scale of bsrh) tail of the PSF, arrays come already as 1000 points from -4 to 4
     newX = np.linspace(-4, 4, 1000)
-    crop = 570#600 ###change here if needed
-    tmpPSF = gaussian(newX, 1 / (params[0] * np.sqrt(2 * np.pi)), 0, params[0])
+    crop = 550#600 ###change here if needed
+    tmpPSF = gaussian(newX, 1, 0, params[0])
     tmpPSF = tmpPSF / np.sum(tmpPSF)
 
     # tmpPSF = specGauss(newX, 1, 0, params[0], params[3])
@@ -61,19 +61,20 @@ def CoolFuncH(params, bwsArray, bsrhArray, fbctArray, n=12):  # Params[0] = PSF,
     for bunch in range(n):
         bsrh = np.interp(newX, params[1] / 1000 * bsrhArray[bunch][0], bsrhArray[bunch][1])
         #bsrh = restoration.richardson_lucy(bsrh, tmpPSF, 5,False)
-        bsrh = fbctArray[bunch]/np.sum(bsrh)*bsrh
+        #bsrh = fbctArray[bunch]/np.sum(bsrh)*bsrh
 
         bws = np.convolve(bwsArray[bunch], tmpPSF, 'same')
-        bws = fbctArray[bunch]/np.sum(bwsArray[bunch])*bwsArray[bunch]
+        #bws = fbctArray[bunch]/np.sum(bwsArray[bunch])*bwsArray[bunch]
 
-        # totalSquares+= chi2(params[2]*bsrh[:crop],bws[:crop])
-        totalSquares += chi2(bsrh[:crop], bws[:crop])
+        bsrh = np.sum(bws[:crop]) / np.sum(bsrh[:crop]) * bsrh
+        totalSquares+= chi2(params[2]*bsrh[:crop],bws[:crop])
+        # totalSquares += chi2(bsrh[:crop], bws[:crop])
     return totalSquares
 
 def CoolFuncV(params, bwsArray, bsrhArray, fbctArray, n=12):  # Params[0] = PSF, Params[1] = pixel size, Params[2] = (scale of bsrh) tail of the PSF, arrays come already as 1000 points from -4 to 4
     newX = np.linspace(-4, 4, 1000)
     crop = -1 ###change here if needed
-    tmpPSF = gaussian(newX, 1 / (params[0] * np.sqrt(2 * np.pi)), 0, params[0])
+    tmpPSF = gaussian(newX, 1, 0, params[0])
     tmpPSF = tmpPSF / np.sum(tmpPSF)
 
     # tmpPSF = specGauss(newX, 1, 0, params[0], params[3])
@@ -83,13 +84,14 @@ def CoolFuncV(params, bwsArray, bsrhArray, fbctArray, n=12):  # Params[0] = PSF,
     for bunch in range(n):
         bsrh = np.interp(newX, params[1] / 1000 * bsrhArray[bunch][0], bsrhArray[bunch][1])
         # bsrh = restoration.richardson_lucy(bsrh, tmpPSF, 5, False)
-        bsrh = fbctArray[bunch] / np.sum(bsrh) * bsrh
+        #bsrh = fbctArray[bunch] / np.sum(bsrh) * bsrh
 
         bws = np.convolve(bwsArray[bunch], tmpPSF, 'same')
-        bws = fbctArray[bunch]/np.sum(bws)*bws
+        #bws = fbctArray[bunch]/np.sum(bws)*bws
 
-        # totalSquares+= chi2(params[2]*bsrh[:crop],bws[:crop])
-        totalSquares += chi2(bsrh[:crop], bws[:crop])
+        bsrh = np.sum(bws)/np.sum(bsrh)*bsrh
+        totalSquares+= chi2(params[2]*bsrh[:crop],bws[:crop])
+        # totalSquares += chi2(bsrh[:crop], bws[:crop])
     return totalSquares
 
 japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
@@ -100,8 +102,8 @@ DATA_PATH_BSRH = '/user/jpucek/BSRH/Data'
 
 bunchN = []
 
-hRatio = 1.008
-vRatio = 0.9363
+hRatio = 1.023
+vRatio = 0.936
 
 profilesBSRH_H = []
 profilesBWS_H = []
@@ -231,7 +233,7 @@ else:
         else:
             y = Proj_in[k * count:(k + 1) * count]
             y = y - np.mean(y[:50])
-            profilesBWS_H.append(moving_average(np.asarray(y), 3)) #MOVING AVERAGE HERE, change for probably better scaling of the PSF output??
+            profilesBWS_H.append(moving_average(np.asarray(y), 1)) #MOVING AVERAGE HERE, change for probably better scaling of the PSF output??
 
     #CHECK we have the same number of bunches in BWS and BSRH#
     # We have the BSRH profiles and we have BWS profiles in horizontal...
@@ -242,9 +244,9 @@ else:
     Hbsrh = []
     for bunchIndex in range(len(profilesBWS_H)):
         x = BWS_H_x
-        y = profilesBWS_H[bunchIndex]
-        out, _ = curve_fit(gaussian, x, y, (1000, 0.3, 0.28))
-        x = (x - out[1]) * hRatio
+        y = profilesBWS_H[bunchIndex][:]
+        out, _ = curve_fit(gaussian, x, y, (1000, 0.3, 0.28)) # not easy to change the limits here...
+        x = (x - out[1]) * hRatio #Seems to be ok - array that shifts the zero and then rescales to the size at the BSRH...
         newY = np.interp(newX, x, y)
         Hbws.append(newY)
 
@@ -264,26 +266,34 @@ else:
     initBSRH = [170000, 0.0, 25.0]
     for bindex in range(len(Hbws)):
         res, _ = curve_fit(gaussian, newX, Hbws[bindex], initBWS) # This has physical units from -4 to 4 mm
-        sigmaBWS_H.append(res[2])
+        sigmaBWS_H.append(res[2]*hRatio)
 
         res, _ = curve_fit(gaussian, Hbsrh[bindex][0][:570], Hbsrh[bindex][1][:570]) # This has not physical units so px...
         sigmaBSRH_H.append(res[2])
 
     slope, intercept, r, p, std_err = stats.linregress(np.asarray(sigmaBWS_H)**2, np.asarray(sigmaBSRH_H)**2)
-    print('Magnification = ', np.sqrt(1/slope)*1e3, 'um/px, PSF = ', np.sqrt(intercept/slope)*1e3, 'um')
+    hPx_s = np.round(np.sqrt(1/slope)*1e3,2)
+    hPSF_s = np.round(np.sqrt(intercept/slope),3)
 
     plt.figure(11)
     plt.plot(np.asarray(sigmaBWS_H) ** 2, np.asarray(sigmaBSRH_H) ** 2, 'o')
+    plotX = np.arange(np.min(sigmaBWS_H)**2, np.max(sigmaBWS_H)**2, 1000)
+    plt.plot(plotX, slope*plotX+intercept)
 
-    initGuess = [np.sqrt(intercept/slope), np.sqrt(1/slope)*1e3, 1.0, 1.4]
-    resultH = minimize(CoolFuncH, initGuess, args=(Hbws, Hbsrh, fbct_H), bounds=((0.1, 0.8), (15, 45), (0.1, 2.0), (0.1, 4))) #, method = 'L-BFGS-B')
-    #print(resultH)
+    initGuess = [np.sqrt(intercept/slope), np.sqrt(1/slope)*1e3, 1.0, 1]
+    resultH = minimize(CoolFuncH, initGuess, args=(Hbws, Hbsrh, fbct_H), bounds=((0.1, 0.8), (15, 45), (0.1, 2.0), (0, 5)), method = 'Powell') #method = 'L-BFGS-B')
+
 
     out = resultH.x
-    results["horizontal"] = (out[0], out[1])
-    print('PSF = ', np.round(out[0],3))
-    print('Pixel size = ', np.round(out[1],2))
-    print('Proportionality factor = ', np.round(out[2],5))
+    hPx_c = np.round(out[1],2)
+    hPSF_c = np.round(out[0],3)
+    #print(resultH)
+
+    # out = resultH.x
+    # results["horizontal"] = (out[0], out[1])
+    # print('PSF = ', np.round(out[0],3))
+    # print('Pixel size = ', np.round(out[1],2))
+    # print('Proportionality factor = ', np.round(out[2],5))
 
     plotList = [0, 1, 10, 11, 24, 25]
     fig, ax = plt.subplots(len(plotList), figsize=(5, 10))
@@ -402,7 +412,7 @@ else:
         x = BWS_V_x
         y = profilesBWS_V[bunchIndex]
         out, _ = curve_fit(gaussian, x, y, (1000, 0.5, 0.35))
-        x = (x - out[1]) * hRatio
+        x = (x - out[1]) * vRatio
         newY = np.interp(newX, x, y)
         Vbws.append(newY)
 
@@ -417,32 +427,38 @@ else:
     sigmaBSRH_V = []
     for bindex in range(len(Hbws)):
         res, _ = curve_fit(gaussian, newX, Vbws[bindex], initBWS) # This has physical units from -4 to 4 mm
-        sigmaBWS_V.append(res[2])
+        sigmaBWS_V.append(res[2]*vRatio)
 
         res, _ = curve_fit(gaussian, Vbsrh[bindex][0], Vbsrh[bindex][1]) # This has not physical units so px...
         sigmaBSRH_V.append(res[2])
 
     slope, intercept, r, p, std_err = stats.linregress(np.asarray(sigmaBWS_V)**2, np.asarray(sigmaBSRH_V)**2)
-    print('Magnification = ', np.sqrt(1/slope)*1e3, 'um/px, PSF = ', np.sqrt(intercept/slope)*1e3, 'um')
+    # print('Magnification = ', np.sqrt(1/slope)*1e3, 'um/px, PSF = ', np.sqrt(intercept/slope)*1e3, 'um')
+
+    vPx_s = np.round(np.sqrt(1 / slope) * 1e3, 2)
+    vPSF_s = np.round(np.sqrt(intercept / slope), 3)
 
     plt.figure(13)
     plt.plot(np.asarray(sigmaBWS_V)**2, np.asarray(sigmaBSRH_V)**2, 'o')
 
-    initGuess = [np.sqrt(intercept/slope)*1e3, np.sqrt(1/slope)*1e3, 1, 1.4]
-    resultV = minimize(CoolFuncV, initGuess, args=(Vbws, Vbsrh, fbct_V),bounds=((0.1, 0.5), (10, 22), (0.1, 2.0), (0.1, 4)))  # , method = 'L-BFGS-B')
-    #print(resultV)
-
+    initGuess = [np.sqrt(intercept/slope), np.sqrt(1/slope)*1e3, 1, 1]
+    resultV = minimize(CoolFuncV, initGuess, args=(Vbws, Vbsrh, fbct_V),bounds=((0.1, 0.55), (10, 25), (0.1, 2.0), (0, 5)), method = 'Powell')  # , method = 'L-BFGS-B')
     out = resultV.x
-    results["vertical"] = (out[0], out[1])
-    print('PSF = ', np.round(out[0],3))
-    print('Pixel size = ', np.round(out[1],2))
-    print('Proportionality factor = ', np.round(out[2],5))
+
+    vPx_c = np.round(out[1], 2)
+    vPSF_c = np.round(out[0], 3)
+
+    # out = resultV.x
+    # results["vertical"] = (out[0], out[1])
+    # print('PSF = ', np.round(out[0],3))
+    # print('Pixel size = ', np.round(out[1],2))
+    # print('Proportionality factor = ', np.round(out[2],5))
 
     plotList = [0,1,10,11,24,25]
     fig, ax = plt.subplots(len(plotList), figsize=(5, 10))
     fig.suptitle("Vertical Comparison of BSRH and BWS Profiles")
 
-    tmpPSF = gaussian(newX, 1 / (out[0] * np.sqrt(2 * np.pi)), 0, out[0])
+    tmpPSF = gaussian(newX, 1, 0, out[0])
     tmpPSF = tmpPSF / np.sum(tmpPSF)
 
     for slot, bunch in enumerate(plotList):
@@ -455,6 +471,10 @@ else:
         ax[slot].legend()
         # ax[bunch].set_title("Bunch: " + str(bunch))
 
-    print("Results: (PSF, Pixel Size)")
-    print(results)
+    print('Horizontal:')
+    print('Magnification = ', hPx_s, '/', hPx_c, 'um/px, PSF = ', hPSF_s*1e3, '/', hPSF_c*1e3, ' um')
+    print('Vertical:')
+    print('Magnification = ', vPx_s, '/', vPx_c, 'um/px, PSF = ', vPSF_s*1e3, '/', vPSF_c*1e3, ' um')
+    #print("Results: (PSF, Pixel Size)")
+    #print(results)
     plt.show()
