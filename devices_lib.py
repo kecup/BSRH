@@ -12,25 +12,33 @@ class Pneumatics:
         self.name = name
         self.slot = slot
         self.japc = japc
+        self.state = []
 
     def getPosition(self): # This will have to provide the full channel state that will be used to move the targets...
         state = self.japc.getParam(self.name+'/Setting#channelState')
+        self.state = state
         return state[self.slot]
 
     def changePosition(self): #If in we invert to out, if out we change to in...
-        state = self.getPosition()
+        position = self.getPosition()
 
-        if state[self.slot] == 1:
-            state[self.slot] = 0
+        if position == 1:
+            self.state[self.slot] = 0
         else:
-            state[self.slot] = 1
-        self.japc.setParam(self.name+'/Setting#channelState', state)
+            self.state[self.slot] = 1
+        self.japc.setParam(self.name+'/Setting#channelState', self.state)
+
+    def isBusy(self): #This is just experimental!
+        sleep(0.5)
+        return False
 
 class Motor:
-    def __init__(self, name, japc, backlash_steps=0):
+    def __init__(self, name, japc, backlash_steps=0, inPos = None, outPos = None): ##inPos/outPos should be provided in case one wants to use the changePosition function
         self.name = name
         self.position = -1
         self.desiredAbsPosition = -1
+        self.inPos = inPos
+        self.outPos = outPos
         self.busy = True
         self.lastMotionRel = 0
         self.backlash_steps = backlash_steps
@@ -93,20 +101,28 @@ class Motor:
         else:
             print('Cannot comply, motor is busy!')
 
+    def changePosition(self):
+        if self.inPos is not None and self.outPos is not None: #Logic is - if out send in, if anything else, send out...
+            if self.outPos == self.position: #Send in
+                self.setAbsPosition(self.inPos)
+            else:#Send out
+                self.setAbsPosition(self.outPos)
+        else:
+            print('In/out not provided, doing nothing')
+
 
 class Camera:
-    def __init__(self, name, japc, inPos=None, outPos=None, motorX=None,
-                 motorY=None):  ## Provide motors as Class and positions in steps...
+    def __init__(self, name, japc, motorX=None, motorY=None):  ## Provide motors as Class and positions in steps...
         self.name = name
         self.motorX = motorX
         self.motorY = motorY
         self.japc = japc
-        self.inPos = inPos
-        self.outPos = outPos
         self.updated = dt.datetime.now()
         self.image = []
-        if inPos != None and outPos != None:
-            self.movableAxis = len(inPos)
+        if motorX is not None:
+            self.movableAxis = 1
+            if motorY is not None:
+                self.movableAxis = 2
         else:
             self.movableAxis = 0
         self.isIn = -1
@@ -119,23 +135,16 @@ class Camera:
         self.image = value
         self.updated = dt.datetime.now()
 
-    def checkIn(self):
-        output = False
-        if (self.movableAxis > 0 and motorX.getPosition() == inPos[0]) and (
-                self.movableAxis == 1 or motorY.getPosition() == inPos[1]) or self.movableAxis == 0:
-            output = True
-        return output
-
-    def captureImage(self, MoveOut=False):  ## Should think whether subscription is the way forward or not...
+    def captureImage(self):  ## Should think whether subscription is the way forward or not...
         lastUpdate = self.updated
-        if self.checkIn() == False:  # Checking if the camera/target is in.
+        if self.movableAxis>0:  # Checking if the camera/target is in.
             ##This means that we have to move motor(s)
-            motorX.setAbsPosition(inPos[0])  # at least one motor must be present
-            if movableAxis == 2:
-                motorY.setAbsPosition(inPos[1])
-                while motorX.isBusy() or motorY.isBusy():
+            self.motorX.changePosition()  # at least one motor must be present
+            if self.movableAxis == 2:
+                self.motorY.changePosition()
+                while self.motorX.isBusy() or self.motorY.isBusy():
                     sleep(0.2)
-            while motorX.isBusy():
+            while self.motorX.isBusy():
                 sleep(0.2)
 
         cycle = 0
@@ -150,10 +159,10 @@ class Camera:
             outImage = self.image
 
         ##Testing to send the position out again?
-        if self.movableAxis > 0 and MoveOut == True:
-            motorX.setAbsPosition(outPos[0])  # at least one motor must be present
-            if movableAxis == 2:
-                motorY.setAbsPosition(outPos[1])
+        if self.movableAxis > 0:
+            self.motorX.changePosition()  # at least one motor must be present
+            if self.movableAxis == 2:
+                self.motorY.changePosition()
 
         return outImage
 

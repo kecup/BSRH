@@ -22,17 +22,40 @@ token = client.login_kerberos()
 japc.rbacLogin(token=token)
 
 ##We should have most components ready, let's get data for training:
-##BackLash
 
+##Please make sure that initially the targets are in OUT position (as we do not track whether they are in or out...)
+## Note, currently there are no filters used, you need to move the filter wheel in order not to saturate the CM and you must remove the filter for the MonLS...
+
+##Targets
 TargetEA = Pneumatics('LHC.BSRH.IN-OUT.B2', japc, 2)
-TargetM3 = Motor('LHC.BSRH.TARGET-M3-TS100.B2', japc, 0)
+TargetM3 = Motor('LHC.BSRH.TARGET-M3-TS100.B2', japc, 0, 0, 42661)
 TargetLS = Pneumatics('LHC.BSRH.IN-OUT.B2', japc, 3)
 
-FoldingX = Motor('LHC.BSRH.FOLDING-H.B2', japc, 45) 
+TargetCMx = Motor('LHC.BSRH.CMASK-X-TSZ100.B2', japc, 0, 60113, 40633)
+TargetCMy = Motor('LHC.BSRH.CMASK-Y-TSZ100.B2', japc, 0, 11940, 12040)
+
+##Motors
+M1x = Motor('LHC.BSRH.M1-X-TS50.B2', japc, 0) ##Carefull, moves only from 0 to 30mm (12000 steps)
+M1Phi = Motor('LHC.BSRH.STEERING-H.B2', japc, 0) #Backlash not measured!!
+M1Theta = Motor('LHC.BSRH.STEERING-V.B2', japc, 0) #Backlash not measured!!
+
+M3x = Motor('LHC.BSRH.M3-X-TSZ100.B2', japc, 0) #Backlash not measured!!
+M3y = Motor('LHC.BSRH.M3-Y-TSZ100.B2', japc, 0) #Backlash not measured!!
+M3Theta = Motor('LHC.BSRH.M3-THETA.B2', japc, 0)# Backlash not measured!!
+M3Phi = Motor('LHC.BSRH.M3-PHI.B2', japc, 0) #Backlash not measured!!
+
+FoldingX = Motor('LHC.BSRH.FOLDING-H.B2', japc, 45)
 FoldingY = Motor('LHC.BSRH.FOLDING-V.B2', japc,0)
 
-MonEA = Camera
-cam = Camera('LHC.BSRH.BTVDC-CAM.MAIN', japc)
+##Cameras
+MonEA = Camera('LHC.BSRH.MON.EA.B2', japc, TargetEA)
+MonM3 = Camera('LHC.BSRH.MON.TGTM3.B2', japc) #Add target in case you want to look further than TGTM3 in Position M2
+MonCM = Camera('LHC.BSRH.CAM.CM.B2', japc, TargetCMx, TargetCMy)
+MonLS = Camera('LHC.BSRH.MON.LS.B2', japc, TargetLS)
+
+#cam = Camera('LHC.BSRH.BTVDC-CAM.MAIN', japc)
+
+
 
 MotorRangeX = 50#How many steps the motor can make from reference to keep the image on the camera
 MotorRangeY = 50
