@@ -133,7 +133,7 @@ TrainingFile.close()
 ################### for main cam end #####################
 
 def get_steps():
-  
+  # this needs some brain cells
   return 0, 0, 0
 
 def move_motors(stepsX, stepsPhi, stepsTheta):
@@ -174,9 +174,13 @@ def measure_c2():
 
 
 # How many steps the motor can make from reference to keep the image on the camera
-motor_range_x = 15 # is it in mm?
-motor_range_phi = 43000 # in steps
-motor_range_theta = 27241 # in steps
+motor_range_x_t1 = 15 # is it in mm?
+motor_range_phi_t1 = 43000 # in steps
+motor_range_theta_t1 = 27241 # in steps
+
+motor_range_x_t2 = 15 # is it in mm?
+motor_range_phi_t2 = 5000 # in steps
+motor_range_theta_t2 = 3000 # in steps
 
 japc.startSubscriptions()
 sleep(2)
@@ -223,22 +227,7 @@ for i in range(iterations):
   t1X, t1Y = MonEA.getBeamPosition()
 
   if t1X != -1 or t1Y != -1 or t2X != -1 or t2Y != -1:
-    row = []
-    row.append(cam1X)
-    row.append(cam1Y)
-    row.append(cam2X)
-    row.append(cam2Y)
-    row.append(mX)
-    row.append(mPhi)
-    row.append(mTheta)
-    row.append(t1X)
-    row.append(t1Y)
-    row.append(t2X)
-    row.append(t2Y)
-    row.append(stepsX)
-    row.append(stepsPhi)
-    row.append(stepsTheta)
-
+    row = [cam1X, cam1Y, cam2X, cam2Y, mX, mPhi, mTheta, t1X, t1Y, t2X, t2Y, stepsX, stepsPhi, stepsTheta]
     writeTraining.writerow(row)
 
   # cam1X = t1X
