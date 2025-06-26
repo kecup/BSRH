@@ -7,6 +7,25 @@ from time import sleep
 def gaussian(x, amp, cen, wid, const):
     return amp * np.exp(-(x - cen) ** 2 / (2 * wid ** 2)) + const
 
+class Pneumatics:
+    def __init__(self, name, japc, slot):
+        self.name = name
+        self.slot = slot
+        self.japc = japc
+
+    def getPosition(self): # This will have to provide the full channel state that will be used to move the targets...
+        state = self.japc.getParam(self.name+'/Setting#channelState')
+        return state[self.slot]
+
+    def changePosition(self): #If in we invert to out, if out we change to in...
+        state = self.getPosition()
+
+        if state[self.slot] == 1:
+            state[self.slot] = 0
+        else:
+            state[self.slot] = 1
+        self.japc.setParam(self.name+'/Setting#channelState', state)
+
 class Motor:
     def __init__(self, name, japc, backlash_steps=0):
         self.name = name
