@@ -41,8 +41,8 @@ bunchStart = 160
 bunchStop = 800
 
 now = dt.datetime.now()
-start = dt.datetime.combine(dt.date(2025,6,19),dt.time(15,17,9))
-stop = dt.datetime.combine(dt.date(2025,6,19),dt.time(15,18,21))
+start = dt.datetime.combine(dt.date(2025,6,19),dt.time(15,25,9))
+stop = dt.datetime.combine(dt.date(2025,6,19),dt.time(16,10,21))
 
 scanNumber(directoryV, start, stop)
 scanNumber(directoryH, start, stop)

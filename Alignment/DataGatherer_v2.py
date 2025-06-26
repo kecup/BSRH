@@ -7,6 +7,7 @@ import csv
 import random
 import sys
 import os
+
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, parent_dir)
 from devices_lib import Camera, Motor, Pneumatics
@@ -27,11 +28,11 @@ japc.rbacLogin(token=token)
 ## Note, currently there are no filters used, you need to move the filter wheel in order not to saturate the CM and you must remove the filter for the MonLS...
 
 ##Targets
-TargetEA = Pneumatics('LHC.BSRH.IN-OUT.B2', japc, 2) # target1
+TargetEA = Pneumatics('LHC.BSRH.IN-OUT.B2', japc, 1) # target1
 TargetM3 = Motor('LHC.BSRH.TARGET-M3-TS100.B2', japc, 0, 0, 42661) # target 2?
 # TargetCMx = Motor('LHC.BSRH.CMASK-X-TSZ100.B2', japc, 0, 60113, 40633)
 # TargetCMy = Motor('LHC.BSRH.CMASK-Y-TSZ100.B2', japc, 0, 11940, 12040)
-# TargetLS = Pneumatics('LHC.BSRH.IN-OUT.B2', japc, 3)
+# TargetLS = Pneumatics('LHC.BSRH.IN-OUT.B2', japc, 2)
 
 ##Motors
 M1x = Motor('LHC.BSRH.M1-X-TS50.B2', japc, 0) ##Carefull, moves only from 0 to 30mm (12000 steps)
@@ -47,7 +48,7 @@ M1Theta = Motor('LHC.BSRH.STEERING-V.B2', japc, 100) #Backlash not measured!!
 # FoldingY = Motor('LHC.BSRH.FOLDING-V.B2', japc,0)
 
 ##Cameras
-MonEA = Camera('LHC.BSRH.MON.EA.B2', japc, TargetEA) # camera 1
+MonEA = Camera('LHC.BSRH.MON.EA.B2', japc, motorX=TargetEA, returnTarget=False) # camera 1
 # MonM3 = Camera('LHC.BSRH.MON.TGTM3.B2', japc, TargetM3) #Add target in case you want to look further than TGTM3 in Position M2
 MonM3 = Camera('LHC.BSRH.MON.TGTM3.B2', japc) # camera 2
 # MonCM = Camera('LHC.BSRH.CAM.CM.B2', japc, TargetCMx, TargetCMy)
@@ -114,11 +115,11 @@ def measure_c2():
 
 
 # How many steps the motor can make from reference to keep the image on the camera
-motor_range_x_t1 = 15 # is it in mm?
+motor_range_x_t1 = 6000 # is it in mm?
 motor_range_phi_t1 = 43000 # in steps
 motor_range_theta_t1 = 27241 # in steps
 
-motor_range_x_t2 = 15 # is it in mm?
+motor_range_x_t2 = 6000 # is it in mm?
 motor_range_phi_t2 = 5000 # in steps
 motor_range_theta_t2 = 3000 # in steps
 
@@ -129,21 +130,19 @@ ref_x = M1x.getPosition()
 ref_phi = M1Phi.getPosition()
 ref_theta = M1Theta.getPosition()
 
-# target 1 IN at the start
-PosX, PosY = MonEA.getBeamPosition()
 
 ##Open a csv file that we will use to save the training data:
-TrainingFile = open('target1_target2_data.csv', 'a')
+TrainingFile = open('lhc_t1_t2_data_v1.csv', 'a')
 writeTraining = csv.writer(TrainingFile)
 header = ["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y", "stepsX", "stepsPhi", "stepsTheta"]
 writeTraining.writerow(header)
 
-
 iterations = 20
 
 # make sure target 1 is IN
-if TargetEA.getPosition() == 0: # 0 or 1 is IN/OUT
+if TargetEA.getPosition() == 0: # 0 is OUT and 1 is IN
   TargetEA.changePosition()
+  sleep(3)
 
 for i in range(iterations):
 
@@ -153,8 +152,9 @@ for i in range(iterations):
   mPhi = M1Phi.getPosition()
   mTheta = M1Theta.getPosition()
 
-  TargetEA.changePosition()
-
+  print("Identifikator 1: ", MonEA.motorX.isIn())
+  MonEA.motorX.changePosition()
+  sleep(2)
   cam2X, cam2Y = measure_c2()
 
   stepsX, stepsPhi, stepsTheta = get_steps()
@@ -162,13 +162,15 @@ for i in range(iterations):
 
   t2X, t2Y = MonM3.getBeamPosition()
 
-  TargetEA.changePosition()
+  #MonEA.motorX.changePosition()  # Line written by Lucie....
+  print("Identifikator 2: ", MonEA.motorX.isIn())
 
   t1X, t1Y = MonEA.getBeamPosition()
 
   if t1X != -1 or t1Y != -1 or t2X != -1 or t2Y != -1:
     row = [cam1X, cam1Y, cam2X, cam2Y, mX, mPhi, mTheta, t1X, t1Y, t2X, t2Y, stepsX, stepsPhi, stepsTheta]
     writeTraining.writerow(row)
+
 
   # cam1X = t1X
   # cam1Y = t1Y

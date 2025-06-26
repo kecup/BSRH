@@ -3,6 +3,8 @@ import numpy as np
 from scipy.optimize import curve_fit
 from time import sleep
 
+from sympy import false
+
 
 def gaussian(x, amp, cen, wid, const):
     return amp * np.exp(-(x - cen) ** 2 / (2 * wid ** 2)) + const
@@ -13,11 +15,15 @@ class Pneumatics:
         self.slot = slot
         self.japc = japc
         self.state = []
+        #self.getPosition()
 
     def getPosition(self): # This will have to provide the full channel state that will be used to move the targets...
         state = self.japc.getParam(self.name+'/Setting#channelState')
-        self.state = state
+        self.state = np.asarray(state)
         return state[self.slot]
+
+    def isIn(self):
+        return self.getPosition()
 
     def changePosition(self): #If in we invert to out, if out we change to in...
         position = self.getPosition()
@@ -26,10 +32,11 @@ class Pneumatics:
             self.state[self.slot] = 0
         else:
             self.state[self.slot] = 1
-        self.japc.setParam(self.name+'/Setting#channelState', self.state)
+        self.japc.setParam(self.name+'/Setting#channelState', self.state, checkDims=False)
 
     def isBusy(self): #This is just experimental!
-        sleep(0.5)
+        while np.any(self.japc.getParam(self.name+'/Acquisition#channelState') != self.state):
+            sleep(3)
         return False
 
 class Motor:
@@ -53,6 +60,12 @@ class Motor:
         #         print("Motor is moving!")
         # except:
         #     print('Invalid name!')
+
+    def isIn(self):
+        if self.inPos == self.position:
+            return 1
+        else:
+            return 0
 
     def isBusy(self):
         return self.busy
@@ -94,9 +107,10 @@ class Motor:
                 relPosition = relPosition + np.sign(relPosition) * self.backlash_steps
             else:
                 self.lastMotionRel = relPosition
-
+            self.desiredAbsPosition = self.position+relPosition
             mv = {'value': relPosition, 'mode': 1, 'units': 2}
             self.japc.setParam(self.name + '/Move', mv)
+            self.busy = True
 
         else:
             print('Cannot comply, motor is busy!')
@@ -112,20 +126,21 @@ class Motor:
 
 
 class Camera:
-    def __init__(self, name, japc, motorX=None, motorY=None):  ## Provide motors as Class and positions in steps...
+    def __init__(self, name, japc, motorX=None, motorY=None, returnTarget = False):  ## Provide motors as Class and positions in steps...
         self.name = name
         self.motorX = motorX
         self.motorY = motorY
         self.japc = japc
         self.updated = dt.datetime.now()
         self.image = []
+        self.returnTarget = returnTarget
         if motorX is not None:
             self.movableAxis = 1
+            self.isIn = motorX.isIn() # TODO
             if motorY is not None:
                 self.movableAxis = 2
         else:
             self.movableAxis = 0
-        self.isIn = -1
         try:
             self.subscription = self.japc.subscribeParam(self.name + '/Acquisition#image1', self.updateImage)
         except:
@@ -137,7 +152,7 @@ class Camera:
 
     def captureImage(self):  ## Should think whether subscription is the way forward or not...
         lastUpdate = self.updated
-        if self.movableAxis>0:  # Checking if the camera/target is in.
+        if self.movableAxis>0 and self.motorX.isIn() == 0:  # Checking if the camera/target is in.
             ##This means that we have to move motor(s)
             self.motorX.changePosition()  # at least one motor must be present
             if self.movableAxis == 2:
@@ -159,7 +174,7 @@ class Camera:
             outImage = self.image
 
         ##Testing to send the position out again?
-        if self.movableAxis > 0:
+        if self.movableAxis > 0 and self.returnTarget == True:
             self.motorX.changePosition()  # at least one motor must be present
             if self.movableAxis == 2:
                 self.motorY.changePosition()
@@ -178,13 +193,14 @@ class Camera:
             projection_y = []
 
         ##Prepare bounds for fits:
-        gBounds = ([1e4, 0, 1, 10], [1e7, 960, 100, 2e4])
+
+        gBounds = ([1e2, 0, 1, 10], [1e7, 960, 100, 2e4])
 
         try:
             # resX = [np.max(projection_x), np.argmax(projection_x)]
             resX, _ = curve_fit(gaussian, range(len(projection_x)), projection_x,
                                 (6e4, np.argmax(projection_x), 10.0, 300.0), bounds=gBounds)
-            if resX[0] < 2e4:
+            if resX[0] < 2e3:
                 resX[1] = -1
         except:
             print("Did not fit in X.")
@@ -194,7 +210,7 @@ class Camera:
             # resY = [np.max(projection_y), np.argmax(projection_y)]
             resY, _ = curve_fit(gaussian, range(len(projection_y)), projection_y,
                                 (6e4, np.argmax(projection_y), 10.0, 300.0), bounds=gBounds)
-            if resY[0] < 2e4:
+            if resY[0] < 2e3:
                 resY[1] = -1
         except:
             print("Did not fit in Y.")
