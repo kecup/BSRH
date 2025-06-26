@@ -1,25 +1,40 @@
-for idx, (run_num, run_data) in enumerate(data.items()):
-    ax = axes[idx]
-    events = run_data['events']
-    cpc = run_data['cpc']
-    
-    for mask_idx, mask_name in enumerate(['mask1', 'mask2', 'mask3']):
-        mask = run_data[mask_name]
-        ax.scatter(
-            [events[i] for i in mask],  # x-axis values (events)
-            [cpc[i] for i in mask],     # y-axis values (cpc)
-            color=colors[mask_idx],
-            label=f'Group {mask_idx + 1}'
-        )
-    
-    ax.set_title(f'Run {run_num}')
-    ax.set_xlabel('Events')
-    ax.set_ylabel('CPC')
-    ax.legend()
+import random
 
-# Hide unused subplots:
-for i in range(n_runs, len(axes)):
-    fig.delaxes(axes[i])
+def simulate_motor_steps_for_target2(camX, camY,
+                                     motor_range_x=15,
+                                     motor_range_phi=5000,
+                                     motor_range_theta=3000,
+                                     cam_width=968.0,
+                                     cam_height=608.0):
+    """
+    Simulate random motor steps (X, Φ, Θ) that reflect the beam to hit near the center of target 2.
 
-plt.tight_layout()
-plt.show()
+    Arguments:
+        camX, camY: current beam position on target 2 camera (in pixels)
+        motor_range_x: max range of X translation motor (e.g., mm)
+        motor_range_phi: max step count for Φ (horizontal tilt)
+        motor_range_theta: max step count for Θ (vertical tilt)
+        cam_width, cam_height: resolution of the camera
+
+    Returns:
+        Tuple of (steps_x, steps_phi, steps_theta)
+    """
+    # X Translation: similar to before
+    steps_x = random.randint(
+        -int(2 * camX / cam_width * motor_range_x),
+         int(2 * (cam_width - camX) / cam_width * motor_range_x)
+    )
+
+    # Φ Tilt: influences horizontal deflection
+    steps_phi = random.randint(
+        -int(2 * camX / cam_width * motor_range_phi),
+         int(2 * (cam_width - camX) / cam_width * motor_range_phi)
+    )
+
+    # Θ Tilt: influences vertical deflection
+    steps_theta = random.randint(
+        -int(2 * (cam_height - camY) / cam_height * motor_range_theta),
+         int(2 * camY / cam_height * motor_range_theta)
+    )
+
+    return steps_x, steps_phi, steps_theta
