@@ -164,7 +164,7 @@ writeTraining = csv.writer(TrainingFile)
 header = ["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y", "stepsX", "stepsPhi", "stepsTheta"]
 writeTraining.writerow(header)
 
-iterations = 200
+iterations = 2000
 
 # make sure target 1 is IN
 if TargetEA.getPosition() == 0: # 0 is OUT and 1 is IN
@@ -194,6 +194,7 @@ for i in range(iterations):
   if not math.isclose(t1X, -1.0, rel_tol=1e-9) or not math.isclose(t1Y, -1.0, rel_tol=1e-9) or not math.isclose(t2X, -1.0, rel_tol=1e-9) or not math.isclose(t2Y, -1.0, rel_tol=1e-9):
     row = [cam1X, cam1Y, cam2X, cam2Y, mX, mPhi, mTheta, t1X, t1Y, t2X, t2Y, stepsX, stepsPhi, stepsTheta]
     writeTraining.writerow(row)
+    TrainingFile.flush()
 
 
   # cam1X = t1X
