@@ -78,16 +78,22 @@ def get_steps(cam_width=968.0, cam_height=608.0):
   return steps_x, steps_phi, steps_theta
 
 def move_motors(stepsX, stepsPhi, stepsTheta):
-
+  """
+  Moves all three motors by their respective steps and waits for them to move there.
+  """
   M1x.setRelPosition(stepsX)
   M1Phi.setRelPosition(stepsPhi)
   M1Theta.setRelPosition(stepsTheta)
 
+  # wait for motors to move
   while M1x.isBusy() or M1Phi.isBusy() or M1Theta.isBusy():
     sleep(2)
   sleep(1)
 
 def measure_c1():
+  """
+  Measure camera 1 data.
+  """
   cam1X, cam1Y = MonEA.getBeamPosition()
   if cam1X == -1 or cam1Y == -1:
     print('Did not find beam, sending to references')  ## This does not account for summing up the backlash...
@@ -101,6 +107,9 @@ def measure_c1():
   return cam1X, cam1Y
 
 def measure_c2():
+  """
+  Measure camera 2 data.
+  """
   cam2X, cam2Y = MonM3.getBeamPosition()
   if cam2X == -1 or cam2Y == -1: # not sure I can do this for cam2
     print('Did not find beam, sending to references')  ## This does not account for summing up the backlash...
@@ -115,23 +124,23 @@ def measure_c2():
 
 
 # How many steps the motor can make from reference to keep the image on the camera
-motor_range_x_t1 = 6000 # is it in mm?
+motor_range_x_t1 = 6000 # in steps (15mm)
 motor_range_phi_t1 = 43000 # in steps
 motor_range_theta_t1 = 27241 # in steps
 
-motor_range_x_t2 = 6000 # is it in mm?
+motor_range_x_t2 = 6000# in steps (15mm)
 motor_range_phi_t2 = 5000 # in steps
 motor_range_theta_t2 = 3000 # in steps
 
 japc.startSubscriptions()
 sleep(2)
 
+# reference position to return to if something goes wrong
 ref_x = M1x.getPosition()
 ref_phi = M1Phi.getPosition()
 ref_theta = M1Theta.getPosition()
 
-
-##Open a csv file that we will use to save the training data:
+# open a csv file that we will use to save the training data:
 TrainingFile = open('lhc_t1_t2_data_v1.csv', 'a')
 writeTraining = csv.writer(TrainingFile)
 header = ["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y", "stepsX", "stepsPhi", "stepsTheta"]
