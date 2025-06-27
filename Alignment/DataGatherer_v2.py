@@ -7,6 +7,7 @@ import csv
 import random
 import sys
 import os
+import math
 
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, parent_dir)
@@ -77,6 +78,17 @@ def get_steps(cam_width=968.0, cam_height=608.0):
 
   return steps_x, steps_phi, steps_theta
 
+def get_steps_v2():
+  steps_x = (random.randint(M1x.getPosition()-motor_range_x_t2, M1x.getPosition()+motor_range_x_t2))-M1x.getPosition()
+
+  steps_phi = (random.randint(M1Phi.getPosition() - motor_range_phi_t2,
+                            M1Phi.getPosition() + motor_range_phi_t2)) - M1Phi.getPosition()
+
+  steps_theta = (random.randint(M1Theta.getPosition() - motor_range_theta_t2,
+                            M1Theta.getPosition() + motor_range_theta_t2)) - M1Theta.getPosition()
+
+  return steps_x, steps_phi, steps_theta
+
 def move_motors(stepsX, stepsPhi, stepsTheta):
   """
   Moves all three motors by their respective steps and waits for them to move there.
@@ -86,8 +98,12 @@ def move_motors(stepsX, stepsPhi, stepsTheta):
   M1Theta.setRelPosition(stepsTheta)
 
   # wait for motors to move
+  counter = 0
   while M1x.isBusy() or M1Phi.isBusy() or M1Theta.isBusy():
     sleep(2)
+    counter += 1
+    if counter > 5:
+      break
   sleep(1)
 
 def measure_c1():
@@ -97,10 +113,11 @@ def measure_c1():
   cam1X, cam1Y = MonEA.getBeamPosition()
   if cam1X == -1 or cam1Y == -1:
     print('Did not find beam, sending to references')  ## This does not account for summing up the backlash...
+    sleep(2)
     M1x.setAbsPosition(ref_x)
     M1Phi.setAbsPosition(ref_phi)
     M1Theta.setAbsPosition(ref_theta)
-    sleep(2)
+    sleep(8)
     cam1X, cam1Y = MonEA.getBeamPosition()
     if cam1X == -1 or cam1Y == -1:
       print('Cannot find beam at reference location, stopping now')
@@ -113,10 +130,11 @@ def measure_c2():
   cam2X, cam2Y = MonM3.getBeamPosition()
   if cam2X == -1 or cam2Y == -1: # not sure I can do this for cam2
     print('Did not find beam, sending to references')  ## This does not account for summing up the backlash...
+    sleep(2)
     M1x.setAbsPosition(ref_x)
     M1Phi.setAbsPosition(ref_phi)
     M1Theta.setAbsPosition(ref_theta)
-    sleep(2)
+    sleep(8)
     cam2X, cam2Y = MonM3.getBeamPosition()
     if cam2X == -1 or cam2Y == -1:
       print('Cannot find beam at reference location, stopping now')
@@ -141,12 +159,12 @@ ref_phi = M1Phi.getPosition()
 ref_theta = M1Theta.getPosition()
 
 # open a csv file that we will use to save the training data:
-TrainingFile = open('lhc_t1_t2_data_v1.csv', 'a')
+TrainingFile = open('lhc_t1_t2_data_v2.csv', 'a')
 writeTraining = csv.writer(TrainingFile)
 header = ["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y", "stepsX", "stepsPhi", "stepsTheta"]
 writeTraining.writerow(header)
 
-iterations = 20
+iterations = 200
 
 # make sure target 1 is IN
 if TargetEA.getPosition() == 0: # 0 is OUT and 1 is IN
@@ -154,29 +172,26 @@ if TargetEA.getPosition() == 0: # 0 is OUT and 1 is IN
   sleep(3)
 
 for i in range(iterations):
-
+  print("Starting iteration " + str(i+1))
   cam1X, cam1Y = measure_c1()
 
   mX = M1x.getPosition()
   mPhi = M1Phi.getPosition()
   mTheta = M1Theta.getPosition()
 
-  print("Identifikator 1: ", MonEA.motorX.isIn())
+  # print("Identifikator 1: ", MonEA.motorX.isIn())
   MonEA.motorX.changePosition()
   sleep(2)
   cam2X, cam2Y = measure_c2()
 
-  stepsX, stepsPhi, stepsTheta = get_steps()
+  stepsX, stepsPhi, stepsTheta = get_steps_v2()
   move_motors(stepsX, stepsPhi, stepsTheta)
 
   t2X, t2Y = MonM3.getBeamPosition()
 
-  #MonEA.motorX.changePosition()  # Line written by Lucie....
-  print("Identifikator 2: ", MonEA.motorX.isIn())
-
   t1X, t1Y = MonEA.getBeamPosition()
 
-  if t1X != -1 or t1Y != -1 or t2X != -1 or t2Y != -1:
+  if not math.isclose(t1X, -1.0, rel_tol=1e-9) or not math.isclose(t1Y, -1.0, rel_tol=1e-9) or not math.isclose(t2X, -1.0, rel_tol=1e-9) or not math.isclose(t2Y, -1.0, rel_tol=1e-9):
     row = [cam1X, cam1Y, cam2X, cam2Y, mX, mPhi, mTheta, t1X, t1Y, t2X, t2Y, stepsX, stepsPhi, stepsTheta]
     writeTraining.writerow(row)
 
