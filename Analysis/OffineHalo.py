@@ -169,6 +169,8 @@ centerH = []
 sizeH = []
 residualH = []
 
+imArray = []
+
 
 numbers = range(230, 264) #RUN13
 
@@ -209,7 +211,7 @@ for j in numbers:
         x_temp.extend(range(int(maskX + maskR), 968))
 
         try:
-            resX, _ = curve_fit(gaussian, x_temp, projection_x[x_temp], (45000, maskX, 15.0))
+            resX, _ = curve_fit(gaussian, x_temp, projection_x[x_temp], (45000, maskX, 35.0))
             amplitudeH.append(resX[0])
             centerH.append(resX[1])
             sizeH.append(resX[2])
@@ -250,6 +252,7 @@ for j in numbers:
             xr0 = i
 
         if correct_measurementX_flag:
+            imArray.append(image[y1:y2, x1:x2])
             chargeX = np.sum(projection_x[xl0:xl1]) + np.sum(projection_x[xr1:xr0])
             chargeX = chargeX * cPc * INTENSIFIER_GAIN / exposure
 
