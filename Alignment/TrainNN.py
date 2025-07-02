@@ -80,9 +80,9 @@ class ResidualMLP(nn.Module):
         return out + skip
 """
 
-def train_nn(train_data, test_data, file_name: str):
+def train_nn(X, y, file_name: str):
 
-    data_train, data_val, delta_train, delta_val = train_test_split(train_data, test_data, test_size = 0.2, random_state = 42, shuffle = True)
+    data_train, data_val, delta_train, delta_val = train_test_split(X, y, test_size = 0.2, random_state = 42, shuffle = True)
 
     ##Scaler to normalize?
     scaler = StandardScaler()
