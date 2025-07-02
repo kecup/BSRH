@@ -1,40 +1,44 @@
-import random
+import torch
+import numpy as np
 
-def simulate_motor_steps_for_target2(camX, camY,
-                                     motor_range_x=15,
-                                     motor_range_phi=5000,
-                                     motor_range_theta=3000,
-                                     cam_width=968.0,
-                                     cam_height=608.0):
+def evaluate_step_model(model, test_data, input_cols, simulate_motor_move):
     """
-    Simulate random motor steps (X, Φ, Θ) that reflect the beam to hit near the center of target 2.
+    Evaluates a step-predicting model using average beam-target error.
 
-    Arguments:
-        camX, camY: current beam position on target 2 camera (in pixels)
-        motor_range_x: max range of X translation motor (e.g., mm)
-        motor_range_phi: max step count for Φ (horizontal tilt)
-        motor_range_theta: max step count for Θ (vertical tilt)
-        cam_width, cam_height: resolution of the camera
+    Args:
+        model: trained PyTorch model (predicting delta steps)
+        test_data: list of dicts with fields like CamX, CamY, MotX, MotY, TgtX, TgtY
+        input_cols: list of input feature column names for the model
+        simulate_motor_move: function(cam_pos, motor_pos, delta_steps) -> new_cam_pos
 
     Returns:
-        Tuple of (steps_x, steps_phi, steps_theta)
+        avg_error: average distance between final beam position and target
     """
-    # X Translation: similar to before
-    steps_x = random.randint(
-        -int(2 * camX / cam_width * motor_range_x),
-         int(2 * (cam_width - camX) / cam_width * motor_range_x)
-    )
+    model.eval()
+    total_error = 0.0
+    count = 0
 
-    # Φ Tilt: influences horizontal deflection
-    steps_phi = random.randint(
-        -int(2 * camX / cam_width * motor_range_phi),
-         int(2 * (cam_width - camX) / cam_width * motor_range_phi)
-    )
+    for sample in test_data:
+        # Get current state
+        cam_pos = np.array([sample["CamX"], sample["CamY"]])
+        motor_pos = np.array([sample["MotX"], sample["MotY"]])
+        target_pos = np.array([sample["TgtX"], sample["TgtY"]])
 
-    # Θ Tilt: influences vertical deflection
-    steps_theta = random.randint(
-        -int(2 * (cam_height - camY) / cam_height * motor_range_theta),
-         int(2 * camY / cam_height * motor_range_theta)
-    )
+        # Prepare model input
+        input_vals = np.array([sample[col] for col in input_cols], dtype=np.float32)
+        input_tensor = torch.tensor(input_vals).unsqueeze(0)  # shape: [1, input_dim]
 
-    return steps_x, steps_phi, steps_theta
+        # Predict delta motor steps
+        with torch.no_grad():
+            delta_steps = model(input_tensor).squeeze(0).numpy()
+
+        # Simulate the movement and get new camera position
+        new_cam_pos = simulate_motor_move(cam_pos, motor_pos, delta_steps)
+
+        # Compute beam-target error
+        error = np.linalg.norm(new_cam_pos - target_pos)
+        total_error += error
+        count += 1
+
+    avg_error = total_error / count
+    return avg_error
