@@ -91,17 +91,35 @@ class BeamSteerer:
         return u.detach()
 
     def step(self, motorX, motorY, camera, target):
+
+        # get optimal step
+        motion = self.calculate_step(camera, target)
+
+        # move
+        motorX.setRelPosition(motion[0])
+        motorY.setRelPosition(motion[1])
+
+    def calculate_step(self, camera, target):
         # 1) read current beam
         x0_np = camera.getBeamPosition()       # returns e.g. [x,y] numpy
         x0 = torch.tensor(x0_np, dtype=torch.float32)
 
         # 2) compute optimal motor move
         u_opt = self.compute_control(x0, torch.tensor(target, dtype = torch.float32))
+        
+        motion = u_opt.tolist() # [move_x, move_y]
+        return motion
+    
+    def calculate_virtual_step(self, cam_pos, target):
+        x0_np = np.array(cam_pos)
+        x0 = torch.tensor(x0_np, dtype=torch.float32)
 
-        # 3) send to hardware
-        motion = u_opt.tolist()
-        motorX.setRelPosition(motion[0])
-        motorY.setRelPosition(motion[1])
+        # 2) compute optimal motor move
+        u_opt = self.compute_control(x0, torch.tensor(target, dtype = torch.float32))
+        
+        motion = u_opt.tolist() # [move_x, move_y]
+        return motion
+
 
 class Aligner:
     def __init__(self, motor_x: Motor, motor_y: Motor, camera: Camera, target: list, model: FeedbackNN, steerer: BeamSteerer):
