@@ -6,56 +6,85 @@ import os
 import pyjapc
 import zstandard as zstd
 
+# Setup
 dctx = zstd.ZstdDecompressor()
 directory = '/user/jpucek/BSRH/Data/2025/06/19/'
-files = os.listdir(directory)
-files = sorted(files)
-
+files = sorted(os.listdir(directory))
 japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
 
-imArr = []
-intensity = []
-
-fig, ax = plt.subplots()
-
 bunch = 160
+file_range = range(109, 162)
 
-for i in range(80, len(files)):
+# Frame map: global_frame_index -> (file_idx, local_idx_within_file_cache)
+frame_map = []
 
-    f = open(directory + files[i], 'rb')
-    with dctx.stream_reader(f) as reader:
-        a = pickle.load(reader)
+# Mapping from global file_idx to actual filename
+file_idx_map = {}
 
-    for j in range(len(a)):
-        if a[j].device_data['GATE-INT']['delaySlots'] == bunch and a[j].device_data['GATE-INT']['pulseLength'] <= 10:
-            image = a[j].cam_data['image2D']
-            image = image - np.mean(image[:100, :100])  # Test n1
-            imArr.append(image)
+# Build index of valid frames, but don’t load images yet
+for local_file_idx, file_idx in enumerate(file_range):
+    file_path = os.path.join(directory, files[file_idx])
+    file_idx_map[file_idx] = file_path
+    with open(file_path, 'rb') as f:
+        with dctx.stream_reader(f) as reader:
+            try:
+                a = pickle.load(reader)
+                local_valid_idx = 0
+                for frame in a:
+                    gate = frame.device_data['GATE-INT']
+                    if gate['delaySlots'] == bunch and gate['pulseLength'] >= 400:
+                        frame_map.append((file_idx, local_valid_idx))
+                        local_valid_idx += 1
+            except Exception as e:
+                print(f"Error reading {files[file_idx]}: {e}")
 
-            intensity.append(np.sum(image[180:480, 310:610]))
+print(f"Total valid frames: {len(frame_map)}")
 
-    # time = a.cam_data['acqStamp']
-    # BSRH_time = time+dt.timedelta(hours=2)
-    # BSRH_time = BSRH_time.replace(tzinfo = None)
-    # timeArr.append(BSRH_time)
+# Runtime cache
+cached_file_idx = None
+cached_images = []
 
-    # image = image - np.mean(image[:50,:]) #Test n2
-    # projY.append(np.sum(image[:,460:470],axis = 1))
-    f.close()
-# plt.plot(timeArr, intensity)
+def load_and_cache_file(file_idx):
+    """Load matching images from one file and cache them."""
+    global cached_file_idx, cached_images
+    cached_images = []
+    file_path = file_idx_map[file_idx]
+    with open(file_path, 'rb') as f:
+        with dctx.stream_reader(f) as reader:
+            a = pickle.load(reader)
+            for frame in a:
+                gate = frame.device_data['GATE-INT']
+                if gate['delaySlots'] == bunch and gate['pulseLength'] >= 400:
+                    image = frame.cam_data['image2D']
+                    image = image - np.mean(image[:100, :100])
+                    cached_images.append(image)
+    cached_file_idx = file_idx
 
-tst = plt.imshow(imArr[0], 'jet', vmax=3000, vmin=0)
-plt.colorbar()
+# Setup animation figure
+fig, ax = plt.subplots()
+tst = ax.imshow(np.zeros((600, 800)), cmap='jet', vmin=0, vmax=3000)
+plt.colorbar(tst, ax=ax)
 
+def update(frame_number):
+    global cached_file_idx
+    file_idx, local_idx = frame_map[frame_number]
 
-def update(frame):
-    tst.set_data(imArr[frame])  # -imArr[0])
-    return (tst)
+    if cached_file_idx != file_idx:
+        load_and_cache_file(file_idx)
 
+    image = cached_images[local_idx]
+    tst.set_data(image)
+    return (tst,)
 
-ani = animation.FuncAnimation(fig=fig, func=update, frames=len(imArr), interval=100, repeat=False)
+ani = animation.FuncAnimation(
+    fig=fig,
+    func=update,
+    frames=len(frame_map),
+    interval=100,
+    repeat=False
+)
 
 writer = animation.PillowWriter(fps=20, metadata=dict(artist='Me'))
-ani.save('Video_{}.gif'.format(bunch), writer=writer)
+ani.save(f'Video_{bunch}.gif', writer=writer)
 
 # plt.show()

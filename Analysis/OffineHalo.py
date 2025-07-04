@@ -215,10 +215,10 @@ for j in numbers:
             amplitudeH.append(resX[0])
             centerH.append(resX[1])
             sizeH.append(resX[2])
-
+            imArray.append(image[y1:y2, x1:x2])
 
             if resX[1] > maskX + maskR or resX[1] < maskX - maskR:
-                print('Core outside the mask (X)')
+                print('Core outside the mask (X)', index)
                 raise Exception('Problem with fit value')
         except:
             resX = [0, maskX, 0]
@@ -252,12 +252,16 @@ for j in numbers:
             xr0 = i
 
         if correct_measurementX_flag:
-            imArray.append(image[y1:y2, x1:x2])
+
             chargeX = np.sum(projection_x[xl0:xl1]) + np.sum(projection_x[xr1:xr0])
             chargeX = chargeX * cPc * INTENSIFIER_GAIN / exposure
 
             timeH.append(BSRH[index].timestamp)
             haloH.append(chargeX)
+
+        else:
+            timeH.append(BSRH[index].timestamp)
+            haloH.append(0)
 
         y_temp = []
         y_temp.extend(range(int(maskY - maskR)))  # Here we should be carefull not to put rubbish..
