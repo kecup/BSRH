@@ -37,9 +37,9 @@ sigma = 3.5 #From where you want to calculate the charge
 SIGMA_TO_MM_X = 263.0  # previously hardcoded as 263.0
 SIGMA_TO_MM_Y = 361.0
 INTENSIFIER_GAIN = 5623
-cPc = 48.5 #This is the charge per count constant, should not need to be changed...
-pixelSizeH = 19.0
-pixelSizeV = 19.6
+cPc = 43.0 #This is the charge per count constant, should not need to be changed...
+pixelSizeH = 19.8
+pixelSizeV = 19.9
 x1 = 284
 x2 = 684
 y1 = 154
@@ -139,7 +139,9 @@ if nFiles < len(filesBSRH):
 
             if correct_measurementX_flag:
                 chargeX = np.sum(projection_x[xl0:xl1]) + np.sum(projection_x[xr1:xr0])
-                chargeX = chargeX * cPc * INTENSIFIER_GAIN / exposure
+                fArr = BSRH[index].device_data['FILTERS.B2']['channelState']
+                in_filter = pow(12.6, 3 * fArr[0] + 2 * fArr[1] + fArr[2])
+                chargeX = chargeX * cPc * INTENSIFIER_GAIN * in_filter / exposure
 
                 timeH[bunchIndex].append(BSRH[index].timestamp)
                 haloH[bunchIndex].append(chargeX)
@@ -188,7 +190,9 @@ if nFiles < len(filesBSRH):
 
             if correct_measurementY_flag:
                 chargeY = np.sum(projection_y[yl0:yl1]) + np.sum(projection_y[yr1:yr0])
-                chargeY = chargeY * cPc * INTENSIFIER_GAIN / exposure
+                fArr = BSRH[index].device_data['FILTERS.B2']['channelState']
+                in_filter = pow(12.6, 3 * fArr[0] + 2 * fArr[1] + fArr[2])
+                chargeY = chargeY * cPc * INTENSIFIER_GAIN * in_filter / exposure
 
                 timeV[bunchIndex].append(BSRH[index].timestamp)
                 haloV[bunchIndex].append(chargeY)

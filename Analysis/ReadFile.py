@@ -20,7 +20,7 @@ import datetime as dt
 japc = pyjapc.PyJapc(selector='', incaAcceleratorName='') #Stupid Java VM must be running to open the java values... We have to retype this...
 
 dctx = zstd.ZstdDecompressor()
-directory = '/user/jpucek/BSRH/Data/2025/06/19/'
+directory = '/user/jpucek/BSRH/Data/2025/06/20/'
 files = os.listdir(directory)
 files = sorted(files)
 
@@ -41,7 +41,7 @@ LS = []
 CollGap_H =[]
 CollGap_V = []
 
-for nFile in range(130, 131):#(0, len(files)):
+for nFile in range(5):#(0, len(files)):
     # if 'run_18' in files[nFile]:
     #     print(nFile)
 

@@ -37,7 +37,7 @@ def graph_cpc(data):
     axes = axes.flatten()  # flatten in case of 2D array even if 1D needed
 
     colors = ["orange", "green", "skyblue", "purple", "pink"]
-    labels  = ["bunch 0", "bunch 40", "bunch 80", "bunch 120", "bunch 160"]
+    labels  = ["bunch 20", "bunch 500", "bunch 1050", "bunch 1250", "bunch 1800"]
 
     for idx, (run_num, run_data) in enumerate(data.items()):
         ax = axes[idx]
@@ -76,7 +76,7 @@ def compute_cpc(directory: str, files, runs: list[str]):
     results = {}
     for i in range(len(runs)):
         run = runs[i]
-        print("Running " + run)
+        print("Analysing " + run)
         run_data = get_run_data(directory, files, run)
         mask_0 = []
         mask_40 = []
@@ -94,37 +94,41 @@ def compute_cpc(directory: str, files, runs: list[str]):
                 delay_slots = int(event.device_data["GATE-INT"]["delaySlots"])
                 pulse_length = int(event.device_data["GATE-INT"]["pulseLength"])
                 img_charge = np.sum(event.device_data["FBCT1"]["averageBunchIntensities"][delay_slots:delay_slots + pulse_length // 4][0])
-                in_filter = 1
+
+                fArr = event.device_data['FILTERS.B2']['channelState']
+                in_filter = pow(12.6, 3 * fArr[0] + 2 * fArr[1] + fArr[2])
                 magic_const = 5651
                 num_of_pulses = int(event.device_data["GATE-INT"]["numberOfPulses"])
-                img = img - (num_of_pulses / bg_pulses) * bg_image
+                #img = img - (num_of_pulses / bg_pulses) * bg_image
                 img_sum = np.sum(img[154:454, 264:644])
                 cpc = (img_charge * num_of_pulses) / (img_sum * magic_const * in_filter)
 
-                if delay_slots == 0:
+                if delay_slots == 20:
                     mask_0.append(run_counter)
-                elif delay_slots == 40:
+                elif delay_slots == 500:
                     mask_40.append(run_counter)
-                elif delay_slots == 80:
+                elif delay_slots == 1050:
                     mask_80.append(run_counter)
-                elif delay_slots == 120:
+                elif delay_slots == 1250:
                     mask_120.append(run_counter)
-                elif delay_slots == 160:
+                elif delay_slots == 1800:
+                    mask_160.append(run_counter)
+                elif delay_slots == 1800:
                     mask_160.append(run_counter)
                 run_cpcs.append(cpc)
                 run_counter += 1
         run_events = list(range(run_counter))
-        run_results = {'cpcs': run_cpcs, 'events': run_events, 'mask_0': mask_0, 'mask_40': mask_40, 'mask_80': mask_80, 'mask_120': mask_120}
+        run_results = {'cpcs': run_cpcs, 'events': run_events, 'mask_0': mask_0, 'mask_40': mask_40, 'mask_80': mask_80, 'mask_120': mask_120, 'mask_160': mask_160}
         results[run] = run_results
         print("Events: " + str(len(run_events)))
     return results
 
 if __name__ == "__main__":
-    runs = ['run_06', 'run_08', 'run_09', 'run_10', 'run_11', 'run_12']
+    runs = ['run_02', 'run_04', 'run_09', 'run_11', 'run_13']
     japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')  # Stupid Java VM must be running to open the java values... We have to retype this...
 
     dctx = zstd.ZstdDecompressor()
-    directory = '/user/jpucek/BSRH/Data/2025/06/19/'
+    directory = '/user/jpucek/BSRH/Data/2025/06/20/'
     files = os.listdir(directory)
     files = sorted(files)
 

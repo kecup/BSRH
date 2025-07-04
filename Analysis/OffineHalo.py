@@ -254,7 +254,9 @@ for j in numbers:
         if correct_measurementX_flag:
 
             chargeX = np.sum(projection_x[xl0:xl1]) + np.sum(projection_x[xr1:xr0])
-            chargeX = chargeX * cPc * INTENSIFIER_GAIN / exposure
+            fArr = BSRH[index].device_data['FILTERS.B2']['channelState']
+            in_filter = pow(12.6, 3 * fArr[0] + 2 * fArr[1] + fArr[2])
+            chargeX = chargeX * cPc * INTENSIFIER_GAIN * in_filter / exposure
 
             timeH.append(BSRH[index].timestamp)
             haloH.append(chargeX)
@@ -308,7 +310,9 @@ for j in numbers:
 
         if correct_measurementY_flag:
             chargeY = np.sum(projection_y[yl0:yl1]) + np.sum(projection_y[yr1:yr0])
-            chargeY = chargeY * cPc * INTENSIFIER_GAIN / exposure
+            fArr = BSRH[index].device_data['FILTERS.B2']['channelState']
+            in_filter = pow(12.6, 3 * fArr[0] + 2 * fArr[1] + fArr[2])
+            chargeY = chargeY * cPc * INTENSIFIER_GAIN * in_filter / exposure
 
             timeV.append(time)
             haloV.append(chargeY)
