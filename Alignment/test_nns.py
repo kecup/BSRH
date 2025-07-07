@@ -41,7 +41,7 @@ def test_nn(model, X, y, input_cols, predict_target=False):
 
 
         if predict_target:
-            steerer = BeamSteerer(model, lr=0.1, iters=30)
+            steerer = BeamSteerer(model, lr=0.1, iters=20)
             input_data = X_sample[input_cols_no_steps.columns.tolist()].to_numpy()
             prediction_steps = steerer.calculate_virtual_step(input_data, prediction) # not sure about the target here
             prediction = prediction_steps
