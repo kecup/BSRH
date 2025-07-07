@@ -1,12 +1,10 @@
 import pyjapc
 import pyrbac
 import numpy as np
-from time import sleep
 import sys
 import os
 import pandas as pd
 
-from Alignment.AlignMainCam import steerer
 from Alignment.AlignToTarget import FeedbackNN
 
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -22,8 +20,13 @@ def test_nn(model, X, y, input_cols, predict_target=False):
     _, X_test, _, y_test = train_test_split(X, y, test_size=0.2,
                                                         random_state=42, shuffle=True) # seed has to be the same as in training
 
+    if predict_target:
+        input_cols_no_steps = X_test.drop(columns=["StepsX", "StepsY"])
+
     count = 0
     total_error = 0
+    preds = []
+    trues = []
 
     for i in range(len(X_test)):
 
@@ -38,21 +41,29 @@ def test_nn(model, X, y, input_cols, predict_target=False):
 
 
         if predict_target:
-            cam_target = [484, 304] # ?
-            steerer = BeamSteerer(model, lr=0.1, iters=50)
-            cam_pos = X_sample[["CamX", "CamY"]].to_numpy()
-            prediction = steerer.calculate_virtual_step(cam_pos, cam_target) # not sure about the target here
+            steerer = BeamSteerer(model, lr=0.1, iters=30)
+            input_data = X_sample[input_cols_no_steps.columns.tolist()].to_numpy()
+            prediction_steps = steerer.calculate_virtual_step(input_data, prediction) # not sure about the target here
+            prediction = prediction_steps
 
         # compute error
         pred = np.array(prediction)
-        target = np.array(y_sample)
+        if predict_target:
+            target = X_sample[["StepsX", "StepsY"]].to_numpy()
+        else:
+            target = np.array(y_sample)
+        preds.append(prediction)
+        trues.append(target)
 
         error = np.linalg.norm(pred - target)
         total_error += error
         count += 1
 
     avg_error = total_error / count
-    return avg_error
+    errors = np.array(preds) - np.array(trues)
+    variance = np.var(errors)
+    std = np.std(errors)
+    return avg_error, variance, std
 
 
 if __name__ == "__main__":
@@ -78,7 +89,7 @@ if __name__ == "__main__":
     model1 = FeedbackNN(6, 2)
     model1.load_state_dict(torch.load(file_name1))
     model1.eval()
-    avg_loss1 = test_nn(model1, X1, y1, input_cols1)
+    avg_loss1, var1, std1 = test_nn(model1, X1, y1, input_cols1)
 
 
     # cam, target -> steps
@@ -89,7 +100,7 @@ if __name__ == "__main__":
     model2 = FeedbackNN(4, 2)
     model2.load_state_dict(torch.load(file_name2))
     model2.eval()
-    avg_loss2 = test_nn(model2, X2, y2, input_cols2)
+    avg_loss2, var2, std2 = test_nn(model2, X2, y2, input_cols2)
 
 
     # cam, steps -> target
@@ -100,7 +111,7 @@ if __name__ == "__main__":
     model3 = FeedbackNN(4, 2)
     model3.load_state_dict(torch.load(file_name3))
     model3.eval()
-    avg_loss3 = test_nn(model3, X3, y3, input_cols3, predict_target=True)
+    avg_loss3, var3, std3 = test_nn(model3, X3, y3, input_cols3, predict_target=True)
 
 
     # m, target -> steps
@@ -111,7 +122,7 @@ if __name__ == "__main__":
     model4 = FeedbackNN(4, 2)
     model4.load_state_dict(torch.load(file_name4))
     model4.eval()
-    avg_loss4 = test_nn(model4, X4, y4, input_cols4)
+    avg_loss4, var4, std4 = test_nn(model4, X4, y4, input_cols4)
 
 
     # cam, m -> steps
@@ -122,7 +133,7 @@ if __name__ == "__main__":
     model5 = FeedbackNN(4, 2)
     model5.load_state_dict(torch.load(file_name5))
     model5.eval()
-    avg_loss5 = test_nn(model5, X5, y5, input_cols5)
+    avg_loss5, var5, std5 = test_nn(model5, X5, y5, input_cols5)
 
 
     # cam, m, steps -> target
@@ -133,11 +144,11 @@ if __name__ == "__main__":
     model6 = FeedbackNN(6, 2)
     model6.load_state_dict(torch.load(file_name6))
     model6.eval()
-    avg_loss6 = test_nn(model6, X6, y6, input_cols6, predict_target=True)
+    avg_loss6, var6, std6 = test_nn(model6, X6, y6, input_cols6, predict_target=True)
 
-    print("avg loss1: " + str(avg_loss1))
-    print("avg loss2: " + str(avg_loss2))
-    print("avg loss3: " + str(avg_loss3))
-    print("avg loss4: " + str(avg_loss4))
-    print("avg loss5: " + str(avg_loss5))
-    print("avg loss6: " + str(avg_loss6))
+    print(f"avg_loss1: {avg_loss1:.4f}, var1: {var1:.4f}, std1: {std1:.4f}")
+    print(f"avg_loss2: {avg_loss2:.4f}, var2: {var2:.4f}, std2: {std2:.4f}")
+    print(f"avg_loss3: {avg_loss3:.4f}, var3: {var3:.4f}, std3: {std3:.4f}")
+    print(f"avg_loss4: {avg_loss4:.4f}, var4: {var4:.4f}, std4: {std4:.4f}")
+    print(f"avg_loss5: {avg_loss5:.4f}, var5: {var5:.4f}, std5: {std5:.4f}")
+    print(f"avg_loss6: {avg_loss6:.4f}, var6: {var6:.4f}, std6: {std6:.4f}")
