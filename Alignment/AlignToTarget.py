@@ -40,6 +40,7 @@ class FeedbackNN(nn.Module): #Not used here
       self.NNsize = 16
       super(FeedbackNN, self).__init__()
       self.seed = torch.manual_seed(seed)
+      self.state_size = state_size
       self.fc1 = nn.Linear(state_size, self.NNsize) # First Neuron layer
       self.fc2 = nn.Linear(self.NNsize,self.NNsize) # Next Neuron layer
       self.fc3 = nn.Linear(self.NNsize,self.NNsize) # Next Neuron layer
@@ -70,13 +71,17 @@ class BeamSteerer:
         self.lr = lr
         self.iters = iters
 
+        self.state_size = self.f_phi.state_size
+        self.u_size = 2
+        self.x0_size = self.state_size - self.u_size
+
     def compute_control(self, x0: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
         x0: tensor([x,y]), target: tensor([x_t,y_t])
         returns: optimized u (tensor([Δx,Δy]))
         """
         # initialize u as a small zero vector (or reuse from last cycle)
-        u = torch.zeros(2, requires_grad=True)
+        u = torch.zeros(self.u_size, requires_grad=True)
 
         opt = optim.SGD([u], lr=self.lr)
         for _ in range(self.iters):
