@@ -155,12 +155,13 @@ class Aligner:
         if (camX == -1 or camY == -1):
             print("No beam found.")
             return -1
-        while np.abs(camX - self.target[0]) > 14 and np.abs(camY - self.target[1]) > 14:
+        while np.abs(camX - self.target[0]) > 14 or np.abs(camY - self.target[1]) > 14:
             self.steerer.step(self.motor_x, self.motor_y, self.camera, self.target)
             count += 1
             if count > 1000:
                 print("Not getting closer reasonably fast.")
                 return -2
+            camX, camY = self.camera.getBeamPosition()
         return count
 
 
