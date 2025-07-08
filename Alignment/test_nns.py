@@ -4,7 +4,6 @@ import numpy as np
 import sys
 import os
 import pandas as pd
-
 from Alignment.AlignToTarget import FeedbackNN
 
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -17,16 +16,27 @@ from sklearn.model_selection import train_test_split
 
 
 def test_nn(model, X, y, input_cols, predict_target=False):
+    """
+    Test a nn model on test data.
+
+    :param model: torch model to test
+    :param X: features of the model
+    :param y: target of the model
+    :param input_cols: feature column names
+    :param predict_target: False if model predicts steps, True if model predicts target
+
+    :return: average error, variance of error, standard deviation of error
+    """
     _, X_test, _, y_test = train_test_split(X, y, test_size=0.2,
                                                         random_state=42, shuffle=True) # seed has to be the same as in training
 
     if predict_target:
-        input_cols_no_steps = X_test.drop(columns=["StepsX", "StepsY"])
+        input_cols_no_steps = X_test.drop(columns=["StepsX", "StepsY"]) # this is so that beam steerer works
 
     count = 0
     total_error = 0
-    preds = []
-    trues = []
+    preds = [] # model predictions
+    trues = [] # true values
 
     for i in range(len(X_test)):
 
@@ -37,14 +47,13 @@ def test_nn(model, X, y, input_cols, predict_target=False):
         input_vals = np.array([X_sample[col] for col in input_cols], dtype=np.float32)
         input_tensor = torch.tensor(input_vals).unsqueeze(0)
         with torch.no_grad():
-            prediction = model(input_tensor).squeeze(0).numpy()
+            prediction = model(input_tensor).squeeze(0).numpy() # model prediction
 
-
-        if predict_target:
+        if predict_target: #
             steerer = BeamSteerer(model, lr=0.1, iters=20)
             input_data = X_sample[input_cols_no_steps.columns.tolist()].to_numpy()
-            prediction_steps = steerer.calculate_virtual_step(input_data, prediction) # not sure about the target here
-            prediction = prediction_steps
+            prediction_steps = steerer.calculate_virtual_step(input_data, prediction) # beam steerer predicts steps
+            prediction = prediction_steps # renaming to the name matches predict_target=False
 
         # compute error
         pred = np.array(prediction)
