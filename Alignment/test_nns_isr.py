@@ -56,18 +56,28 @@ def main():
     model2.load_state_dict(torch.load(file_name2))
     model2.eval()
 
+    # model 3
+    # original model
+    file_name3 = "Models/CM_feedbackModel.pth"
+    model3 = FeedbackNN(4, 2)
+    model3.load_state_dict(torch.load(file_name3))
+    model3.eval()
+
     targets = generate_targets()
 
     japc.startSubscriptions()
 
-    avg_count1, faults1 = steer_to_target(model1, targets=targets, motor_x=M3X, motor_y=M3Y, camera=cam1, dist_tolerance=14)
+    # avg_count1, faults1 = steer_to_target(model1, targets=targets, motor_x=M3X, motor_y=M3Y, camera=cam1, dist_tolerance=14)
     # avg_count2, faults2 = steer_to_target(model2, targets=targets, motor_x=M3X, motor_y=M3Y, camera=cam1, dist_tolerance=14)
+    avg_count3, faults3 = steer_to_target(model3, targets=targets, motor_x=M3X, motor_y=M3Y, camera=cam1,
+                                          dist_tolerance=14)
 
     japc.stopSubscriptions()
     japc.clearSubscriptions()
 
-    print(f"avg_count1: {avg_count1:.4f}, faults1: {faults1}")
+    # print(f"avg_count1: {avg_count1:.4f}, faults1: {faults1}")
     # print(f"avg_count2: {avg_count2:.4f}, faults2: {faults2}")
+    print(f"avg_count2: {avg_count3:.4f}, faults2: {faults3}")
 
 if __name__ == "__main__":
     main()
