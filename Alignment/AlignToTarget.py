@@ -137,10 +137,6 @@ class Aligner:
 
     def align(self, iter: int):
         for i in range(iter):
-            # if select.select([sys.stdin], [], [], 0.0)[0]:
-            #     print("Key pressed! Exiting loop.")
-            #     break
-
             camX, camY = self.camera.getBeamPosition()
             if np.abs(camX - self.target[0]) > 14 and np.abs(camY - self.target[1]) > 14:
                 self.steerer.step(self.motor_x, self.motor_y, self.camera, self.target)
@@ -153,6 +149,19 @@ class Aligner:
         align_pos_y = self.motor_y.getPosition()
         return align_pos_x, align_pos_y
 
+    def align_testing(self, dist_tolerance=14):
+        count = 0
+        camX, camY = self.camera.getBeamPosition()
+        if (camX == -1 or camY == -1):
+            print("No beam found.")
+            return -1
+        while np.abs(camX - self.target[0]) > 14 and np.abs(camY - self.target[1]) > 14:
+            self.steerer.step(self.motor_x, self.motor_y, self.camera, self.target)
+            count += 1
+            if count > 1000:
+                print("Not getting closer reasonably fast.")
+                return -2
+        return count
 
 
 # ##We should have most components ready, let's get data for training:
