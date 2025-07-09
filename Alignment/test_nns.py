@@ -50,7 +50,7 @@ def test_nn(model, X, y, input_cols, predict_target=False):
             prediction = model(input_tensor).squeeze(0).numpy() # model prediction
 
         if predict_target: #
-            steerer = BeamSteerer(model, lr=0.1, iters=20)
+            steerer = BeamSteerer(model, lr=0.1, iters=50)
             input_data = X_sample[input_cols_no_steps.columns.tolist()].to_numpy()
             prediction_steps = steerer.calculate_virtual_step(input_data, prediction) # beam steerer predicts steps
             prediction = prediction_steps # renaming to the name matches predict_target=False
@@ -88,12 +88,12 @@ if __name__ == "__main__":
 
     target = [484, 304]
 
-    df = pd.read_csv('Data/MainCamData.csv')
+    df = pd.read_csv('Data/BackLashData.csv')
 
     # cam, m, target -> steps
-    X1 = df[['CamX', 'CamY', 'Mx', 'My', 'TgtX', 'TgtY']]
+    X1 = df[['CamX', 'CamY', 'MotX', 'MotY', 'TgtX', 'TgtY']]
     y1 = df[['StepsX', 'StepsY']]
-    input_cols1 = ['CamX', 'CamY', 'Mx', 'My', 'TgtX', 'TgtY']
+    input_cols1 = ['CamX', 'CamY', 'MotX', 'MotY', 'TgtX', 'TgtY']
     file_name1 = "Models/model1_cam_m_target-steps.pth"
     model1 = FeedbackNN(6, 2)
     model1.load_state_dict(torch.load(file_name1))
@@ -124,9 +124,9 @@ if __name__ == "__main__":
 
 
     # m, target -> steps
-    X4 = df[['Mx', 'My', 'TgtX', 'TgtY']]
+    X4 = df[['MotX', 'MotY', 'TgtX', 'TgtY']]
     y4 = df[['StepsX', 'StepsY']]
-    input_cols4 = ['Mx', 'My', 'TgtX', 'TgtY']
+    input_cols4 = ['MotX', 'MotY', 'TgtX', 'TgtY']
     file_name4 = "Models/model4_m_target-steps.pth"
     model4 = FeedbackNN(4, 2)
     model4.load_state_dict(torch.load(file_name4))
@@ -134,21 +134,21 @@ if __name__ == "__main__":
     avg_loss4, var4, std4 = test_nn(model4, X4, y4, input_cols4)
 
 
-    # cam, m -> steps
-    X5 = df[['CamX', 'CamY', 'Mx', 'My']]
-    y5 = df[['StepsX', 'StepsY']]
-    input_cols5 = ['CamX', 'CamY', 'Mx', 'My']
-    file_name5 = "Models/model5_cam-steps.pth"
-    model5 = FeedbackNN(4, 2)
-    model5.load_state_dict(torch.load(file_name5))
-    model5.eval()
-    avg_loss5, var5, std5 = test_nn(model5, X5, y5, input_cols5)
+    # # cam, m -> steps
+    # X5 = df[['CamX', 'CamY', 'Mx', 'My']]
+    # y5 = df[['StepsX', 'StepsY']]
+    # input_cols5 = ['CamX', 'CamY', 'Mx', 'My']
+    # file_name5 = "Models/model5_cam-steps.pth"
+    # model5 = FeedbackNN(4, 2)
+    # model5.load_state_dict(torch.load(file_name5))
+    # model5.eval()
+    # avg_loss5, var5, std5 = test_nn(model5, X5, y5, input_cols5)
 
 
     # cam, m, steps -> target
-    X6 = df[['CamX', 'CamY', 'Mx', 'My', 'StepsX', 'StepsY']]
+    X6 = df[['CamX', 'CamY', 'MotX', 'MotY', 'StepsX', 'StepsY']]
     y6 = df[['TgtX', 'TgtY']]
-    input_cols6 = ['CamX', 'CamY', 'Mx', 'My', 'StepsX', 'StepsY']
+    input_cols6 = ['CamX', 'CamY', 'MotX', 'MotY', 'StepsX', 'StepsY']
     file_name6 = "Models/model6_cam_m_steps-target.pth"
     model6 = FeedbackNN(6, 2)
     model6.load_state_dict(torch.load(file_name6))
@@ -159,5 +159,5 @@ if __name__ == "__main__":
     print(f"avg_loss2: {avg_loss2:.4f}, var2: {var2:.4f}, std2: {std2:.4f}")
     print(f"avg_loss3: {avg_loss3:.4f}, var3: {var3:.4f}, std3: {std3:.4f}")
     print(f"avg_loss4: {avg_loss4:.4f}, var4: {var4:.4f}, std4: {std4:.4f}")
-    print(f"avg_loss5: {avg_loss5:.4f}, var5: {var5:.4f}, std5: {std5:.4f}")
+    # print(f"avg_loss5: {avg_loss5:.4f}, var5: {var5:.4f}, std5: {std5:.4f}")
     print(f"avg_loss6: {avg_loss6:.4f}, var6: {var6:.4f}, std6: {std6:.4f}")
