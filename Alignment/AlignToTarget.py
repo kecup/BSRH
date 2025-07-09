@@ -98,15 +98,20 @@ class BeamSteerer:
     def step(self, motorX, motorY, camera, target):
 
         # get optimal step
-        motion = self.calculate_step(camera, target)
+        motion = self.calculate_step(camera, target, motorX, motorY)
 
         # move
         motorX.setRelPosition(motion[0])
         motorY.setRelPosition(motion[1])
 
-    def calculate_step(self, camera, target):
+    def calculate_step(self, camera, target, motor_x=None, motor_y=None):
         # 1) read current beam
-        x0_np = camera.getBeamPosition()       # returns e.g. [x,y] numpy
+        x0_np = np.array(camera.getBeamPosition())    # returns e.g. [x,y] numpy
+        if (self.x0_size > 2): # model was trained on absolute positions of motors
+            m_x = motor_x.getPosition()
+            m_y = motor_y.getPosition()
+            m_pos = np.array([m_x, m_y])
+            x0_np = np.concatenate((x0_np, m_pos), axis=0)
         x0 = torch.tensor(x0_np, dtype=torch.float32)
 
         # 2) compute optimal motor move
@@ -115,8 +120,8 @@ class BeamSteerer:
         motion = u_opt.tolist() # [move_x, move_y]
         return motion
     
-    def calculate_virtual_step(self, cam_pos, target):
-        x0_np = np.array(cam_pos)
+    def calculate_virtual_step(self, input_data_no_steps, target):
+        x0_np = np.array(input_data_no_steps)
         x0 = torch.tensor(x0_np, dtype=torch.float32)
 
         # 2) compute optimal motor move
@@ -155,10 +160,14 @@ class Aligner:
         if (camX == -1 or camY == -1):
             print("No beam found.")
             return -1
-        while np.abs(camX - self.target[0]) > 14 or np.abs(camY - self.target[1]) > 14:
+        while np.abs(camX - self.target[0]) > dist_tolerance or np.abs(camY - self.target[1]) > dist_tolerance:
+            if (camX == -1 or camY == -1):
+                print("You lost the beam, the model is bad.")
+                return -2
             self.steerer.step(self.motor_x, self.motor_y, self.camera, self.target)
+            sleep(5)
             count += 1
-            if count > 1000:
+            if count > 100:
                 print("Not getting closer reasonably fast.")
                 return -2
             camX, camY = self.camera.getBeamPosition()
