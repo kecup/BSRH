@@ -6,6 +6,9 @@ import numpy as np
 import torch
 from time import sleep
 
+from pyarrow.lib import float64
+from triton.language import dtype
+
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, parent_dir)
 from devices_lib import Camera, Motor
@@ -29,6 +32,35 @@ def steer_to_target(model, targets, motor_x, motor_y, camera, dist_tolerance=14)
         elif count == -2:
             faults += 1
     avg_count = np.mean(counts)
+
+    return avg_count, faults
+
+def move_to_target(model, targets, motor_x, motor_y, camera, dist_tolerance=14):
+    counts = []
+    faults = 0
+    for i in range(len(targets)):
+        target = np.array(targets[i], dtype=np.float32)
+        count = 0
+        cam_pos = np.array(camera.getBeamPosition(), dtype=np.float32)
+        while np.abs(cam_pos[0] - target[0]) > 14 and np.abs(cam_pos[1] - target[1]) > 14:
+            if (cam_pos[0] == -1 or cam_pos[1] == -1):
+                print("beam lost")
+                count = -1
+                break
+            input_vector = np.concatenate((cam_pos, target), axis=0, dtype=np.float32())
+            input_tensor = torch.tensor(input_vector).unsqueeze(0)
+            with torch.no_grad():
+                prediction = model(input_tensor).squeeze(0).numpy() # steps
+            motor_x.setRelPosition(prediction[0]) # move to prediction
+            motor_y.setRelPosition(prediction[1]) # move to prediction
+            cam_pos = np.array(camera.getBeamPosition(), dtype=np.float32) # new camera position
+            count += 1
+
+        if count != -1:
+            counts.append(count)
+        else:
+            faults += 1
+    avg_count = np.mean(counts) # doesn't take into account the faults
 
     return avg_count, faults
 
@@ -74,28 +106,39 @@ def main():
     model3.load_state_dict(torch.load(file_name3))
     model3.eval()
 
+    # model 4
+    # cam, target -> steps
+    file_name4 = "Models/model2_cam_target-steps.pth"
+    model4 = FeedbackNN(4, 2)
+    model4.load_state_dict(torch.load(file_name4))
+    model4.eval()
+
     targets = generate_targets()
     start_pos = [140600, 163500]
 
     japc.startSubscriptions()
 
-    move_motors_to_start(M3X, M3Y, start_pos)
-    avg_count1, faults1 = steer_to_target(model1, targets=targets, motor_x=M3X, motor_y=M3Y, camera=cam1, dist_tolerance=14)
-    print("finished model1")
     # move_motors_to_start(M3X, M3Y, start_pos)
-    # avg_count2, faults2 = steer_to_target(model2, targets=targets, motor_x=M3X, motor_y=M3Y, camera=cam1, dist_tolerance=14)
+    # avg_count1, faults1 = steer_to_target(model1, targets=targets, motor_x=M3X, motor_y=M3Y, camera=cam1, dist_tolerance=7)
+    # print("finished model1")
+    # move_motors_to_start(M3X, M3Y, start_pos)
+    # avg_count2, faults2 = steer_to_target(model2, targets=targets, motor_x=M3X, motor_y=M3Y, camera=cam1, dist_tolerance=7)
     # print("finished model2")
+    # move_motors_to_start(M3X, M3Y, start_pos)
+    # avg_count3, faults3 = steer_to_target(model3, targets=targets, motor_x=M3X, motor_y=M3Y, camera=cam1, dist_tolerance=7)
+    # print("finished model3")
     move_motors_to_start(M3X, M3Y, start_pos)
-    avg_count3, faults3 = steer_to_target(model3, targets=targets, motor_x=M3X, motor_y=M3Y, camera=cam1, dist_tolerance=14)
-    print("finished model3")
+    avg_count4, faults4 = move_to_target(model4, targets=targets, motor_x=M3X, motor_y=M3Y, camera=cam1, dist_tolerance=7)
+    print("finished model4")
     move_motors_to_start(M3X, M3Y, start_pos)
 
     japc.stopSubscriptions()
     japc.clearSubscriptions()
 
-    print(f"avg_count1: {avg_count1:.4f}, faults1: {faults1}")
+    # print(f"avg_count1: {avg_count1:.4f}, faults1: {faults1}")
     # print(f"avg_count2: {avg_count2:.4f}, faults2: {faults2}") # current mx, my too different from training data, doesn't work well
-    print(f"avg_count3: {avg_count3:.4f}, faults3: {faults3}")
+    # print(f"avg_count3: {avg_count3:.4f}, faults3: {faults3}")
+    print(f"avg_count4: {avg_count4:.4f}, faults4: {faults4}")
 
 if __name__ == "__main__":
     main()
