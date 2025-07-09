@@ -4,6 +4,12 @@ import zstandard as zstd
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+from skimage.restoration import richardson_lucy
+from scipy.optimize import curve_fit
+
+def gaussian(x, amp, cen, wid):  # , const):
+    return amp * np.exp(-(x - cen) ** 2 / (2 * wid ** 2))  # +const
+
 
 
 def get_background(directory: str, file, event):
@@ -68,6 +74,7 @@ def graph_cpc(data):
 def compute_cpc(directory: str, files, runs: list[str]):
     results = {}
     first_images = {}
+    fbct = {}
 
     for run in runs:
         print("Analysing " + run)
@@ -99,8 +106,9 @@ def compute_cpc(directory: str, files, runs: list[str]):
                 mask_dict.setdefault(delay_slots, []).append(run_counter)
 
                 first_images.setdefault(run, {})
-                if delay_slots not in first_images[run]:
-                    first_images[run][delay_slots] = (img.copy(), delay_slots)
+                fbct.setdefault(run, {})
+                first_images[run][delay_slots] = (img.copy(), delay_slots) # get last images to calculate the BG...
+                fbct[run][delay_slots] = (img_charge, delay_slots)
 
 
                 run_cpcs.append(cpc)
@@ -115,7 +123,7 @@ def compute_cpc(directory: str, files, runs: list[str]):
         results[run] = run_results
         print("Events:", len(run_events))
 
-    return results, first_images
+    return results, first_images, fbct
 
 
 def plot_example_images(first_images):
@@ -133,6 +141,145 @@ def plot_example_images(first_images):
         plt.tight_layout()
         plt.show()
 
+def gaussian_psf(shape, sigma_x_um, sigma_y_um, pixel_size_x_um, pixel_size_y_um):
+    """Asymmetric 2D Gaussian PSF with per-axis pixel size."""
+    h, w = shape
+    x = (np.arange(w) - w // 2) * pixel_size_x_um
+    y = (np.arange(h) - h // 2) * pixel_size_y_um
+    X, Y = np.meshgrid(x, y)
+    psf = np.exp(-0.5 * ((X / sigma_x_um)**2 + (Y / sigma_y_um)**2))
+    return psf / np.sum(psf)
+
+def deconvolve_image(image, sigma_x_um, sigma_y_um, pixel_size_x_um, pixel_size_y_um, iterations=5):
+    psf = gaussian_psf(image.shape, sigma_x_um, sigma_y_um, pixel_size_x_um, pixel_size_y_um)
+    image = np.clip(image.astype(float), 0, None)
+    return richardson_lucy(image, psf, num_iter=iterations, clip = False)
+
+
+def fit_gaussian_1d_projection(projection):
+    x = np.arange(len(projection))
+
+    try:
+        popt, _ = curve_fit(gaussian, x, projection, (projection.max(), x[np.argmax(projection)], len(projection)/4))
+        _, mu, _ = popt
+    except RuntimeError:
+        mu = x[np.argmax(projection)]  # fallback: peak index
+    return mu
+
+def find_beam_center(image):
+    """Find beam center using image moments."""
+    proj_x = np.sum(image, axis=0)  # sum over rows (vertical), profile along x
+    proj_y = np.sum(image, axis=1)  # sum over columns (horizontal), profile along y
+
+    cx = fit_gaussian_1d_projection(proj_x)
+    cy = fit_gaussian_1d_projection(proj_y)
+    return int(cx), int(cy)
+
+def integrate_projection(image, cx, px, cy, py, dlx = -1, dhx = -1, dly = -1, dhy = -1): ## This has to be adapted...
+    """Project charge from center to edge in X and Y."""
+    horizontal_proj = np.sum(image[:, :], axis=0)
+    vertical_proj = np.sum(image[:, :], axis=1)
+
+    #Find limits:
+    if dly > 0:
+        ll = int(cy-py-dly)
+    else:
+        ll = int(cy-py)
+        while vertical_proj[ll] > 0 and ll > 0:
+            ll-= 1
+        ll += 1
+
+    if dhy > 0:
+        rl = int(cy+py+dhy)
+    else:
+        rl = int(cy+py)
+        while vertical_proj[rl] > 0 and rl < len(vertical_proj)-1:
+            rl+=1
+        rl -= 1
+
+    charge_y = np.sum(vertical_proj[ll:int(cy-py)])+np.sum(vertical_proj[int(cy+py):rl])
+    total_y = np.sum(vertical_proj[ll:rl])
+
+    dly = cy-py-ll
+    dhy = rl - (cy + py)
+
+    # Find limits:
+    if dlx > 0:
+        ll = int(cx-px-dlx)
+    else:
+        ll = int(cx - px)
+        while horizontal_proj[ll] > 0 and ll > 0:
+            ll -= 1
+        ll+=1
+
+    if dhx > 0:
+        rl = int(cx+px+dhx)
+    else:
+        rl = int(cx + px)
+        while horizontal_proj[rl] > 0 and rl < len(horizontal_proj)-1:
+            rl += 1
+        rl -= 1
+    charge_x = np.sum(horizontal_proj[ll:int(cx - px)]) + np.sum(horizontal_proj[int(cx + px):rl])
+    total_x = np.sum(horizontal_proj[ll:rl])
+
+
+    if total_x == 0:
+        print("Here")
+        charge_x = 0
+    else:
+        charge_x = charge_x/total_x
+
+    if total_y == 0:
+        print("There")
+        plt.imshow(image)
+        charge_y = 0
+    else:
+        charge_y = charge_y/total_y
+
+
+    return charge_x, charge_y, vertical_proj, horizontal_proj, total_x, total_y, dly, dhy, dlx, dhx
+
+def process_all_images(first_images, fbct, sigma_x_um, sigma_y_um, pixel_size_x, pixel_size_y, size_x, size_y, sigma):
+    result = {}
+
+    for run, delay_dict in first_images.items():
+        run_result = {}
+        for delay, (img, plane_name) in delay_dict.items():
+
+            fbct_charge = fbct[run][delay]
+            px = sigma*size_x/pixel_size_x
+            py = sigma*size_y/pixel_size_y
+            cx1, cy1 = find_beam_center(img)
+            charge_x_light, charge_y_light, proj_y1, proj_x1, total1_x, total1_y, dly, dhy, dlx, dhx = integrate_projection(img, cx1, px, cy1, py)
+
+            deconv = deconvolve_image(img, sigma_x_um, sigma_y_um, pixel_size_x, pixel_size_y, 10)
+            cx, cy = find_beam_center(deconv)
+            charge_x, charge_y, proj_y2, proj_x2, total_x, total_y, _, _, _, _ = integrate_projection(deconv, cx, px, cy, py, dlx, dhx, dly, dhy)
+
+            run_result[delay] = {
+                "deconvolved": deconv,
+                "center": (cx, cy),
+                "charge_x_light": charge_x_light,
+                "charge_y_light": charge_y_light,
+                "charge_x_proton": charge_x,
+                "charge_y_proton": charge_y,
+                "proj_x_light": proj_x1,
+                "proj_x_proton": proj_x2,
+                "proj_y_light": proj_y1,
+                "proj_y_proton": proj_y2,
+                "total_x_light": total1_x,
+                "total_y_light": total1_y,
+                "total_x_proton": total_x,
+                "total_y_proton": total_y,
+                "fbct_charge": fbct_charge
+                #"limits_x_light": (ll1, rl1),
+                #"limits_x_proton": (ll, rl)
+            }
+
+        result[run] = run_result
+    return result
+
+
 
 if __name__ == "__main__":
     runs = ['run_02', 'run_04', 'run_09', 'run_11', 'run_13']
@@ -142,7 +289,38 @@ if __name__ == "__main__":
     directory = '/user/jpucek/BSRH/Data/2025/06/20/'
     files = sorted(os.listdir(directory))
 
-    results, first_images = compute_cpc(directory, files, runs)
-    graph_cpc(results)
+    results, first_images, fbct = compute_cpc(directory, files, runs) # so first_images contains the last images without occulter, so we can then calculate the BG by performing a 2D deconvolution...
+    #graph_cpc(results)
 
-    plot_example_images(first_images)
+    size_x = 263.0 # sizes of the beam at the dipole location
+    size_y = 361.0
+    sigma_x_um = 500 ## sigma of the PSF in micrometers
+    sigma_y_um = 310
+    px_x = 19.8 # pixel sizes of the images
+    px_y = 19.9
+
+    deconvolution_results = process_all_images(first_images, fbct, sigma_x_um, sigma_y_um, px_x, px_y, size_x, size_y, 3.5)
+
+    bunch = 500
+    #Actual data...
+    plt.figure(2)
+    plt.plot(deconvolution_results['run_02'][bunch]['proj_y_light'])
+    plt.plot(deconvolution_results['run_04'][bunch]['proj_y_light'])
+    plt.plot(deconvolution_results['run_09'][bunch]['proj_y_light'])
+    plt.plot(deconvolution_results['run_11'][bunch]['proj_y_light'])
+    plt.plot(deconvolution_results['run_13'][bunch]['proj_y_light'])
+
+    #Deconvolved profiles...
+    plt.figure(3)
+    plt.plot(deconvolution_results['run_02'][bunch]['proj_y_proton'])
+    plt.plot(deconvolution_results['run_04'][bunch]['proj_y_proton'])
+    plt.plot(deconvolution_results['run_09'][bunch]['proj_y_proton'])
+    plt.plot(deconvolution_results['run_11'][bunch]['proj_y_proton'])
+    plt.plot(deconvolution_results['run_13'][bunch]['proj_y_proton'])
+
+    key = list(deconvolution_results.keys())
+    for i in range(len(deconvolution_results)):
+        print("Charge difference in X: ", (deconvolution_results[key[i]][bunch]["charge_x_light"] - deconvolution_results[key[i]][bunch]["charge_x_proton"])*deconvolution_results[key[i]][bunch]['fbct_charge'])
+        print("Charge difference in Y: ", (deconvolution_results[key[i]][bunch]["charge_y_light"] - deconvolution_results[key[i]][bunch]["charge_y_proton"])*deconvolution_results[key[i]][bunch]['fbct_charge'])
+
+
