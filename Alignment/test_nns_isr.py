@@ -118,9 +118,9 @@ def main():
 
     japc.startSubscriptions()
 
-    # move_motors_to_start(M3X, M3Y, start_pos)
-    # avg_count1, faults1 = steer_to_target(model1, targets=targets, motor_x=M3X, motor_y=M3Y, camera=cam1, dist_tolerance=7)
-    # print("finished model1")
+    move_motors_to_start(M3X, M3Y, start_pos)
+    avg_count1, faults1 = steer_to_target(model1, targets=targets, motor_x=M3X, motor_y=M3Y, camera=cam1, dist_tolerance=7)
+    print("finished model1")
     # move_motors_to_start(M3X, M3Y, start_pos)
     # avg_count2, faults2 = steer_to_target(model2, targets=targets, motor_x=M3X, motor_y=M3Y, camera=cam1, dist_tolerance=7)
     # print("finished model2")
@@ -135,7 +135,7 @@ def main():
     japc.stopSubscriptions()
     japc.clearSubscriptions()
 
-    # print(f"avg_count1: {avg_count1:.4f}, faults1: {faults1}")
+    print(f"avg_count1: {avg_count1:.4f}, faults1: {faults1}")
     # print(f"avg_count2: {avg_count2:.4f}, faults2: {faults2}") # current mx, my too different from training data, doesn't work well
     # print(f"avg_count3: {avg_count3:.4f}, faults3: {faults3}")
     print(f"avg_count4: {avg_count4:.4f}, faults4: {faults4}")
