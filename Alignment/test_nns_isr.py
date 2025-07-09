@@ -4,6 +4,7 @@ import os
 import pyrbac
 import numpy as np
 import torch
+from time import sleep
 
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, parent_dir)
@@ -12,13 +13,13 @@ from AlignToTarget import Aligner, BeamSteerer, FeedbackNN
 
 
 def generate_targets():
-    targets = [[484, 304], [500, 350]] # just for testing now
+    targets = [[484, 304], [500, 350], [109, 512], [168, 136], [775, 123], [890, 496]] # just for testing now
     return targets
 
 def steer_to_target(model, targets, motor_x, motor_y, camera, dist_tolerance=14):
     counts = []
     faults = 0
-    steerer = BeamSteerer(model, lr=0.1, iters=30)
+    steerer = BeamSteerer(model, lr=0.1, iters=50)
     for i in range(len(targets)):
         target = targets[i]
         aligner = Aligner(motor_x, motor_y, camera, target, model, steerer)
@@ -31,6 +32,12 @@ def steer_to_target(model, targets, motor_x, motor_y, camera, dist_tolerance=14)
 
     return avg_count, faults
 
+def move_motors_to_start(motor_x, motor_y, start_pos):
+    # move motors to starting position
+    motor_x.setAbsPosition(start_pos[0])
+    motor_y.setAbsPosition(start_pos[1])
+    sleep(5)
+
 def main():
     japc = pyjapc.PyJapc(selector = '', incaAcceleratorName = '')
     client = pyrbac.AuthenticationClient()
@@ -42,12 +49,16 @@ def main():
 
     cam1 = Camera('TST.BSRH.CAM.CM', japc) #ISR
 
+    M3X.setRelPosition(168)
+    M3Y.setRelPosition(125)
+
     # model 1
     # cam, steps -> target
     file_name1 = "Models/model3_cam_steps-target.pth"
     model1 = FeedbackNN(4, 2)
     model1.load_state_dict(torch.load(file_name1))
     model1.eval()
+
 
     # model 2
     # cam, m, steps -> target
@@ -64,20 +75,27 @@ def main():
     model3.eval()
 
     targets = generate_targets()
+    start_pos = [140600, 163500]
 
     japc.startSubscriptions()
 
-    # avg_count1, faults1 = steer_to_target(model1, targets=targets, motor_x=M3X, motor_y=M3Y, camera=cam1, dist_tolerance=14)
+    move_motors_to_start(M3X, M3Y, start_pos)
+    avg_count1, faults1 = steer_to_target(model1, targets=targets, motor_x=M3X, motor_y=M3Y, camera=cam1, dist_tolerance=14)
+    print("finished model1")
+    # move_motors_to_start(M3X, M3Y, start_pos)
     # avg_count2, faults2 = steer_to_target(model2, targets=targets, motor_x=M3X, motor_y=M3Y, camera=cam1, dist_tolerance=14)
-    avg_count3, faults3 = steer_to_target(model3, targets=targets, motor_x=M3X, motor_y=M3Y, camera=cam1,
-                                          dist_tolerance=14)
+    # print("finished model2")
+    move_motors_to_start(M3X, M3Y, start_pos)
+    avg_count3, faults3 = steer_to_target(model3, targets=targets, motor_x=M3X, motor_y=M3Y, camera=cam1, dist_tolerance=14)
+    print("finished model3")
+    move_motors_to_start(M3X, M3Y, start_pos)
 
     japc.stopSubscriptions()
     japc.clearSubscriptions()
 
-    # print(f"avg_count1: {avg_count1:.4f}, faults1: {faults1}")
-    # print(f"avg_count2: {avg_count2:.4f}, faults2: {faults2}")
-    print(f"avg_count2: {avg_count3:.4f}, faults2: {faults3}")
+    print(f"avg_count1: {avg_count1:.4f}, faults1: {faults1}")
+    # print(f"avg_count2: {avg_count2:.4f}, faults2: {faults2}") # current mx, my too different from training data, doesn't work well
+    print(f"avg_count3: {avg_count3:.4f}, faults3: {faults3}")
 
 if __name__ == "__main__":
     main()
