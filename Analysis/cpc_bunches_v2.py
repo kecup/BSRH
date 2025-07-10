@@ -71,20 +71,14 @@ def graph_cpc(data):
     plt.show()
 
 
-def compute_cpc(directory: str, files, runs: list[str]):
+def compute_bg(directory: str, files, runs: list[str], sigma_x_um, sigma_y_um, pixel_size_x, pixel_size_y, size_x, size_y, sigma):
     results = {}
-    first_images = {}
-    fbct = {}
-    timeArray = {}
     mask = []
 
     for run in runs:
         print("Analysing " + run)
         run_data = get_run_data(directory, files, run)
         mask_dict = {}  # Key: delay_slots, Value: list of event indices
-        run_cpcs = []
-        run_counter = 0
-        #bg_image, bg_pulses = get_background(directory, files[4], 2)
 
         for file_data in run_data:
             for event in file_data:
@@ -109,29 +103,21 @@ def compute_cpc(directory: str, files, runs: list[str]):
                 #img_sum = np.sum(img)
                 cpc = (img_charge * num_of_pulses) / (img_sum * magic_const * in_filter)
 
-                mask_dict.setdefault(delay_slots, []).append(run_counter)
+                if delay_slots not in mask_dict:
+                    mask_dict[delay_slots] = {'time': [], 'bg_x': [], 'bg_y': []}
 
                 if cm_x > 61.0:
-                    first_images.setdefault(run, {})
-                    fbct.setdefault(run, {})
-                    timeArray.setdefault(run, {})
-                    first_images[run][delay_slots] = (img.copy(), delay_slots) # get last images to calculate the BG...
-                    fbct[run][delay_slots] = (img_charge, delay_slots)
-                    timeArray[run][delay_slots] = (time, delay_slots)
 
-                run_cpcs.append(cpc)
-                run_counter += 1
+                    time, bg_x, bg_y = process_image(img, img_charge, time, sigma_x_um, sigma_y_um, pixel_size_x, pixel_size_y, size_x, size_y, sigma)
 
-        run_events = list(range(run_counter))
-        run_results = {'cpcs': run_cpcs, 'events': run_events}
+                    mask_dict[delay_slots]['time'].append(time)
+                    mask_dict[delay_slots]['bg_x'].append(bg_x)
+                    mask_dict[delay_slots]['bg_y'].append(bg_y)
 
-        for delay, indices in mask_dict.items():
-            run_results[f'mask_{delay}'] = indices
 
-        results[run] = run_results
-        print("Events:", len(run_events))
+        results[run] = mask_dict
 
-    return results, first_images, fbct, timeArray
+    return results
 
 
 def plot_example_images(first_images):
@@ -254,50 +240,45 @@ def integrate_projection(image, cx, px, cy, py, dlx = -1, dhx = -1, dly = -1, dh
 
     return charge_x, charge_y, vertical_proj, horizontal_proj, total_x, total_y, dly, dhy, dlx, dhx
 
-def process_all_images(first_images, fbct, timeArray, sigma_x_um, sigma_y_um, pixel_size_x, pixel_size_y, size_x, size_y, sigma):
+def process_image(first_image, fbct, time, sigma_x_um, sigma_y_um, pixel_size_x, pixel_size_y, size_x, size_y, sigma):
     result = {}
     px = sigma * size_x / pixel_size_x
     py = sigma * size_y / pixel_size_y
 
-    for run, delay_dict in first_images.items():
-        run_result = {}
-        for delay, (img, plane_name) in delay_dict.items():
+    cx1, cy1 = find_beam_center(first_image)
+    charge_x_light, charge_y_light, proj_y1, proj_x1, total1_x, total1_y, dly, dhy, dlx, dhx = integrate_projection(first_image, cx1, px, cy1, py)
+    deconv = deconvolve_image(first_image, sigma_x_um, sigma_y_um, pixel_size_x, pixel_size_y, 10)
+    cx, cy = find_beam_center(deconv)
+    charge_x, charge_y, proj_y2, proj_x2, total_x, total_y, _, _, _, _ = integrate_projection(deconv, cx, px, cy, py, dlx, dhx, dly, dhy)
 
-            fbct_charge = fbct[run][delay][0]
-            time = timeArray[run][delay][0]
-            cx1, cy1 = find_beam_center(img)
-            charge_x_light, charge_y_light, proj_y1, proj_x1, total1_x, total1_y, dly, dhy, dlx, dhx = integrate_projection(img, cx1, px, cy1, py)
-            if delay == 2500:
-                print(dly, dhy)
-            deconv = deconvolve_image(img, sigma_x_um, sigma_y_um, pixel_size_x, pixel_size_y, 10)
-            cx, cy = find_beam_center(deconv)
-            charge_x, charge_y, proj_y2, proj_x2, total_x, total_y, _, _, _, _ = integrate_projection(deconv, cx, px, cy, py, dlx, dhx, dly, dhy)
+    bg_x = (charge_x_light - charge_x) * fbct
+    bg_y = (charge_y_light - charge_y) * fbct
 
-            run_result[delay] = {
-                "deconvolved": deconv,
-                "time": time,
-                "center": (cx, cy),
-                "distance_x": (dlx, dhx),
-                "distance_y": (dly, dhy),
-                "charge_x_light": charge_x_light,
-                "charge_y_light": charge_y_light,
-                "charge_x_proton": charge_x,
-                "charge_y_proton": charge_y,
-                "proj_x_light": proj_x1,
-                "proj_x_proton": proj_x2,
-                "proj_y_light": proj_y1,
-                "proj_y_proton": proj_y2,
-                "total_x_light": total1_x,
-                "total_y_light": total1_y,
-                "total_x_proton": total_x,
-                "total_y_proton": total_y,
-                "fbct_charge": fbct_charge
-                #"limits_x_light": (ll1, rl1),
-                #"limits_x_proton": (ll, rl)
-            }
-
-        result[run] = run_result
-    return result
+        #     run_result[delay] = {
+        #         "deconvolved": deconv,
+        #         "time": time,
+        #         "center": (cx, cy),
+        #         "distance_x": (dlx, dhx),
+        #         "distance_y": (dly, dhy),
+        #         "charge_x_light": charge_x_light,
+        #         "charge_y_light": charge_y_light,
+        #         "charge_x_proton": charge_x,
+        #         "charge_y_proton": charge_y,
+        #         "proj_x_light": proj_x1,
+        #         "proj_x_proton": proj_x2,
+        #         "proj_y_light": proj_y1,
+        #         "proj_y_proton": proj_y2,
+        #         "total_x_light": total1_x,
+        #         "total_y_light": total1_y,
+        #         "total_x_proton": total_x,
+        #         "total_y_proton": total_y,
+        #         "fbct_charge": fbct_charge
+        #         #"limits_x_light": (ll1, rl1),
+        #         #"limits_x_proton": (ll, rl)
+        #     }
+        #
+        # result[run] = run_result
+    return time, bg_x, bg_y
 
 
 
@@ -309,7 +290,7 @@ if __name__ == "__main__":
     directory = '/user/jpucek/BSRH/Data/2025/06/20/'
     files = sorted(os.listdir(directory))
 
-    results, first_images, fbct, timeArray = compute_cpc(directory, files, runs) # so first_images contains the last images without occulter, so we can then calculate the BG by performing a 2D deconvolution...
+     # so first_images contains the last images without occulter, so we can then calculate the BG by performing a 2D deconvolution...
     #graph_cpc(results)
 
     size_x = 263.0 # sizes of the beam at the dipole location
@@ -319,49 +300,8 @@ if __name__ == "__main__":
     px_x = 19.8 # pixel sizes of the images
     px_y = 19.9
 
-    deconvolution_results = process_all_images(first_images, fbct, timeArray, sigma_x_um, sigma_y_um, px_x, px_y, size_x, size_y, 3.5)
+    results = compute_bg(directory, files, runs, sigma_x_um, sigma_y_um, px_x, px_y, size_x, size_y, 3.5)
 
-    bunch = 2500
-    #Actual data...
-    plt.figure(2)
-    plt.plot(deconvolution_results['run_02'][bunch]['proj_y_light'])
-    plt.plot(deconvolution_results['run_04'][bunch]['proj_y_light'])
-    plt.plot(deconvolution_results['run_09'][bunch]['proj_y_light'])
-    plt.plot(deconvolution_results['run_11'][bunch]['proj_y_light'])
-    plt.plot(deconvolution_results['run_13'][bunch]['proj_y_light'])
-
-    #Deconvolved profiles...
-    plt.figure(3)
-    plt.plot(deconvolution_results['run_02'][bunch]['proj_y_proton'])
-    plt.plot(deconvolution_results['run_04'][bunch]['proj_y_proton'])
-    plt.plot(deconvolution_results['run_09'][bunch]['proj_y_proton'])
-    plt.plot(deconvolution_results['run_11'][bunch]['proj_y_proton'])
-    plt.plot(deconvolution_results['run_13'][bunch]['proj_y_proton'])
-
-    py = 3.5*size_y/px_y
-    ll = []
-    rl = []
-
-    bg = {}
-
-
-
-    key = list(deconvolution_results.keys())
-    for i in range(len(deconvolution_results)):
-        bunchNumbers = list(deconvolution_results[key[i]].keys())
-        bunchNumbers = sorted(bunchNumbers)
-        if i == 0:
-            for j in range(len(bunchNumbers)):
-                bg.setdefault(bunchNumbers[j], [[],[],[]])
-
-        for bN in bunchNumbers:
-            time = deconvolution_results[key[i]][bN]['time']
-            bg_x = (deconvolution_results[key[i]][bN]["charge_x_light"] - deconvolution_results[key[i]][bN]["charge_x_proton"]) * deconvolution_results[key[i]][bN]['fbct_charge']
-            bg_y = (deconvolution_results[key[i]][bN]["charge_y_light"] - deconvolution_results[key[i]][bN]["charge_y_proton"])*deconvolution_results[key[i]][bN]['fbct_charge']
-            bg[bN][0].append(time)
-            bg[bN][1].append(bg_x)
-            bg[bN][2].append(bg_y)
-
-    f = open("BG_results.pkl", 'wb')
-    pickle.dump(bg, f)
+    f = open("BG_results_v2.pkl", 'wb')
+    pickle.dump(results, f)
     f.close()
