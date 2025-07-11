@@ -101,8 +101,8 @@ class BeamSteerer:
         motion = self.calculate_step(camera, target, motorX, motorY)
 
         # move
-        motorX.setRelPosition(motion[0])
-        motorY.setRelPosition(motion[1])
+        motorX.setRelPosition(int(motion[0]))
+        motorY.setRelPosition(int(motion[1]))
 
     def calculate_step(self, camera, target, motor_x=None, motor_y=None):
         # 1) read current beam
@@ -132,13 +132,15 @@ class BeamSteerer:
 
 
 class Aligner:
-    def __init__(self, motor_x: Motor, motor_y: Motor, camera: Camera, target: list, model: FeedbackNN, steerer: BeamSteerer):
+    def __init__(self, motor_x: Motor, motor_y: Motor, camera: Camera, target: list, model: FeedbackNN, steerer: BeamSteerer, ref_x=None, ref_y=None):
         self.motor_x = motor_x
         self.motor_y = motor_y
         self.camera = camera
         self.target = target
         self.model = model
         self.steerer = steerer
+        self.ref_x = ref_x
+        self.ref_y = ref_y
 
     def align(self, iter: int):
         for i in range(iter):
@@ -159,15 +161,38 @@ class Aligner:
         camX, camY = self.camera.getBeamPosition()
         if (camX == -1 or camY == -1):
             print("No beam found.")
+            print("Sending to references.")
+            self.motor_x.setAbsPosition(self.ref_x)
+            self.motor_y.setAbsPosition(self.ref_y)
+            busy_counter = 0
+            while self.motor_x.isBusy() or self.motor_y.isBusy():
+                sleep(0.2)
+                busy_counter += 1
+                if busy_counter > 20:
+                    break
             return -1
         while np.abs(camX - self.target[0]) > dist_tolerance or np.abs(camY - self.target[1]) > dist_tolerance:
             if (camX == -1 or camY == -1):
                 print("You lost the beam, the model is bad.")
+                print("Sending to references.")
+                self.motor_x.setAbsPosition(self.ref_x)
+                self.motor_y.setAbsPosition(self.ref_y)
+                busy_counter = 0
+                while self.motor_x.isBusy() or self.motor_y.isBusy():
+                    sleep(0.2)
+                    busy_counter += 1
+                    if busy_counter > 20:
+                        break
                 return -2
             self.steerer.step(self.motor_x, self.motor_y, self.camera, self.target)
-            sleep(5)
+            busy_counter = 0
+            while self.motor_x.isBusy() or self.motor_y.isBusy():
+                sleep(0.2)
+                busy_counter += 1
+                if busy_counter > 20:
+                    break
             count += 1
-            if count > 100:
+            if count > 30:
                 print("Not getting closer reasonably fast.")
                 return -2
             camX, camY = self.camera.getBeamPosition()
