@@ -2,6 +2,7 @@ import dill as pickle
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import datetime as dt
 
 
 def moving_average(a, n=3):
@@ -36,9 +37,9 @@ InFile = open('HaloCharge.pkl', 'rb')
 results = pickle.load(InFile)
 InFile.close()
 
-#g = open("AvgBG.pkl", 'rb') #From this file we want to interpolate the bg...
-#BG = pickle.load(g)
-#g.close()
+g = open("AvgBG.pkl", 'rb') #From this file we want to interpolate the bg...
+BG = pickle.load(g)
+g.close()
 
 keys = list(results.keys())
 
@@ -56,7 +57,15 @@ for key in keys:
     x = results[key]['timeV']
 
     x_sorted, y_sorted = zip(*sorted(zip(x, y)))
-    y_clean = remove_outliers(y_sorted, 50, 2.5)
+    y_sorted = list(y_sorted)
+    tmpStamp = [dt.timestamp() for dt in BG[key][0]]
+
+    y_corrected = [
+        y - np.interp(x.timestamp(), tmpStamp, BG[key][3])
+        for x, y in zip(x_sorted, y_sorted)
+    ]
+
+    y_clean = remove_outliers(y_corrected, 50, 2.5)
 
     plt.figure(2)
     plt.plot(x_sorted, y_clean, label = str(key))
