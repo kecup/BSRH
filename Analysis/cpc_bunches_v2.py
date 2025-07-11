@@ -79,7 +79,7 @@ def compute_bg(directory: str, files, runs: list[str], sigma_x_um, sigma_y_um, p
         print("Analysing " + run)
         run_data = get_run_data(directory, files, run)
         mask_dict = {}  # Key: delay_slots, Value: list of event indices
-
+        event_global = 0
         for file_data in run_data:
             for event in file_data:
                 img = event.cam_data['image2D']
@@ -108,12 +108,16 @@ def compute_bg(directory: str, files, runs: list[str], sigma_x_um, sigma_y_um, p
 
                 if cm_x > 61.0:
 
-                    time, bg_x, bg_y = process_image(img, img_charge, time, sigma_x_um, sigma_y_um, pixel_size_x, pixel_size_y, size_x, size_y, sigma)
+                    time, bg_x, bg_y, charge_x, charge_y = process_image(img, img_charge, time, sigma_x_um, sigma_y_um, pixel_size_x, pixel_size_y, size_x, size_y, sigma)
 
                     mask_dict[delay_slots]['time'].append(time)
                     mask_dict[delay_slots]['bg_x'].append(bg_x)
                     mask_dict[delay_slots]['bg_y'].append(bg_y)
+                    mask_dict[delay_slots]['charge_x'].append(charge_x)
+                    mask_dict[delay_slots]['charge_y'].append(charge_y)
 
+                print("Done event: ", event_global)
+                event_global += 1
 
         results[run] = mask_dict
 
@@ -278,7 +282,7 @@ def process_image(first_image, fbct, time, sigma_x_um, sigma_y_um, pixel_size_x,
         #     }
         #
         # result[run] = run_result
-    return time, bg_x, bg_y
+    return time, bg_x, bg_y, charge_x, charge_y
 
 
 

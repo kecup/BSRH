@@ -7,9 +7,21 @@ import datetime as dt
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
+
+
 def gaussian(x, amp, cen, wid):#, const):
   return amp*np.exp(-(x-cen)**2/(2*wid**2))#+const
 
+
+def get_run_data(directory: str, files, run: str):
+    data = []
+    for file in files:
+        if run in file:
+            with open(directory + file, 'rb') as f:
+                with dctx.stream_reader(f) as reader:
+                    file_data = pickle.load(reader)
+                    data.append(file_data)
+    return data
 
 japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
 dctx = zstd.ZstdDecompressor()
@@ -17,15 +29,16 @@ dctx = zstd.ZstdDecompressor()
 #DATA_PATH_BSRH = '/user/jpucek/BSRH/Data'
 directoryBSRH = '/user/jpucek/BSRH/Data/2025/06/20/' #os.path.join(DATA_PATH_BSRH, time.strftime('%Y/%m/%d/', time.localtime()))
 
+g = open("AvgBG.pkl", 'rb') #From this file we want to interpolate the bg...
+BG = pickle.load(g)
+g.close()
+
+
 filesBSRH = os.listdir(directoryBSRH)
 filesBSRH = sorted(filesBSRH)
 nFiles = len(filesBSRH)
 
-bunchN = []
-timeH = [[]]
-timeV = [[]]
-haloV = [[]]
-haloH = [[]]
+runs = ['run_03', 'run_07', 'run_10', 'run_12', 'run_14']
 
 #Touch this...
 maskX = 455 ##Change here the mask position
@@ -36,57 +49,35 @@ sigma = 3.5 #From where you want to calculate the charge
 ##Maybe don't touch this unless you know what you are doing...
 SIGMA_TO_MM_X = 263.0  # previously hardcoded as 263.0
 SIGMA_TO_MM_Y = 361.0
+
 INTENSIFIER_GAIN = 5623
-cPc = 43.0 #This is the charge per count constant, should not need to be changed...
+cPc = 43.5 #This is the charge per count constant, should not need to be changed...
+
 pixelSizeH = 19.8
 pixelSizeV = 19.9
+
 x1 = 284
 x2 = 684
 y1 = 154
 y2 = 454
 
-plt.figure(1)
-plt.figure(2)
+#plt.figure(1)
+#plt.figure(2)
 
 filesBSRH = os.listdir(directoryBSRH)
-for j in range()
-if nFiles < len(filesBSRH):
-    nFiles = len(filesBSRH)
-    filesBSRH = sorted(filesBSRH)
-    if 'pkl.zst' in filesBSRH[-1]:
-        time.sleep(0.2)
-        #Hopefully we can perform the analysis before another new file is saved...
-        file = open(directoryBSRH + filesBSRH[-1], 'rb')  # Open last known file
-        try:
-            with dctx.stream_reader(file) as reader:
-                BSRH = pickle.load(reader)
-        except:
-            nFiles = nFiles-1
-            continue
-        file.close()
+results = {}
+cmask_x = []
+cmask_y = []
 
-        if not bunchN:#first time running
-            bunchN.append(BSRH[0].device_data['GATE-INT']['delaySlots'])
-            count = 1
-            while bunchN[0] != BSRH[count].device_data['GATE-INT']['delaySlots']:
-                bunchN.append(BSRH[count].device_data['GATE-INT']['delaySlots'])
-                timeH.append([])
-                timeV.append([])
-                haloH.append([])
-                haloV.append([])
-                count = count + 1
-            bunchN = sorted(bunchN)
+for run in runs:
 
-        #Let's find the first bunch slot index:
-        firstBunch = BSRH[0].device_data['GATE-INT']['delaySlots']
-        count = len(bunchN)
-        bunchIndex = bunchN.index(firstBunch)
+    print("Analysing " + run)
+    run_data = get_run_data(directoryBSRH, filesBSRH, run)
 
-        print(bunchIndex)
-        print(count)
+    for file_data in run_data:
+        for event in file_data:
 
-        for index in range(len(BSRH)): #populate the arrays...
-            image = BSRH[index].cam_data['image2D']
+            image = event.cam_data['image2D']
             projection_x = np.sum(image[y1:y2, :], axis=0)
             projection_x = projection_x - np.mean(projection_x[:50])
 
@@ -95,7 +86,15 @@ if nFiles < len(filesBSRH):
 
             correct_measurementX_flag = True
             correct_measurementY_flag = True
-            exposure = BSRH[index].device_data['GATE-INT']['numberOfPulses']
+
+            cmask_x.append(event.device_data['CMASK-X'])
+            cmask_y.append(event.device_data['CMASK-Y'])
+
+            exposure = event.device_data['GATE-INT']['numberOfPulses']
+            delaySlots = int(event.device_data["GATE-INT"]["delaySlots"])
+
+            if delaySlots not in results:
+                results[delaySlots] = {'timeH': [], 'haloH': [], 'timeV': [], 'haloV': []}
 
             x_temp = []
             x_temp.extend(range(int(maskX - maskR)))
@@ -139,12 +138,12 @@ if nFiles < len(filesBSRH):
 
             if correct_measurementX_flag:
                 chargeX = np.sum(projection_x[xl0:xl1]) + np.sum(projection_x[xr1:xr0])
-                fArr = BSRH[index].device_data['FILTERS.B2']['channelState']
+                fArr = event.device_data['FILTERS.B2']['channelState']
                 in_filter = pow(12.6, 3 * fArr[0] + 2 * fArr[1] + fArr[2])
                 chargeX = chargeX * cPc * INTENSIFIER_GAIN * in_filter / exposure
 
-                timeH[bunchIndex].append(BSRH[index].timestamp)
-                haloH[bunchIndex].append(chargeX)
+                results[delaySlots]['timeH'].append(event.timestamp)
+                results[delaySlots]['haloH'].append(chargeX)
 
             y_temp = []
             y_temp.extend(range(int(maskY - maskR)))  # Here we should be carefull not to put rubbish..
@@ -190,30 +189,14 @@ if nFiles < len(filesBSRH):
 
             if correct_measurementY_flag:
                 chargeY = np.sum(projection_y[yl0:yl1]) + np.sum(projection_y[yr1:yr0])
-                fArr = BSRH[index].device_data['FILTERS.B2']['channelState']
+                fArr = event.device_data['FILTERS.B2']['channelState']
                 in_filter = pow(12.6, 3 * fArr[0] + 2 * fArr[1] + fArr[2])
                 chargeY = chargeY * cPc * INTENSIFIER_GAIN * in_filter / exposure
 
-                timeV[bunchIndex].append(BSRH[index].timestamp)
-                haloV[bunchIndex].append(chargeY)
-
-            if bunchIndex + 1 >= count:
-                bunchIndex = 0
-            else:
-                bunchIndex = bunchIndex+1
-
+                results[delaySlots]['timeV'].append(event.timestamp)
+                results[delaySlots]['haloV'].append(chargeY)
                 ##ADD VERTICAL halo charge calculation!!!!
-        plt.figure(1)
-        plt.clf()
-        for k in range(count):
-            plt.plot(timeH[k], haloH[k], label = str(bunchN[k]))
-        plt.legend()
-        plt.draw()
-        plt.pause(1.0)
 
-        plt.figure(2)
-        plt.clf()
-        for k in range(count):
-            plt.plot(timeV[k], haloV[k], label=str(bunchN[k]))
-        plt.legend()
-        plt.draw()
+OutFile = open('HaloCharge.pkl', 'wb')
+pickle.dump(results, OutFile)
+OutFile.close()
