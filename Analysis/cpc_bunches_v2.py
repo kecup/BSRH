@@ -104,7 +104,7 @@ def compute_bg(directory: str, files, runs: list[str], sigma_x_um, sigma_y_um, p
                 cpc = (img_charge * num_of_pulses) / (img_sum * magic_const * in_filter)
 
                 if delay_slots not in mask_dict:
-                    mask_dict[delay_slots] = {'time': [], 'bg_x': [], 'bg_y': []}
+                    mask_dict[delay_slots] = {'time': [], 'bg_x': [], 'bg_y': [], 'charge_x': [], 'charge_y': []}
 
                 if cm_x > 61.0:
 
@@ -306,6 +306,6 @@ if __name__ == "__main__":
 
     results = compute_bg(directory, files, runs, sigma_x_um, sigma_y_um, px_x, px_y, size_x, size_y, 3.5)
 
-    f = open("BG_results_v2.pkl", 'wb')
+    f = open("BG_results_v3.pkl", 'wb')
     pickle.dump(results, f)
     f.close()

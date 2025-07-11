@@ -12,6 +12,7 @@ if __name__ == "__main__":
     f.close()
 
     bg = {}
+    charge = {}
 
     key = list(results.keys())
     for i in range(len(results)):
@@ -20,6 +21,7 @@ if __name__ == "__main__":
         if i == 0:
             for j in range(len(bunchNumbers)):
                 bg.setdefault(bunchNumbers[j], [[], [], [], [], []])
+                charge.setdefault(bunchNumbers[j], [[], [], [], [], []])
         for bN in bunchNumbers:
             time_Avg = results[key[i]][bN]['time'][0]
 
@@ -29,14 +31,33 @@ if __name__ == "__main__":
             bg_x_Std = np.std(results[key[i]][bN]['bg_x'])
             bg_y_Std = np.std(results[key[i]][bN]['bg_y'])
 
+            halo_x_Avg = np.mean(results[key[i]][bN]['charge_x'])
+            halo_y_Avg = np.mean(results[key[i]][bN]['charge_y'])
+
+            halo_x_Std = np.std(results[key[i]][bN]['charge_x'])
+            halo_y_Std = np.std(results[key[i]][bN]['charge_y'])
+
             bg[bN][0].append(time_Avg)
             bg[bN][1].append(bg_x_Avg)
             bg[bN][2].append(bg_x_Std)
             bg[bN][3].append(bg_y_Avg)
             bg[bN][4].append(bg_y_Std)
+
+            charge[bN][0].append(time_Avg)
+            charge[bN][1].append(halo_x_Avg)
+            charge[bN][2].append(halo_x_Std)
+            charge[bN][3].append(halo_y_Avg)
+            charge[bN][4].append(halo_y_Std)
+
+
+
     g = open("AvgBG.pkl", 'wb')
     pickle.dump(bg, g)
     g.close()
+
+    h = open('AvgHalo.pkl','wb')
+    pickle.dump(charge,h)
+    h.close()
 
     key = list(bg.keys())
     for i in key:

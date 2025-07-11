@@ -14,24 +14,25 @@ def gaussian(x, amp, cen, wid):#, const):
 
 
 def get_run_data(directory: str, files, run: str):
-    data = []
-    for file in files:
-        if run in file:
-            with open(directory + file, 'rb') as f:
-                with dctx.stream_reader(f) as reader:
-                    file_data = pickle.load(reader)
-                    data.append(file_data)
-    return data
+    # data = []
+    # for file in files:
+    #     if run in file:
+    #         with open(directory + file, 'rb') as f:
+    #             with dctx.stream_reader(f) as reader:
+    #                 file_data = pickle.load(reader)
+    #                 data.append(file_data)
+    # return data
+    run_files = [os.path.join(directory, f) for f in files if run in f]
+    run_files = sorted(run_files)
+    return run_files
+
+
 
 japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
 dctx = zstd.ZstdDecompressor()
 
 #DATA_PATH_BSRH = '/user/jpucek/BSRH/Data'
 directoryBSRH = '/user/jpucek/BSRH/Data/2025/06/20/' #os.path.join(DATA_PATH_BSRH, time.strftime('%Y/%m/%d/', time.localtime()))
-
-g = open("AvgBG.pkl", 'rb') #From this file we want to interpolate the bg...
-BG = pickle.load(g)
-g.close()
 
 
 filesBSRH = os.listdir(directoryBSRH)
@@ -74,9 +75,12 @@ for run in runs:
     print("Analysing " + run)
     run_data = get_run_data(directoryBSRH, filesBSRH, run)
 
-    for file_data in run_data:
-        for event in file_data:
+    for file_name in run_data:
+        with open(file_name, 'rb') as f:
+            with dctx.stream_reader(f) as reader:
+                file_data = pickle.load(reader)
 
+        for event in file_data:
             image = event.cam_data['image2D']
             projection_x = np.sum(image[y1:y2, :], axis=0)
             projection_x = projection_x - np.mean(projection_x[:50])
@@ -101,7 +105,7 @@ for run in runs:
             x_temp.extend(range(int(maskX + maskR), 968))
 
             try:
-                resX, _ = curve_fit(gaussian, x_temp, projection_x[x_temp], (1000, maskX, 15.0))
+                resX, _ = curve_fit(gaussian, x_temp, projection_x[x_temp], (45000, maskX, 20.0))
                 if resX[1] > maskX + maskR or resX[1] < maskX - maskR:
                     print('Core outside the mask (X)')
                     raise Exception('Problem with fit value')
@@ -151,7 +155,7 @@ for run in runs:
             # projection_y = projection_y - np.mean(projection_y[:50])
 
             try:
-                resY, _ = curve_fit(gaussian, y_temp, projection_y[y_temp],(1000, maskY, 15.0))  # fit SG to get the assumed center
+                resY, _ = curve_fit(gaussian, y_temp, projection_y[y_temp],(45000, maskY, 20.0))  # fit SG to get the assumed center
                 if resY[1] > maskY + maskR or resY[1] < maskY - maskR:
                     print('Core outside the mask (Y)')
                     raise Exception('Problem with fit value')
