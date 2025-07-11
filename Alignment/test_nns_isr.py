@@ -6,9 +6,6 @@ import numpy as np
 import torch
 from time import sleep
 
-from pyarrow.lib import float64
-from triton.language import dtype
-
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, parent_dir)
 from devices_lib import Camera, Motor
