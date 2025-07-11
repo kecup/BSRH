@@ -100,6 +100,7 @@ class Motor:
             print('Cannot comply, motor is busy!')
 
     def setRelPosition(self, relPosition):  # Motion in relative steps!
+        relPosition = int(relPosition)
         if self.japc.getParam(self.name + '/Acquisition#motor_busy') == False:
 
             if relPosition * self.lastMotionRel < 0:  # Change of sign
