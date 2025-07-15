@@ -47,7 +47,7 @@ def measure_cam(camera):
     """
     camX, camY = camera.getBeamPosition()
     if camX == -1 or camY == -1:
-        print('Did not find beam, sending to references')
+        print('Did not find beam, sending to references.')
         send_motors_to_references()
         camX, camY = camera.getBeamPosition()
         if camX == -1 or camY == -1:
@@ -93,7 +93,7 @@ def main():
 
     send_motors_to_references()
 
-    iterations = 20
+    iterations = 2000
 
     # open a csv file that we will use to save the training data:
     file_name = 'isr_t3_t4_data.csv'
@@ -109,7 +109,7 @@ def main():
 
         # collect data
         for i in range(iterations):
-            print("Starting iteration " + str(i + 1))
+            print("Starting iteration " + str(i + 1) + " out of " + str(iterations))
 
             cam1X, cam1Y = measure_cam(cam1)
             cam2X, cam2Y = measure_cam(cam2)
@@ -120,7 +120,7 @@ def main():
             mTheta = motor_theta.getPosition()
 
             stepsX, stepsY, stepsPhi, stepsTheta = get_steps()
-            print(stepsX, stepsY, stepsPhi, stepsTheta)
+            # print(stepsX, stepsY, stepsPhi, stepsTheta)
             move_motors(stepsX, stepsY, stepsPhi, stepsTheta)
 
             t1X, t1Y = cam1.getBeamPosition()
@@ -132,7 +132,9 @@ def main():
                 file_writer.writerow(row)
                 file.flush()
             else:
-                print("invalid targets")
+                print("Invalid targets.")
+                send_motors_to_references()
+                print("Sending to references.")
 
 
     send_motors_to_references()
