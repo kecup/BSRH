@@ -13,41 +13,87 @@ sys.path.insert(0, parent_dir)
 from devices_lib import Camera, Motor, Pneumatics
 import pyrbac
 
+japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
+client = pyrbac.AuthenticationClient()
+token = client.login_kerberos()
+japc.rbacLogin(token=token)
+
+# ISR Motors
+motor_x = Motor('TST.cfv-375-bsrdev.mot.3-2', japc, 5)
+motor_y = Motor('TST.cfv-375-bsrdev.mot.3-3', japc, 5)
+motor_phi = Motor('TST.cfv-375-bsrdev.mot.3-4', japc, 168)
+motor_theta = Motor('TST.cfv-375-bsrdev.mot.3-5', japc, 125)
+
+# ISR Cameras
+cam1 = Camera("TST.BSRH.MON.M2", japc)
+cam2 = Camera("TST.BSRH.CAM.CM", japc)
+
+# How many steps the motor can make from reference to keep the image on the camera
+# we only care about the second camera
+motor_range_x_t2 = 320
+motor_range_y_t2 = 620
+motor_range_phi_t2 = 450
+motor_range_theta_t2 = 900
+
+# references for motors
+ref_x = 40085
+ref_y = 41740
+ref_phi = 140600
+ref_theta = 163500
+
+def measure_cam(camera):
+    """
+    Measure camera data.
+    """
+    camX, camY = camera.getBeamPosition()
+    if camX == -1 or camY == -1:
+        print('Did not find beam, sending to references')
+        send_motors_to_references()
+        camX, camY = camera.getBeamPosition()
+        if camX == -1 or camY == -1:
+            print('Cannot find beam at reference location. This should not happen.')
+            # something is wrong, this shouldn't happen
+    return camX, camY
+
+def get_steps():
+    steps_x = (random.randint(motor_x.getPosition() - motor_range_x_t2,
+                              motor_x.getPosition() + motor_range_x_t2)) - motor_x.getPosition()
+
+    steps_y = (random.randint(motor_y.getPosition() - motor_range_y_t2,
+                              motor_y.getPosition() + motor_range_y_t2)) - motor_y.getPosition()
+
+    steps_phi = (random.randint(motor_phi.getPosition() - motor_range_phi_t2,
+                                motor_phi.getPosition() + motor_range_phi_t2)) - motor_phi.getPosition()
+
+    steps_theta = (random.randint(motor_theta.getPosition() - motor_range_theta_t2,
+                                  motor_theta.getPosition() + motor_range_theta_t2)) - motor_theta.getPosition()
+
+    return steps_x, steps_y, steps_phi, steps_theta
+
+def move_motors(stepsX, stepsY, stepsPhi, stepsTheta):
+    motor_x.setRelPosition(stepsX)
+    motor_y.setRelPosition(stepsY)
+    motor_phi.setRelPosition(stepsPhi)
+    motor_theta.setRelPosition(stepsTheta)
+    while motor_x.isBusy() or motor_y.isBusy() or motor_phi.isBusy() or motor_theta.isBusy():
+        sleep(0.2)
+
+def send_motors_to_references():
+    motor_x.setAbsPosition(ref_x)
+    motor_y.setAbsPosition(ref_y)
+    motor_phi.setAbsPosition(ref_phi)
+    motor_theta.setAbsPosition(ref_theta)
+    while motor_x.isBusy() or motor_y.isBusy() or motor_phi.isBusy() or motor_theta.isBusy():
+        sleep(0.2)
 
 def main():
-    japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
-    client = pyrbac.AuthenticationClient()
-    token = client.login_kerberos()
-    japc.rbacLogin(token=token)
-
-    # ISR Motors
-    motor_x = Motor('TST.cfv-375-bsrdev.mot.3-2', japc, 5)
-    motor_y = Motor('TST.cfv-375-bsrdev.mot.3-3', japc, 5)
-    motor_phi = Motor('TST.cfv-375-bsrdev.mot.3-4', japc, 168)
-    motor_theta = Motor('TST.cfv-375-bsrdev.mot.3-5', japc, 125)
-
-    # ISR Cameras
-    cam1 = Camera("TST.BSRH.MON.M2", japc)
-    cam2 = Camera("TST.BSRH.CAM.CM", japc)
-
-    # How many steps the motor can make from reference to keep the image on the camera
-    # we only care about the second camera
-    motor_range_x_t2 = 320
-    motor_range_y_t2 = 620
-    motor_range_phi_t2 = 450
-    motor_range_theta_t2 = 900
 
     japc.startSubscriptions()
     sleep(2)
 
-    # reference position to return to if something goes wrong
-    ref_x = motor_x.getPosition() # 40085
-    ref_y = motor_y.getPosition() # 41740
-    ref_phi = motor_phi.getPosition() # 163500
-    ref_theta = motor_theta.getPosition() # 140600
+    send_motors_to_references()
 
     iterations = 20
-
 
     # open a csv file that we will use to save the training data:
     file_name = 'isr_t3_t4_data.csv'
@@ -62,21 +108,19 @@ def main():
             file_writer.writerow(header)
 
         # collect data
-        # file_writer.writerow([])
-        # flush after every append: file.flush()
         for i in range(iterations):
             print("Starting iteration " + str(i + 1))
 
-            cam1X, cam1Y = measure_cam1()
+            cam1X, cam1Y = measure_cam(cam1)
+            cam2X, cam2Y = measure_cam(cam2)
 
             mX = motor_x.getPosition()
             mY = motor_y.getPosition()
             mPhi = motor_phi.getPosition()
             mTheta = motor_theta.getPosition()
 
-            cam2X, cam2Y = measure_cam2()
-
             stepsX, stepsY, stepsPhi, stepsTheta = get_steps()
+            print(stepsX, stepsY, stepsPhi, stepsTheta)
             move_motors(stepsX, stepsY, stepsPhi, stepsTheta)
 
             t1X, t1Y = cam1.getBeamPosition()
@@ -87,14 +131,11 @@ def main():
                 row = [cam1X, cam1Y, cam2X, cam2Y, mX, mY, mPhi, mTheta, t1X, t1Y, t2X, t2Y, stepsX, stepsY, stepsPhi, stepsTheta]
                 file_writer.writerow(row)
                 file.flush()
+            else:
+                print("invalid targets")
 
 
-
-    motor_x.setAbsPosition(ref_x)
-    motor_y.setAbsPosition(ref_y)
-    motor_phi.setAbsPosition(ref_phi)
-    motor_theta.setAbsPosition(ref_theta)
-
+    send_motors_to_references()
     japc.stopSubscriptions()
 
 if __name__ == "__main__":
