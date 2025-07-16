@@ -30,16 +30,22 @@ cam2 = Camera("TST.BSRH.CAM.CM", japc)
 
 # How many steps the motor can make from reference to keep the image on the camera
 # we only care about the second camera
-motor_range_x_t2 = 320
+# motor_range_x_t2 = 320
+# motor_range_y_t2 = 620
+# motor_range_phi_t2 = 450
+# motor_range_theta_t2 = 900
+motor_range_x_t2 = 320 # new
 motor_range_y_t2 = 620
-motor_range_phi_t2 = 450
-motor_range_theta_t2 = 900
+motor_range_phi_t2 = 700
+motor_range_theta_t2 = 300
 
 # references for motors
 ref_x = 40085
 ref_y = 41740
-ref_phi = 140600
-ref_theta = 163500
+# ref_phi = 140600
+# ref_theta = 163500
+ref_phi = 141100
+ref_theta = 160800
 
 def measure_cam(camera):
     """
@@ -94,6 +100,7 @@ def main():
     send_motors_to_references()
 
     iterations = 2000
+    faults = 0
 
     # open a csv file that we will use to save the training data:
     file_name = 'isr_t3_t4_data.csv'
@@ -110,6 +117,7 @@ def main():
         # collect data
         for i in range(iterations):
             print("Starting iteration " + str(i + 1) + " out of " + str(iterations))
+            print("Faults so far: " + str(faults))
 
             cam1X, cam1Y = measure_cam(cam1)
             cam2X, cam2Y = measure_cam(cam2)
@@ -133,6 +141,7 @@ def main():
                 file.flush()
             else:
                 print("Invalid targets.")
+                faults += 1
                 send_motors_to_references()
                 print("Sending to references.")
 
