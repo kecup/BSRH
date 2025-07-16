@@ -90,9 +90,9 @@ def train_nn(X, y, file_name: str):
         print(f"Epoch {epoch:03d} — train_loss: {train_loss:.4f}, val_loss: {val_loss:.4f}")
 
         # — Optional: save best model
-        # if val_loss < best_val_loss:
-        #     best_val_loss = val_loss
-        #     torch.save(model.state_dict(), file_name)
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            torch.save(model.state_dict(), file_name)
         #    joblib.dump(scaler, 'scaler.pkl')
 
     return best_val_loss
@@ -101,7 +101,7 @@ def train_nn(X, y, file_name: str):
 if __name__ == "__main__":
 
     ##Open a csv file that we will use to save the training data:
-    df = pd.read_csv('Data/BackLashData.csv')
+    # df = pd.read_csv('Data/BackLashData.csv')
     # df = pd.read_csv('Data/MainCamData.csv')
 
     # # cam, m, target -> steps
@@ -114,12 +114,12 @@ if __name__ == "__main__":
 
     # bad
     # cam, target -> steps
-    X2 = df[['CamX', 'CamY', 'TgtX', 'TgtY']].values
-    y2 = df[['StepsX', 'StepsY']].values
-    file_name2 = "Models/model2_cam_target-steps.pth"
-    loss2 = train_nn(X2, y2, file_name2)
-    print("Finished 2nd model.")
-    print("loss: " + str(loss2))
+    # X2 = df[['CamX', 'CamY', 'TgtX', 'TgtY']].values
+    # y2 = df[['StepsX', 'StepsY']].values
+    # file_name2 = "Models/model2_cam_target-steps.pth"
+    # loss2 = train_nn(X2, y2, file_name2)
+    # print("Finished 2nd model.")
+    # print("loss: " + str(loss2))
 
     # current working version
     # cam, steps -> target
@@ -156,3 +156,14 @@ if __name__ == "__main__":
     # loss6 = train_nn(X6, y6, file_name6)
     # print("Finished 6th model.")
     # print("loss: " + str(loss6))
+
+    df2 = pd.read_csv('Data/isr_t3_t4_data.csv')
+    df2 = df2[~df2[['cam2X', 'cam2Y']].isin([-1]).any(axis=1)]
+
+    # cam, target -> steps
+    X1 = df2[['cam1X', 'cam1Y', 'cam2X', 'cam2Y', 't1X', 't1Y', 't2X', 't2Y']].values
+    y1 = df2[['stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']].values
+    file_name1 = "Models/isr_t3_t4_model1_cam_target-steps.pth"
+    loss1 = train_nn(X1, y1, file_name1)
+    print("Finished 1st model.")
+    print("loss: " + str(loss1))
