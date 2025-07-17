@@ -139,8 +139,8 @@ def train_nn(X, y, file_name: str):
             best_val_loss = val_loss
             best_mse = mse_real
             torch.save(model.state_dict(), file_name)
-            joblib.dump(scaler_X, "X_scaler.pkl")
-            joblib.dump(scaler_y, "y_scaler.pkl")
+            joblib.dump(scaler_X, "Models/isr_t3_t4_X_scaler.pkl")
+            joblib.dump(scaler_y, "Models/isr_t3_t4_y_scaler.pkl")
 
     return best_val_loss, best_mse
 
