@@ -12,6 +12,9 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import TensorDataset, DataLoader
+import joblib
+import numpy as np
+from sklearn.metrics import mean_squared_error
 
 ########Parameters and names#################
 
@@ -36,15 +39,39 @@ class FeedbackNN(nn.Module): #Not used here
       return z
 
 
+class FeedbackNN2(nn.Module):
+    def __init__(self, input_size=8, output_size=4, seed=42):
+        super(FeedbackNN2, self).__init__()
+        torch.manual_seed(seed)
+        self.dropout = nn.Dropout(p=0.1)
+
+        self.fc1 = nn.Linear(input_size, 128)
+        self.fc2 = nn.Linear(128, 64)
+        self.fc3 = nn.Linear(64, 32)
+        self.fc4 = nn.Linear(32, output_size)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = self.dropout(x)
+        x = F.relu(self.fc2(x))
+        x = self.dropout(x)
+        x = F.relu(self.fc3(x))
+        return self.fc4(x)
+
+
 def train_nn(X, y, file_name: str):
 
     data_train, data_val, delta_train, delta_val = train_test_split(X, y, test_size = 0.2, random_state = 42, shuffle = True)
 
     ##Scaler to normalize?
-    # scaler = StandardScaler()
-    #
-    # data_train = scaler.fit_transform(data_train)
-    # data_val = scaler.transform(data_val)
+    scaler_X = StandardScaler()
+    scaler_y = StandardScaler()
+
+    data_train = scaler_X.fit_transform(data_train)
+    data_val = scaler_X.transform(data_val)
+
+    delta_train = scaler_y.fit_transform(delta_train)
+    delta_val = scaler_y.transform(delta_val)
 
     train_ds = TensorDataset(torch.from_numpy(data_train).float(), torch.from_numpy(delta_train).float())
     val_ds = TensorDataset(torch.from_numpy(data_val).float(), torch.from_numpy(delta_val).float())
@@ -54,12 +81,12 @@ def train_nn(X, y, file_name: str):
 
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = FeedbackNN(data_train.shape[1],2).to(device)
+    model = FeedbackNN2(data_train.shape[1],delta_train.shape[1]).to(device)
     #model = ResidualMLP(6,2).to(device)
     criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.005)#, weight_decay= 1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=0.005, weight_decay= 1e-4)
 
-    num_epochs = 300
+    num_epochs = 100
     best_val_loss = float('inf')
 
     for epoch in range(1, num_epochs+1):
@@ -80,22 +107,42 @@ def train_nn(X, y, file_name: str):
         # ——— VALIDATE ———
         model.eval()
         total_val_loss = 0
+        preds_list = []
+        targets_list = []
         with torch.no_grad():
             for xb, yb in val_loader:
                 xb, yb = xb.to(device), yb.to(device)
                 preds = model(xb)
                 total_val_loss += criterion(preds, yb).item() * xb.size(0)
+
+                preds_list.append(preds.cpu().numpy())
+                targets_list.append(yb.cpu().numpy())
+
         val_loss = total_val_loss / len(val_loader.dataset)
 
-        print(f"Epoch {epoch:03d} — train_loss: {train_loss:.4f}, val_loss: {val_loss:.4f}")
+        # ——— Convert and inverse-transform to real units ———
+        preds_all = np.concatenate(preds_list, axis=0)
+        targets_all = np.concatenate(targets_list, axis=0)
+
+        preds_real = scaler_y.inverse_transform(preds_all)
+        targets_real = scaler_y.inverse_transform(targets_all)
+
+        # ——— Compute RMSE in real units ———
+        mse_real = mean_squared_error(targets_real, preds_real)
+        rmse_real = np.sqrt(mse_real)
+        print(
+            f"Epoch {epoch:03d} — train_loss: {train_loss:.4f}, val_loss: {val_loss:.4f}, RMSE: {rmse_real:.2f}, MSE: {mse_real:.2f}")
+
 
         # — Optional: save best model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
+            best_mse = mse_real
             torch.save(model.state_dict(), file_name)
-        #    joblib.dump(scaler, 'scaler.pkl')
+            joblib.dump(scaler_X, "X_scaler.pkl")
+            joblib.dump(scaler_y, "y_scaler.pkl")
 
-    return best_val_loss
+    return best_val_loss, best_mse
 
 
 if __name__ == "__main__":
@@ -164,6 +211,6 @@ if __name__ == "__main__":
     X1 = df2[['cam1X', 'cam1Y', 'cam2X', 'cam2Y', 't1X', 't1Y', 't2X', 't2Y']].values
     y1 = df2[['stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']].values
     file_name1 = "Models/isr_t3_t4_model1_cam_target-steps.pth"
-    loss1 = train_nn(X1, y1, file_name1)
-    print("Finished 1st model.")
-    print("loss: " + str(loss1))
+    scaled_loss, mse = train_nn(X1, y1, file_name1)
+    print("Finished training model.")
+    print(f"Best scaled loss: {scaled_loss:.2f}, MSE loss: {mse:.2f}")
