@@ -1,1 +1,31 @@
-df = df[~df[['col1', 'col2']].isin([-1]).any(axis=1)]
+scaler_X = StandardScaler()
+scaler_y = StandardScaler()
+
+data_train = scaler_X.fit_transform(data_train)
+data_val   = scaler_X.transform(data_val)
+
+delta_train = scaler_y.fit_transform(delta_train)
+delta_val   = scaler_y.transform(delta_val)
+
+
+joblib.dump(scaler_X, "X_scaler.pkl")
+joblib.dump(scaler_y, "y_scaler.pkl")
+
+
+class FeedbackNN(nn.Module):
+    def __init__(self, input_size=8, output_size=4, seed=42):
+        super(FeedbackNN, self).__init__()
+        torch.manual_seed(seed)
+        
+        self.fc1 = nn.Linear(input_size, 128)
+        self.fc2 = nn.Linear(128, 64)
+        self.fc3 = nn.Linear(64, 32)
+        self.fc4 = nn.Linear(32, output_size)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = F.relu(self.fc3(x))
+        return self.fc4(x)
+
+
