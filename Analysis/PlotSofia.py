@@ -37,9 +37,13 @@ InFile = open('HaloCharge.pkl', 'rb')
 results = pickle.load(InFile)
 InFile.close()
 
-g = open("AvgBG.pkl", 'rb') #From this file we want to interpolate the bg...
+g = open("AvgBG2.pkl", 'rb') #From this file we want to interpolate the bg...
 BG = pickle.load(g)
 g.close()
+
+h = open('AvgHalo2.pkl','rb')
+CH = pickle.load(h)
+h.close()
 
 keys = list(results.keys())
 
@@ -49,6 +53,15 @@ for key in keys:
 
     x_sorted, y_sorted = zip(*sorted(zip(x, y)))
     y_clean = remove_outliers(y_sorted, 50, 2.5)
+    y_sorted = list(y_sorted)
+    tmpStamp = [dt.timestamp() for dt in BG[key][0]]
+
+    y_corrected = [
+        y - np.interp(x.timestamp(), tmpStamp, BG[key][1])
+        for x, y in zip(x_sorted, y_sorted)
+    ]
+
+    y_clean = remove_outliers(y_corrected, 50, 2.5)
 
     plt.figure(1)
     plt.plot(x_sorted,y_clean, label = str(key))
@@ -72,6 +85,29 @@ for key in keys:
 
 plt.figure(1)
 plt.legend()
+plt.title("Horizontal halo charge, PSF = 420 um")
 plt.figure(2)
 plt.legend()
+plt.title("Vertical halo charge, PSF = 310 um")
+
+keys = list(CH.keys())
+for key in keys:
+    x = CH[key][0]
+
+    y = CH[key][1]
+    y_err = CH[key][2]
+    plt.figure(3)
+    plt.errorbar(x, y, y_err, label = str(key))
+
+    y = CH[key][3]
+    y_err = CH[key][4]
+    plt.figure(4)
+    plt.errorbar(x, y, y_err, label = str(key))
+
+plt.figure(3)
+plt.legend()
+plt.title("Horizontal deconvolved charge, PSF = 420 um")
+plt.figure(4)
+plt.legend()
+plt.title("Vertical halo charge, PSF = 310 um")
 plt.show()
