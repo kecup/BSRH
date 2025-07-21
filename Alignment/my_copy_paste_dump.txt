@@ -1,4 +1,32 @@
-plt.scatter(df['cam1X'], df['cam1Y'], label="Cam1", alpha=0.5)
-plt.scatter(df['cam2X'], df['cam2Y'], label="Cam2", alpha=0.5)
-plt.title("Beam Position Coverage")
-plt.legend()
+def guided_local_search(target_cam1, initial_motors, move_step=small_value, max_iters=1000):
+    motors = initial_motors.copy()
+    best_motors = motors
+    best_loss = float('inf')
+
+    for _ in range(max_iters):
+        # Propose a small random move in 4D space (X, Y, Phi, Theta)
+        proposed_motors = motors + random_4d_vector(scale=move_step)
+        
+        # Move motors
+        move_motors(*proposed_motors)
+
+        # Get beam positions
+        cam1_pos = get_beam_position(camera=1)  # [x1, y1]
+        cam2_pos = get_beam_position(camera=2)  # [x2, y2]
+        
+        # Check if beam is visible on Cam2
+        if not is_visible(cam2_pos, camera=2):
+            continue  # Reject this move
+
+        # Calculate distance of cam1 beam from target
+        loss = np.linalg.norm(np.array(cam1_pos) - np.array(target_cam1))
+
+        # If improved, accept move
+        if loss < best_loss:
+            best_loss = loss
+            best_motors = proposed_motors
+            motors = proposed_motors  # Move forward
+        # Otherwise, try another random move
+        # (or apply simulated annealing / GLS penalty if you want)
+
+    return best_motors, best_loss
