@@ -1,120 +1,83 @@
-import csv
-import random
-import time
 import numpy as np
+import itertools
 
-# Step sizes
-STEP_SIZE = {
-    'x': 50,
-    'y': 50,
-    'phi': 5,
-    'theta': 5
-}
+# ======= Hardware Initialization Functions =======
 
-# Cam1 bounding box
-CAM1_BOUNDS = {
-    "x_min": 659,
-    "x_max": 844,
-    "y_min": 51,
-    "y_max": 237
-}
+def initialize_motors():
+    # Connect to motors, return a control object or handle
+    return {"X": None, "Y": None, "Phi": None, "Theta": None}
 
-# Grid resolution (pixels)
-GRID_RES = 10  # bin size in pixels
+def initialize_cameras():
+    # Connect to both cameras
+    return {"cam1": None, "cam2": None}
 
-# Coverage grid shape
-grid_x = (CAM1_BOUNDS["x_max"] - CAM1_BOUNDS["x_min"]) // GRID_RES + 1
-grid_y = (CAM1_BOUNDS["y_max"] - CAM1_BOUNDS["y_min"]) // GRID_RES + 1
-coverage_grid = np.zeros((grid_y, grid_x), dtype=int)
+def check_beam_visible(cam_data):
+    # Return True if beam is visible (your custom logic)
+    return True  # replace with actual check
 
-# Define all small moves
-MOVES = [
-    (+STEP_SIZE['x'], 0, 0, 0), (-STEP_SIZE['x'], 0, 0, 0),
-    (0, +STEP_SIZE['y'], 0, 0), (0, -STEP_SIZE['y'], 0, 0),
-    (0, 0, +STEP_SIZE['phi'], 0), (0, 0, -STEP_SIZE['phi'], 0),
-    (0, 0, 0, +STEP_SIZE['theta']), (0, 0, 0, -STEP_SIZE['theta']),
-]
+def move_motors(motor_ctrl, dx, dy, dphi, dtheta):
+    # Apply movement to motors
+    pass  # implement motor movement logic here
 
-CSV_FILE = "beam_data.csv"
+def get_cam_positions(cameras):
+    # Return (cam1X, cam1Y), (cam2X, cam2Y)
+    return (700, 150), (300, 200)  # dummy values, replace with real acquisition
 
-def init_csv():
-    with open(CSV_FILE, 'a', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow([
-            "cam1X", "cam1Y", "cam2X", "cam2Y",
-            "t1X", "t1Y", "t2X", "t2Y",
-            "stepX", "stepY", "stepPhi", "stepTheta"
-        ])
+# ======= Grid Generator Based on cam1 Bounding Box =======
 
-def is_within_cam1_bounds(x, y):
-    return (
-        CAM1_BOUNDS["x_min"] <= x <= CAM1_BOUNDS["x_max"] and
-        CAM1_BOUNDS["y_min"] <= y <= CAM1_BOUNDS["y_max"]
-    )
+def generate_cam1_grid(x_range, y_range, x_steps=8, y_steps=8):
+    grid_x = np.linspace(x_range[0], x_range[1], x_steps)
+    grid_y = np.linspace(y_range[0], y_range[1], y_steps)
+    return list(itertools.product(grid_x, grid_y))
 
-def get_coverage_score(x, y):
-    if not is_within_cam1_bounds(x, y):
-        return -1  # out of bounds
-    xi = (x - CAM1_BOUNDS["x_min"]) // GRID_RES
-    yi = (y - CAM1_BOUNDS["y_min"]) // GRID_RES
-    return -coverage_grid[yi, xi]  # negative so we prefer less visited
+# ======= Main Alignment Routine =======
 
-def mark_visited(x, y):
-    if is_within_cam1_bounds(x, y):
-        xi = (x - CAM1_BOUNDS["x_min"]) // GRID_RES
-        yi = (y - CAM1_BOUNDS["y_min"]) // GRID_RES
-        coverage_grid[yi, xi] += 1
+def guided_local_search(cam1_grid, motors, cameras):
+    data_log = []
+    for target_x, target_y in cam1_grid:
+        print(f"\nTarget cam1 position: ({target_x:.1f}, {target_y:.1f})")
 
-def guided_local_search(max_iterations=2000):
-    init_csv()
+        # Try small random movements to find visibility on both cams
+        for trial in range(50):  # max number of attempts
+            dx, dy, dphi, dtheta = np.random.uniform(-10, 10, 4)
+            move_motors(motors, dx, dy, dphi, dtheta)
 
-    for i in range(max_iterations):
-        best_score = -np.inf
-        best_move = None
-        best_data = None
+            cam1_pos, cam2_pos = get_cam_positions(cameras)
 
-        # Try all candidate moves
-        for dx, dy, dphi, dtheta in MOVES:
-            move_motors(dx, dy, dphi, dtheta)
-            time.sleep(0.2)
+            if check_beam_visible(cam1_pos) and check_beam_visible(cam2_pos):
+                print(f"  Beam visible. cam1: {cam1_pos}, cam2: {cam2_pos}")
 
-            if not is_visible('cam2'):
-                reverse_move(dx, dy, dphi, dtheta)
-                continue
+                # Save the result (you can add target1/2 positions and motor deltas here too)
+                data_log.append({
+                    "cam1X": cam1_pos[0],
+                    "cam1Y": cam1_pos[1],
+                    "cam2X": cam2_pos[0],
+                    "cam2Y": cam2_pos[1],
+                    "stepsX": dx,
+                    "stepsY": dy,
+                    "stepsPhi": dphi,
+                    "stepsTheta": dtheta
+                })
+                break
+        else:
+            print("  Failed to find beam for this target.")
 
-            data = get_current_data()
-            cam1x, cam1y = data["cam1X"], data["cam1Y"]
-            score = get_coverage_score(cam1x, cam1y)
+    return data_log
 
-            reverse_move(dx, dy, dphi, dtheta)
+# ======= Main Entrypoint =======
 
-            if score > best_score:
-                best_score = score
-                best_move = (dx, dy, dphi, dtheta)
-                best_data = data
+def main():
+    # Bounding box of cam1 in image coordinates
+    cam1_bounds = ((659, 844), (51, 237))
+    cam1_grid = generate_cam1_grid(cam1_bounds[0], cam1_bounds[1], x_steps=8, y_steps=8)
 
-        if best_move is None:
-            print(f"[{i}] No valid moves found. Stopping.")
-            break
+    motors = initialize_motors()
+    cameras = initialize_cameras()
 
-        # Commit best move
-        dx, dy, dphi, dtheta = best_move
-        move_motors(dx, dy, dphi, dtheta)
-        time.sleep(0.2)
+    data = guided_local_search(cam1_grid, motors, cameras)
 
-        mark_visited(best_data["cam1X"], best_data["cam1Y"])
+    # Save to file if needed
+    print(f"\nCollected {len(data)} data points.")
 
-        # Log data
-        with open(CSV_FILE, 'a', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                best_data["cam1X"], best_data["cam1Y"],
-                best_data["cam2X"], best_data["cam2Y"],
-                best_data["t1X"], best_data["t1Y"],
-                best_data["t2X"], best_data["t2Y"],
-                dx, dy, dphi, dtheta
-            ])
-
-        print(f"[{i}] Move: ({dx},{dy},{dphi},{dtheta}) - cam1=({best_data['cam1X']},{best_data['cam1Y']})")
-
-    print("Search completed.")
+if __name__ == "__main__":
+    main()
