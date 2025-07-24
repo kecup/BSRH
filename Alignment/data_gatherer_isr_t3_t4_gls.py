@@ -30,32 +30,31 @@ motor_theta = Motor('TST.cfv-375-bsrdev.mot.3-5', japc, 125)
 cam1 = Camera("TST.BSRH.MON.M2", japc)
 cam2 = Camera("TST.BSRH.CAM.CM", japc)
 
-# Step sizes
-STEP_SIZE = {
-    'x': 50,
-    'y': 50,
-    'phi': 50,
-    'theta': 50
-}
+# Configuration
+CAM1_BOUNDS = {"x_min": 659, "x_max": 844, "y_min": 51, "y_max": 237}
+GRID_STEPS_X = 8
+GRID_STEPS_Y = 8
+MAX_TRIALS = 200
+STEP_SIZE = 10
+MOTOR_REFERENCES = {"x": 40085, "y": 41740, "phi": 141100, "theta": 160800} # to be measured, they keep changing with time
+# POSITION_TOLERANCE = 10  # pixels
+CSV_FILENAME = "isr_t3_t4_gls_data.csv"
 
-# Cam1 bounding box
-CAM1_BOUNDS = {
-    "x_min": 659,
-    "x_max": 844,
-    "y_min": 51,
-    "y_max": 237
-}
-
-
-# Define all small moves
-MOVES = [
-    (+STEP_SIZE['x'], 0, 0, 0), (-STEP_SIZE['x'], 0, 0, 0),
-    (0, +STEP_SIZE['y'], 0, 0), (0, -STEP_SIZE['y'], 0, 0),
-    (0, 0, +STEP_SIZE['phi'], 0), (0, 0, -STEP_SIZE['phi'], 0),
-    (0, 0, 0, +STEP_SIZE['theta']), (0, 0, 0, -STEP_SIZE['theta']),
-]
+def move_to_references():
+    """
+    Moves motors to pre-measured references.
+    """
+    motor_x.setAbsPosition(MOTOR_REFERENCES["x"])
+    motor_y.setAbsPosition(MOTOR_REFERENCES["y"])
+    motor_phi.setAbsPosition(MOTOR_REFERENCES["phi"])
+    motor_theta.setAbsPosition(MOTOR_REFERENCES["theta"])
+    while motor_x.isBusy() or motor_y.isBusy() or motor_phi.isBusy() or motor_theta.isBusy():
+        sleep(0.2)
 
 def move_motors(stepsX: int, stepsY: int, stepsPhi: int, stepsTheta: int):
+    """
+    Moves motors by given deltas.
+    """
     motor_x.setRelPosition(stepsX)
     motor_y.setRelPosition(stepsY)
     motor_phi.setRelPosition(stepsPhi)
@@ -63,51 +62,86 @@ def move_motors(stepsX: int, stepsY: int, stepsPhi: int, stepsTheta: int):
     while motor_x.isBusy() or motor_y.isBusy() or motor_phi.isBusy() or motor_theta.isBusy():
         sleep(0.2)
 
-def generate_cam1_grid(x_range, y_range, x_steps=8, y_steps=8):
-    grid_x = np.linspace(x_range[0], x_range[1], x_steps)
-    grid_y = np.linspace(y_range[0], y_range[1], y_steps)
+def reverse_motors(stepsX: int, stepsY: int, stepsPhi: int, stepsTheta: int):
+    """
+    Reverses motor movements by given deltas.
+    """
+    motor_x.setRelPosition(-stepsX)
+    motor_y.setRelPosition(-stepsY)
+    motor_phi.setRelPosition(-stepsPhi)
+    motor_theta.setRelPosition(-stepsTheta)
+    while motor_x.isBusy() or motor_y.isBusy() or motor_phi.isBusy() or motor_theta.isBusy():
+        sleep(0.2)
+
+def generate_cam1_grid():
+    """
+    Generates a grid covering target 1 area of camera 1. (t3)
+    """
+    grid_x = np.linspace(CAM1_BOUNDS["x_min"], CAM1_BOUNDS["x_max"], GRID_STEPS_X)
+    grid_y = np.linspace(CAM1_BOUNDS["y_min"], CAM1_BOUNDS["y_max"], GRID_STEPS_Y)
     return list(itertools.product(grid_x, grid_y))
 
-def guided_local_search(cam1_grid, trial_num):
-    data_log = []
-    for target_x, target_y in cam1_grid:
-        print(f"\nTarget cam1 position: ({target_x:.1f}, {target_y:.1f})")
 
-        cam1_pos = cam1.getBeamPosition()
-        cam2_pos = cam2.getBeamPosition()
+def cam1_distance(pos, target):
+    """
+    Calculates distance of current position to target position.
+    """
+    return np.linalg.norm(np.array(pos) - np.array(target))
 
-        # Try small random movements to find visibility on both cams
-        for trial in range(trial_num):  # max number of attempts
-            dx, dy, dphi, dtheta = np.random.uniform(-10, 10, 4)
-            move_motors(dx, dy, dphi, dtheta)
 
-            target1 = cam1.getBeamPosition()
-            target2 = cam2.getBeamPosition()
+def align_to_target(target_pos):
+    """
+    Randomly generates motor movements and tries to get closer to target on camera 1 grid.
+    """
 
-            if target1[0] != -1 and target1[1] != -1 and target2[0] != -1 and target2[1] != -1:
-                print(f"  Beam visible. cam1: {target1}, cam2: {target2}")
-                # TODO: add movement reversal
+    cam1_pos= cam1.getBeamPosition()
+    cam2_pos = cam2.getBeamPosition()
 
-                # Save the result (you can add target1/2 positions and motor deltas here too)
-                data_log.append({
-                    "cam1X": cam1_pos[0],
-                    "cam1Y": cam1_pos[1],
-                    "cam2X": cam2_pos[0],
-                    "cam2Y": cam2_pos[1],
-                    "t1X": target1[0],
-                    "t1Y": target1[1],
-                    "t2X": target2[0],
-                    "t2Y": target2[1],
-                    "stepsX": dx,
-                    "stepsY": dy,
-                    "stepsPhi": dphi,
-                    "stepsTheta": dtheta
-                })
-                break
+    if cam1_pos[0] == -1 or cam1_pos[1] == -1 or cam2_pos[0] == -1 or cam2_pos[1]: # init check
+        reverse_motors(deltas[0], deltas[1], deltas[2], deltas[3])
+        return []
+    
+    motors = [motor_x, motor_y, motor_phi, motor_theta]
+    prev_dist = cam1_distance(cam1_pos, target_pos)
+    print(f"Current distance is {prev_dist:.2f}")
+    results = []
+ 
+    for _ in range(MAX_TRIALS):
+        deltas = {k: 0.0 for k in motors}
+        chosen = random.sample(list(motors), random.randint(1, 2))
+        for k in chosen:
+            deltas[k] = np.random.uniform(-STEP_SIZE, STEP_SIZE)
+
+        cam1_pos = cam1.getBeamPosition
+        cam2_pos = cam2.getBeamPosition
+
+        if cam1_new[0] == -1 or cam1_new[1] == -1 or cam2_new[0] == -1 or cam2_new[1]: # safety check if beam lost
+            print("Reversal did not work, sending to references.")
+            move_to_references()
+            continue
+
+        move_motors(deltas[0], deltas[1], deltas[2], deltas[3])
+        cam1_new = cam1.getBeamPosition()
+        cam2_new = cam2.getBeamPosition()
+
+        if cam1_new[0] == -1 or cam1_new[1] == -1 or cam2_new[0] == -1 or cam2_new[1]:
+            reverse_motors(deltas[0], deltas[1], deltas[2], deltas[3])
+            continue
+
+        new_dist = cam1_distance(cam1_new, target_pos)
+
+        # want to log all feasible data
+        data = [cam1_pos[0], cam1_pos[1], cam2_pos[0], cam2_pos[1], cam1_new[0], cam1_new[1], cam2_new[0], cam2_new[1], deltas[0], deltas[1], deltas[2], deltas[3]]
+        results.append(data)
+        
+        if new_dist < prev_dist:
+            # Good move: keep it
+            prev_dist = new_dist
+            print(f"Improved distance to {new_dist:.2f}")
         else:
-            print("  Failed to find beam for this target.")
+            reverse_motors(motors, deltas)
 
-    return data_log
+    return results
 
 
 def main():
@@ -115,11 +149,24 @@ def main():
     sleep(2)
 
     # Bounding box of cam1 in image coordinates
-    cam1_bounds = ((659, 844), (51, 237))
-    cam1_grid = generate_cam1_grid(cam1_bounds[0], cam1_bounds[1], x_steps=8, y_steps=8)
+    cam1_grid = generate_cam1_grid()
 
+    header = ["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y", "stepsX",
+              "stepsY", "stepsPhi", "stepsTheta"]
+    file_exists = os.path.isfile(CSV_FILENAME)
 
+    with open(CSV_FILENAME, 'a') as file:
+        file_writer = csv.writer(file)
 
+        if not file_exists:
+            file_writer.writerow(header)
+
+        for tx, ty in cam1_grid:
+            print(f"\n🔍 Aligning to target: ({tx:.1f}, {ty:.1f})")
+            data = align_to_target((tx, ty))
+            file_writer.writerows(data)
+            print(f"Number of data for current target is {len(data)}")
+            
 
 if __name__ == "__main__":
     main()
