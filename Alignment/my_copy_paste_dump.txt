@@ -1,42 +1,12 @@
-import matplotlib.pyplot as plt
-import pandas as pd
-import matplotlib.patches as patches
+def generate_cam1_grid():
+    x_vals = np.linspace(CAM1_BOUNDS["x_min"], CAM1_BOUNDS["x_max"], GRID_STEPS_X)
+    y_vals = np.linspace(CAM1_BOUNDS["y_min"], CAM1_BOUNDS["y_max"], GRID_STEPS_Y)
 
-# Example data
-target = (750, 150)  # point inside rectangle
-rect_start = (659, 51)
-rect_end = (844, 237)
+    grid = []
+    for x, y in itertools.product(x_vals, y_vals):
+        if (x == CAM1_BOUNDS["x_min"] or x == CAM1_BOUNDS["x_max"] or
+            y == CAM1_BOUNDS["y_min"] or y == CAM1_BOUNDS["y_max"]):
+            continue  # Skip border points
+        grid.append((x, y))
 
-# Create example DataFrame
-data = {
-    'cam1x': [700, 720, 760, 810, 830],
-    'cam1y': [100, 130, 170, 180, 200]
-}
-df = pd.DataFrame(data)
-
-# Plot setup
-fig, ax = plt.subplots(figsize=(6, 6))
-
-# Draw rectangle
-width = rect_end[0] - rect_start[0]
-height = rect_end[1] - rect_start[1]
-rectangle = patches.Rectangle(rect_start, width, height,
-                               linewidth=2, edgecolor='blue', facecolor='none')
-ax.add_patch(rectangle)
-
-# Plot target point
-ax.scatter(*target, color='red', s=100, marker='x', label='Target')
-
-# Scatter points from DataFrame
-ax.scatter(df['cam1x'], df['cam1y'], color='green', alpha=0.7, label='Camera Points')
-
-# Formatting
-ax.set_xlim(600, 900)
-ax.set_ylim(0, 300)
-ax.set_xlabel("cam1x")
-ax.set_ylabel("cam1y")
-ax.legend()
-ax.set_title("Rectangle, Target Point, and Camera Data")
-
-plt.grid(True)
-plt.show()
+    return grid
