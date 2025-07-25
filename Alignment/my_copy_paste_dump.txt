@@ -1,83 +1,42 @@
-import numpy as np
-import itertools
+import matplotlib.pyplot as plt
+import pandas as pd
+import matplotlib.patches as patches
 
-# ======= Hardware Initialization Functions =======
+# Example data
+target = (750, 150)  # point inside rectangle
+rect_start = (659, 51)
+rect_end = (844, 237)
 
-def initialize_motors():
-    # Connect to motors, return a control object or handle
-    return {"X": None, "Y": None, "Phi": None, "Theta": None}
+# Create example DataFrame
+data = {
+    'cam1x': [700, 720, 760, 810, 830],
+    'cam1y': [100, 130, 170, 180, 200]
+}
+df = pd.DataFrame(data)
 
-def initialize_cameras():
-    # Connect to both cameras
-    return {"cam1": None, "cam2": None}
+# Plot setup
+fig, ax = plt.subplots(figsize=(6, 6))
 
-def check_beam_visible(cam_data):
-    # Return True if beam is visible (your custom logic)
-    return True  # replace with actual check
+# Draw rectangle
+width = rect_end[0] - rect_start[0]
+height = rect_end[1] - rect_start[1]
+rectangle = patches.Rectangle(rect_start, width, height,
+                               linewidth=2, edgecolor='blue', facecolor='none')
+ax.add_patch(rectangle)
 
-def move_motors(motor_ctrl, dx, dy, dphi, dtheta):
-    # Apply movement to motors
-    pass  # implement motor movement logic here
+# Plot target point
+ax.scatter(*target, color='red', s=100, marker='x', label='Target')
 
-def get_cam_positions(cameras):
-    # Return (cam1X, cam1Y), (cam2X, cam2Y)
-    return (700, 150), (300, 200)  # dummy values, replace with real acquisition
+# Scatter points from DataFrame
+ax.scatter(df['cam1x'], df['cam1y'], color='green', alpha=0.7, label='Camera Points')
 
-# ======= Grid Generator Based on cam1 Bounding Box =======
+# Formatting
+ax.set_xlim(600, 900)
+ax.set_ylim(0, 300)
+ax.set_xlabel("cam1x")
+ax.set_ylabel("cam1y")
+ax.legend()
+ax.set_title("Rectangle, Target Point, and Camera Data")
 
-def generate_cam1_grid(x_range, y_range, x_steps=8, y_steps=8):
-    grid_x = np.linspace(x_range[0], x_range[1], x_steps)
-    grid_y = np.linspace(y_range[0], y_range[1], y_steps)
-    return list(itertools.product(grid_x, grid_y))
-
-# ======= Main Alignment Routine =======
-
-def guided_local_search(cam1_grid, motors, cameras):
-    data_log = []
-    for target_x, target_y in cam1_grid:
-        print(f"\nTarget cam1 position: ({target_x:.1f}, {target_y:.1f})")
-
-        # Try small random movements to find visibility on both cams
-        for trial in range(50):  # max number of attempts
-            dx, dy, dphi, dtheta = np.random.uniform(-10, 10, 4)
-            move_motors(motors, dx, dy, dphi, dtheta)
-
-            cam1_pos, cam2_pos = get_cam_positions(cameras)
-
-            if check_beam_visible(cam1_pos) and check_beam_visible(cam2_pos):
-                print(f"  Beam visible. cam1: {cam1_pos}, cam2: {cam2_pos}")
-
-                # Save the result (you can add target1/2 positions and motor deltas here too)
-                data_log.append({
-                    "cam1X": cam1_pos[0],
-                    "cam1Y": cam1_pos[1],
-                    "cam2X": cam2_pos[0],
-                    "cam2Y": cam2_pos[1],
-                    "stepsX": dx,
-                    "stepsY": dy,
-                    "stepsPhi": dphi,
-                    "stepsTheta": dtheta
-                })
-                break
-        else:
-            print("  Failed to find beam for this target.")
-
-    return data_log
-
-# ======= Main Entrypoint =======
-
-def main():
-    # Bounding box of cam1 in image coordinates
-    cam1_bounds = ((659, 844), (51, 237))
-    cam1_grid = generate_cam1_grid(cam1_bounds[0], cam1_bounds[1], x_steps=8, y_steps=8)
-
-    motors = initialize_motors()
-    cameras = initialize_cameras()
-
-    data = guided_local_search(cam1_grid, motors, cameras)
-
-    # Save to file if needed
-    print(f"\nCollected {len(data)} data points.")
-
-if __name__ == "__main__":
-    main()
+plt.grid(True)
+plt.show()
