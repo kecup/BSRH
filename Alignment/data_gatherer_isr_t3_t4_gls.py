@@ -215,6 +215,8 @@ def main():
             file_writer.writerow(header)
 
         for tx, ty in cam1_grid:
+            # tx = 750
+            # ty = 145
             print(f"\nAligning to target: ({tx:.1f}, {ty:.1f})")
             data = align_to_target((tx, ty))
             visualize_target_covarage((tx, ty), data)
