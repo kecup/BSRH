@@ -1,14 +1,16 @@
 import pyjapc
 import sys
 import os
+
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, parent_dir)
 
-from devices_lib import Camera, Motor, gaussian
-from AlignToTarget import Aligner, FeedbackNN, BeamSteerer
+from devices_lib import Camera, Motor
+from AlignToTarget import Aligner_without_beam_steerer, FeedbackNN
 import torch
 import numpy as np
 from time import sleep
+import csv
 import matplotlib.pyplot as plt
 import pyrbac
 
@@ -27,8 +29,9 @@ motor_theta = Motor('TST.cfv-375-bsrdev.mot.3-5', japc, 125)
 cam1 = Camera("TST.BSRH.MON.M2", japc)
 cam2 = Camera("TST.BSRH.CAM.CM", japc)
 
-MOTOR_REFERENCES = {"x": 40085, "y": 41740, "phi": 141900, "theta": 161000}
-target = [484, 304]  # Camera center
+MOTOR_REFERENCES = {"x": 40085, "y": 41740, "phi": 142100, "theta": 161000}
+CSV_FILENAME = "isr_t3_t4_manual_data.csv"
+TARGET = [484, 304]  # Camera center
 
 def load_model():
     """
@@ -52,34 +55,53 @@ def move_to_references():
     while motor_x.isBusy() or motor_y.isBusy() or motor_phi.isBusy() or motor_theta.isBusy():
         sleep(0.2)
 
+def calculate_distance(pos, target):
+    """
+    Calculates distance of current position to target position.
+    """
+    return np.linalg.norm(np.array(pos) - np.array(target))
+
 def main():
 
     model = load_model()
+    aligner = Aligner_without_beam_steerer(motor_phi, motor_theta, cam2, TARGET, model, MOTOR_REFERENCES["phi"], MOTOR_REFERENCES["theta"])
 
     japc.startSubscriptions()
 
-    motor_x.setRelPosition(30)
-    motor_y.setRelPosition(30)
-    motor_phi.setRelPosition(30)
-    motor_theta.setRelPosition(30)
-    sleep(2)
+    move_to_references()
+    sleep(1)
+
+    header = ["cam1X", "cam1Y", "cam2X", "cam2Y", "t1X", "t1Y", "t2X", "t2Y", "stepsX",
+              "stepsY", "stepsPhi", "stepsTheta"]
+    file_exists = os.path.isfile(CSV_FILENAME)
+
+    # with open(CSV_FILENAME, 'a') as file:
+    #     file_writer = csv.writer(file)
+    #     if not file_exists:
+    #         file_writer.writerow(header)
 
     while True:
-        cam_pos = np.array(cam2.getBeamPosition(), dtype=np.float32)
-        if (cam_pos[0] == -1 or cam_pos[1] == -1):
-            print("beam lost")
-            print("Sending to references.")
-            move_to_references()
-        input_vector = np.concatenate((cam_pos, target), axis=0, dtype=np.float32())
-        input_tensor = torch.tensor(input_vector).unsqueeze(0)
-        with torch.no_grad():
-            prediction = model(input_tensor).squeeze(0).numpy()  # steps
-        motor_x.setRelPosition(int(prediction[0]))  # move to prediction
-        motor_y.setRelPosition(int(prediction[1]))  # move to prediction
-        while motor_x.isBusy() or motor_y.isBusy() or motor_phi.isBusy() or motor_theta.isBusy():
-            sleep(0.2)
+        aligner.align(10000000)
+        print("Done auto-aligning")
+        cam1_pos = cam1.getBeamPosition()
+        cam2_pos = cam2.getBeamPosition()
+        # input("Press enter after moving motors to continue")
+        # deltas = input("Enter two integers separated by space as in delta steps X (3.2) and delta steps Y (3.3): ")
+        # try:
+        #     stepsX, stepsY = map(int, deltas.split())  # Convert to integers
+        #     print(f"You entered: {stepsX} and {stepsY}")
+        # except ValueError:
+        #     print("Invalid input. Please enter two integers.")
+        # input("Press enter to auto-align")
+        # stepsPhi, stepsTheta = aligner.align(5)
+        # t1 = cam1.getBeamPosition()
+        # t2 = cam2.getBeamPosition()
+        # data = [cam1_pos[0], cam1_pos[1], cam2_pos[0], cam2_pos[1], t1[0], t1[1], t2[0], t2[1], stepsX, stepsY, stepsPhi, stepsTheta]
 
-        sleep(2)
+
+
+
+
 
     japc.stopSubscriptions()
     japc.clearSubscriptions()
