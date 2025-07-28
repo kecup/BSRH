@@ -1,12 +1,8 @@
-def generate_cam1_grid():
-    x_vals = np.linspace(CAM1_BOUNDS["x_min"], CAM1_BOUNDS["x_max"], GRID_STEPS_X)
-    y_vals = np.linspace(CAM1_BOUNDS["y_min"], CAM1_BOUNDS["y_max"], GRID_STEPS_Y)
-
-    grid = []
-    for x, y in itertools.product(x_vals, y_vals):
-        if (x == CAM1_BOUNDS["x_min"] or x == CAM1_BOUNDS["x_max"] or
-            y == CAM1_BOUNDS["y_min"] or y == CAM1_BOUNDS["y_max"]):
-            continue  # Skip border points
-        grid.append((x, y))
-
-    return grid
+while True:
+    input("Press Enter to start entering two numbers...")  # First Enter
+    numbers = input("Enter two integers separated by space: ")  # Wait for input
+    try:
+        a, b = map(int, numbers.split())  # Convert to integers
+        print(f"You entered: {a} and {b}")
+    except ValueError:
+        print("Invalid input. Please enter two integers.")
