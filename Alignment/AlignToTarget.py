@@ -10,10 +10,6 @@ from time import sleep
 import sys
 import os
 
-# from skimage.data import camera
-
-# from Alignment.align_two_cameras import motors
-
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, parent_dir)
 
@@ -197,6 +193,43 @@ class Aligner:
                 return -2
             camX, camY = self.camera.getBeamPosition()
         return count
+
+class Aligner_without_beam_steerer:
+    def __init__(self, motor_x: Motor, motor_y: Motor, camera: Camera, target: list, model: FeedbackNN, ref_x, ref_y):
+        self.motor_x = motor_x
+        self.motor_y = motor_y
+        self.camera = camera
+        self.target = target
+        self.model = model
+        self.ref_x = ref_x
+        self.ref_y = ref_y
+
+    def align(self, iter=5):
+        delta_x = 0
+        delta_y = 0
+        for i in range(iter):
+            cam_pos = np.array(self.camera.getBeamPosition(), dtype=np.float32)
+            if (cam_pos[0] == -1 or cam_pos[1] == -1):
+                print("beam lost")
+                print("Sending to references.")
+                self.motor_x.setAbsPosition(self.ref_x)
+                self.motor_y.setAbsPosition(self.ref_y)
+                while self.motor_x.isBusy() or self.motor_y.isBusy():
+                    sleep(0.2)
+                continue
+            input_vector = np.concatenate((cam_pos, self.target), axis=0, dtype=np.float32())
+            input_tensor = torch.tensor(input_vector).unsqueeze(0)
+            with torch.no_grad():
+                prediction = self.model(input_tensor).squeeze(0).numpy()  # steps
+            self.motor_x.setRelPosition(int(prediction[0]))  # move to prediction
+            self.motor_y.setRelPosition(int(prediction[1]))  # move to prediction
+            while self.motor_x.isBusy() or self.motor_y.isBusy():
+                sleep(0.2)
+            delta_x += int(prediction[0])
+            delta_y += int(prediction[1])
+
+        return delta_x, delta_y
+
 
 
 # ##We should have most components ready, let's get data for training:
