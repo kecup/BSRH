@@ -86,6 +86,17 @@ class Motor:
             self.name + '/Acquisition#position_counter')  # Uses position in steps! So carefull with movements...
         return self.position
 
+    def limitSwitchActive(self):
+        plusSwitch = self.japc.getParam(self.name + '/Acquisition#end_switch_plus_active')
+        minusSwitch = self.japc.getParam(self.name + '/Acquisition#end_switch_minus_active')
+        out = -1
+
+        if plusSwitch or minusSwitch:
+            out = True
+        else:
+            out = False
+        return out
+
     def setAbsPosition(self, absPosition):  # This is motion in absolute raw steps! No backlash taken into account!!!
         absPosition = int(absPosition)
         self.desiredAbsPosition = absPosition
