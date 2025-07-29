@@ -204,19 +204,19 @@ class Aligner_without_beam_steerer:
         self.ref_x = ref_x
         self.ref_y = ref_y
 
-    def align(self, iter=5):
+    def align(self, iter=5, dist_tolerance=10):
         delta_x = 0
         delta_y = 0
         for i in range(iter):
             cam_pos = np.array(self.camera.getBeamPosition(), dtype=np.float32)
             if (cam_pos[0] == -1 or cam_pos[1] == -1):
-                print("beam lost")
-                print("Sending to references.")
-                self.motor_x.setAbsPosition(self.ref_x)
-                self.motor_y.setAbsPosition(self.ref_y)
-                while self.motor_x.isBusy() or self.motor_y.isBusy():
-                    sleep(0.2)
-                continue
+                print("E3: beam lost while aligning")
+            #     print("Sending to references.")
+            #     self.motor_x.setAbsPosition(self.ref_x)
+            #     self.motor_y.setAbsPosition(self.ref_y)
+            #     while self.motor_x.isBusy() or self.motor_y.isBusy():
+            #         sleep(0.2)
+            #     continue
             input_vector = np.concatenate((cam_pos, self.target), axis=0, dtype=np.float32())
             input_tensor = torch.tensor(input_vector).unsqueeze(0)
             with torch.no_grad():
@@ -227,6 +227,8 @@ class Aligner_without_beam_steerer:
                 sleep(0.2)
             delta_x += int(prediction[0])
             delta_y += int(prediction[1])
+            if np.abs(cam_pos[0] - self.target[0]) > dist_tolerance or np.abs(cam_pos[1] - self.target[1]) > dist_tolerance:
+                break
 
         return delta_x, delta_y
 
