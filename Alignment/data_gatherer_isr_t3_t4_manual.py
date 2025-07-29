@@ -30,7 +30,7 @@ cam1 = Camera("TST.BSRH.MON.M2", japc)
 cam2 = Camera("TST.BSRH.CAM.CM", japc)
 
 MOTOR_REFERENCES = {"x": 40085, "y": 41740, "phi": 142100, "theta": 161000}
-CSV_FILENAME = "isr_t3_t4_manual_data.csv"
+CSV_FILENAME = "Data/isr_t3_t4_manual_data.csv"
 TARGET = [484, 304]  # Camera center
 
 def load_model():
@@ -61,6 +61,17 @@ def calculate_distance(pos, target):
     """
     return np.linalg.norm(np.array(pos) - np.array(target))
 
+def reverse_motors(stepsX, stepsY, stepsPhi, stepsTheta):
+    """
+    Reverses motors moves.
+    """
+    motor_x.setRelPosition(-1*stepsX)
+    motor_y.setRelPosition(-1*stepsY)
+    motor_phi.setRelPosition(-1*stepsPhi)
+    motor_theta.setRelPosition(-1*stepsTheta)
+    while motor_x.isBusy() or motor_y.isBusy() or motor_phi.isBusy() or motor_theta.isBusy():
+        sleep(0.2)
+
 def main():
 
     model = load_model()
@@ -75,31 +86,33 @@ def main():
               "stepsY", "stepsPhi", "stepsTheta"]
     file_exists = os.path.isfile(CSV_FILENAME)
 
-    # with open(CSV_FILENAME, 'a') as file:
-    #     file_writer = csv.writer(file)
-    #     if not file_exists:
-    #         file_writer.writerow(header)
+    with open(CSV_FILENAME, 'a') as file:
+        file_writer = csv.writer(file)
+        if not file_exists:
+            file_writer.writerow(header)
 
-    while True:
-        aligner.align(10000000)
-        print("Done auto-aligning")
-        cam1_pos = cam1.getBeamPosition()
-        cam2_pos = cam2.getBeamPosition()
-        # input("Press enter after moving motors to continue")
-        # deltas = input("Enter two integers separated by space as in delta steps X (3.2) and delta steps Y (3.3): ")
-        # try:
-        #     stepsX, stepsY = map(int, deltas.split())  # Convert to integers
-        #     print(f"You entered: {stepsX} and {stepsY}")
-        # except ValueError:
-        #     print("Invalid input. Please enter two integers.")
-        # input("Press enter to auto-align")
-        # stepsPhi, stepsTheta = aligner.align(5)
-        # t1 = cam1.getBeamPosition()
-        # t2 = cam2.getBeamPosition()
-        # data = [cam1_pos[0], cam1_pos[1], cam2_pos[0], cam2_pos[1], t1[0], t1[1], t2[0], t2[1], stepsX, stepsY, stepsPhi, stepsTheta]
+        aligner.align(5)
+        while True:
+            cam1_pos = cam1.getBeamPosition()
+            cam2_pos = cam2.getBeamPosition()
+            deltas = input("Move motors and enter two integers separated by space as in delta steps X (3.2) and delta steps Y (3.3): ")
+            try:
+                stepsX, stepsY = map(int, deltas.split())  # Convert to integers
+                print(f"You entered: {stepsX} and {stepsY}")
+            except ValueError:
+                print("Invalid input. Please enter two integers.")
+                continue
+            print("Auto-aligning")
+            stepsPhi, stepsTheta = aligner.align(5)
+            t1 = cam1.getBeamPosition()
+            t2 = cam2.getBeamPosition()
 
-
-
+            if t1[0] != -1 and t1[1] != -1 and t2[0] != -1 and t2[1] != -1:
+                data = [cam1_pos[0], cam1_pos[1], cam2_pos[0], cam2_pos[1], t1[0], t1[1], t2[0], t2[1], stepsX, stepsY, stepsPhi, stepsTheta]
+                file_writer.writerow(data)
+            else:
+                print("beam lost")
+                reverse_motors(stepsX, stepsY, stepsPhi, stepsTheta)
 
 
 
