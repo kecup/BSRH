@@ -33,21 +33,31 @@ def remove_outliers(data, window_size=5, threshold=3.0):
 
     return cleaned
 
-InFile = open('HaloCharge.pkl', 'rb')
+InFile = open('HaloCharge_v2.pkl', 'rb')
 results = pickle.load(InFile)
 InFile.close()
 
-g = open("AvgBG2.pkl", 'rb') #From this file we want to interpolate the bg...
+g = open("AvgBG3.pkl", 'rb') #From this file we want to interpolate the bg...
 BG = pickle.load(g)
 g.close()
 
-h = open('AvgHalo2.pkl','rb')
+h = open('AvgHalo3.pkl','rb')
 CH = pickle.load(h)
 h.close()
 
+bws = open('BWSCharge_v1.pkl', 'rb')
+BWS = pickle.load(bws)
+
+
+
 keys = list(results.keys())
 
-for key in keys:
+for index, key in enumerate(keys):
+
+    bws_x = BWS[0][index]
+    bws_y = BWS[1][index]
+
+
     y = results[key]['haloH']
     x = results[key]['timeH']
 
@@ -65,6 +75,7 @@ for key in keys:
 
     plt.figure(1)
     plt.plot(x_sorted,y_clean, label = str(key))
+    plt.plot(bws_x, bws_y, label = 'BWS b.'+str(key))
 
     y = results[key]['haloV']
     x = results[key]['timeV']
@@ -88,7 +99,7 @@ plt.legend()
 plt.title("Horizontal halo charge, PSF = 420 um")
 plt.figure(2)
 plt.legend()
-plt.title("Vertical halo charge, PSF = 310 um")
+plt.title("Vertical halo charge, PSF = 232 um")
 
 keys = list(CH.keys())
 for key in keys:
@@ -109,5 +120,5 @@ plt.legend()
 plt.title("Horizontal deconvolved charge, PSF = 420 um")
 plt.figure(4)
 plt.legend()
-plt.title("Vertical halo charge, PSF = 310 um")
+plt.title("Vertical halo charge, PSF = 232 um")
 plt.show()

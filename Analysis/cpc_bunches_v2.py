@@ -300,12 +300,12 @@ if __name__ == "__main__":
     size_x = 263.0 # sizes of the beam at the dipole location
     size_y = 361.0
     sigma_x_um = 350 ## sigma of the PSF in micrometers
-    sigma_y_um = 270
+    sigma_y_um = 232
     px_x = 19.8 # pixel sizes of the images, might have to change for different PSF...
-    px_y = 19.9
+    px_y = 18.2
 
     results = compute_bg(directory, files, runs, sigma_x_um, sigma_y_um, px_x, px_y, size_x, size_y, 3.5)
 
-    f = open("BG_results_v5.pkl", 'wb')
+    f = open("BG_results_v6.pkl", 'wb')
     pickle.dump(results, f)
     f.close()
