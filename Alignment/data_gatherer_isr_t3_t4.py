@@ -28,24 +28,19 @@ motor_theta = Motor('TST.cfv-375-bsrdev.mot.3-5', japc, 125)
 cam1 = Camera("TST.BSRH.MON.M2", japc)
 cam2 = Camera("TST.BSRH.CAM.CM", japc)
 
+MOTOR_REFERENCES = {"x": 40385, "y": 41740, "phi": 139931, "theta": 163051}
+
 # How many steps the motor can make from reference to keep the image on the camera
 # we only care about the second camera
 # motor_range_x_t2 = 320
 # motor_range_y_t2 = 620
 # motor_range_phi_t2 = 450
 # motor_range_theta_t2 = 900
-motor_range_x_t2 = 320 # new
-motor_range_y_t2 = 620
-motor_range_phi_t2 = 700
-motor_range_theta_t2 = 300
+motor_range_x_t2 = 350 # new
+motor_range_y_t2 = 550
+motor_range_phi_t2 = 800
+motor_range_theta_t2 = 500
 
-# references for motors
-ref_x = 40085
-ref_y = 41740
-# ref_phi = 140600
-# ref_theta = 163500
-ref_phi = 141100
-ref_theta = 160800
 
 def measure_cam(camera):
     """
@@ -54,7 +49,7 @@ def measure_cam(camera):
     camX, camY = camera.getBeamPosition()
     if camX == -1 or camY == -1:
         print('Did not find beam, sending to references.')
-        send_motors_to_references()
+        move_to_references()
         camX, camY = camera.getBeamPosition()
         if camX == -1 or camY == -1:
             print('Cannot find beam at reference location. This should not happen.')
@@ -84,11 +79,14 @@ def move_motors(stepsX, stepsY, stepsPhi, stepsTheta):
     while motor_x.isBusy() or motor_y.isBusy() or motor_phi.isBusy() or motor_theta.isBusy():
         sleep(0.2)
 
-def send_motors_to_references():
-    motor_x.setAbsPosition(ref_x)
-    motor_y.setAbsPosition(ref_y)
-    motor_phi.setAbsPosition(ref_phi)
-    motor_theta.setAbsPosition(ref_theta)
+def move_to_references():
+    """
+    Moves motors to pre-measured references.
+    """
+    motor_x.setAbsPosition(MOTOR_REFERENCES["x"])
+    motor_y.setAbsPosition(MOTOR_REFERENCES["y"])
+    motor_phi.setAbsPosition(MOTOR_REFERENCES["phi"])
+    motor_theta.setAbsPosition(MOTOR_REFERENCES["theta"])
     while motor_x.isBusy() or motor_y.isBusy() or motor_phi.isBusy() or motor_theta.isBusy():
         sleep(0.2)
 
@@ -97,13 +95,13 @@ def main():
     japc.startSubscriptions()
     sleep(2)
 
-    send_motors_to_references()
+    move_to_references()
 
     iterations = 2000
     faults = 0
 
     # open a csv file that we will use to save the training data:
-    file_name = 'isr_t3_t4_data.csv'
+    file_name = 'isr_t3_t4_data_v2.csv'
     header = ["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y", "stepsX",
               "stepsY", "stepsPhi", "stepsTheta"]
     file_exists = os.path.isfile(file_name)
@@ -142,11 +140,11 @@ def main():
             else:
                 print("Invalid targets.")
                 faults += 1
-                send_motors_to_references()
+                move_to_references()
                 print("Sending to references.")
 
 
-    send_motors_to_references()
+    move_to_references()
     japc.stopSubscriptions()
 
 if __name__ == "__main__":
