@@ -11,8 +11,8 @@ import matplotlib.pyplot as plt
 from scipy import stats
 from skimage import restoration
 
-File_H = 60
-File_V = 63
+File_H = 61
+File_V = 64
 File_BSRH = 104
 
 def chi2(a, b):
@@ -50,7 +50,7 @@ def moving_average(a, n=3):
 
 def CoolFuncH(params, bwsArray, bsrhArray, fbctArray, n=12):  # Params[0] = PSF, Params[1] = pixel size, Params[2] = (scale of bsrh) tail of the PSF, arrays come already as 1000 points from -4 to 4
     newX = np.linspace(-4, 4, 1000)
-    crop = 550#600 ###change here if needed
+    crop = 530#600 ###change here if needed
     tmpPSF = gaussian(newX, 1, 0, params[0])
     tmpPSF = tmpPSF / np.sum(tmpPSF)
 
@@ -250,10 +250,14 @@ else:
         newY = np.interp(newX, x, y)
         Hbws.append(newY)
 
-    for bunchIndex in range(len(profilesBSRH_H)):
+    #Let's try to change the fitting to max and few pixels, otherwise we get a systematic off-center that then screws up the calibration..
+    for bunchIndex in range(len(profilesBSRH_H)): #pixels
+
         y = np.asarray(profilesBSRH_H[bunchIndex])
+        max_index = np.argmax(y)
+        print(max_index)
         x = np.arange(len(y))
-        out, _ = curve_fit(gaussian, x, y, (170000, 511, 25.0))
+        out, _ = curve_fit(gaussian, x[:max_index+30], y[:max_index+30], (170000, max_index, 25.0))
         x = x - out[1]
         Hbsrh.append([x, y])
 
@@ -280,13 +284,30 @@ else:
     plotX = np.arange(np.min(sigmaBWS_H)**2, np.max(sigmaBWS_H)**2, 1000)
     plt.plot(plotX, slope*plotX+intercept)
 
-    initGuess = [np.sqrt(intercept/slope), np.sqrt(1/slope)*1e3, 1.0, 1]
-    resultH = minimize(CoolFuncH, initGuess, args=(Hbws, Hbsrh, fbct_H), bounds=((0.1, 0.8), (15, 45), (0.1, 2.0), (0, 5)), method = 'Powell') #method = 'L-BFGS-B')
+    initGuess = [0.6, 20.0, 1.0, 1]
+    resultH = minimize(CoolFuncH, initGuess, args=(Hbws, Hbsrh, fbct_H), bounds=((0.4, 0.7), (16, 24), (0.1, 2.0), (0, 5)), method = 'TNC') #method = 'L-BFGS-B')
 
 
     out = resultH.x
     hPx_c = np.round(out[1],2)
     hPSF_c = np.round(out[0],3)
+
+    grid = np.zeros((100,100))
+    gridX = np.linspace(0.5,0.7,100)
+    gridY = np.linspace(18.0, 22.0, 100)
+
+    for bla in range(100):
+        #gridX.append(5e-4*(bla-50)+hPSF_c)
+        #gridY.append(0.02*(bla-50)+hPx_c)
+        for ble in range(100):
+
+            grid[bla, ble] = CoolFuncH((gridX[bla], gridY[ble], out[2], out[3]), Hbws, Hbsrh, fbct_H)
+
+    print(resultH.fun)
+    print(np.min(grid))
+    plt.figure(50)
+    grid = (grid - np.min(grid))/np.min(grid)
+    plt.imshow(grid, extent = [gridY[0], gridY[-1], gridX[-1], gridX[0]], aspect = 'auto')
     #print(resultH)
 
     # out = resultH.x
@@ -441,13 +462,28 @@ else:
     plt.figure(13)
     plt.plot(np.asarray(sigmaBWS_V)**2, np.asarray(sigmaBSRH_V)**2, 'o')
 
-    initGuess = [np.sqrt(intercept/slope), np.sqrt(1/slope)*1e3, 1, 1]
-    resultV = minimize(CoolFuncV, initGuess, args=(Vbws, Vbsrh, fbct_V),bounds=((0.1, 0.55), (10, 25), (0.1, 2.0), (0, 5)), method = 'Powell')  # , method = 'L-BFGS-B')
+    initGuess = [0.25, 18.0, 1, 1]
+    print(initGuess)
+    resultV = minimize(CoolFuncV, initGuess, args=(Vbws, Vbsrh, fbct_V),bounds=((0.2, 0.4), (15, 22), (0.1, 2.0), (0, 5)), method = 'TNC')  # , method = 'L-BFGS-B')
     out = resultV.x
 
     vPx_c = np.round(out[1], 2)
     vPSF_c = np.round(out[0], 3)
 
+    grid = np.zeros((100, 100))
+    gridX = np.linspace(0.2, 0.3, 100)
+    gridY = np.linspace(16.5, 18.5, 100)
+
+    for bla in range(100):
+        for ble in range(100):
+            grid[bla, ble] = CoolFuncV((gridX[bla], gridY[ble], out[2], out[3]), Vbws,
+                                       Vbsrh, fbct_V)
+
+    print(resultV.fun)
+    print(np.min(grid))
+    plt.figure(55)
+    grid = (grid - np.min(grid)) / np.min(grid)
+    plt.imshow(grid, extent = [gridY[0], gridY[-1], gridX[-1], gridX[0]], aspect = 'auto')
     # out = resultV.x
     # results["vertical"] = (out[0], out[1])
     # print('PSF = ', np.round(out[0],3))
