@@ -85,7 +85,7 @@ def train_nn(X, y, file_name: str):
 
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = FeedbackNN2(data_train.shape[1],delta_train.shape[1]).to(device)
+    model = FeedbackNN2(data_train.shape[1], delta_train.shape[1]).to(device)
     #model = ResidualMLP(6,2).to(device)
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay= 1e-4)
@@ -143,8 +143,8 @@ def train_nn(X, y, file_name: str):
             best_val_loss = val_loss
             best_mse = mse_real
             torch.save(model.state_dict(), file_name)
-            joblib.dump(scaler_X, script_dir / "Models" / "isr_model2_t3_t4_X_scaler.pkl")
-            joblib.dump(scaler_y, script_dir / "Models" / "isr_model2_t3_t4_y_scaler.pkl")
+            joblib.dump(scaler_X, "Models/isr_model1_t3_t4_v2_X_scaler.pkl")
+            joblib.dump(scaler_y, "Models/isr_model1_t3_t4_v2_y_scaler.pkl")
 
     return best_val_loss, best_mse
 
@@ -208,12 +208,12 @@ if __name__ == "__main__":
     # print("Finished 6th model.")
     # print("loss: " + str(loss6))
 
-    script_dir = Path(__file__).parent
-    data_path = script_dir / "Data" / "isr_t3_t4_data.csv"
+    # script_dir = Path(__file__).parent
+    # data_path = script_dir / "Data" / "isr_t3_t4_data.csv"
     # data_file_name = "Data/isr_t3_t4_data.csv"
 
-    df2 = pd.read_csv(data_path) # change slash windows/linux
-    df2 = df2[~df2[['cam2X', 'cam2Y']].isin([-1]).any(axis=1)]
+    # df2 = pd.read_csv(data_path) # change slash windows/linux
+    # df2 = df2[~df2[['cam2X', 'cam2Y']].isin([-1]).any(axis=1)]
 
 
 
@@ -227,9 +227,26 @@ if __name__ == "__main__":
 
     # its is made for windows now
     # cam2, target2 -> steps
-    X2 = df2[['cam2X', 'cam2Y','t2X', 't2Y']].values
-    y2 = df2[['stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']].values
-    file_name2 = script_dir / "Models"  / "isr_t3_t4_model2_only_cam2_target-steps.pth"
-    scaled_loss2, mse2 = train_nn(X2, y2, file_name2)
-    print("Finished training model2.")
-    print(f"Best scaled loss: {scaled_loss2:.2f}, MSE loss: {mse2:.2f}")
+    # X2 = df2[['cam2X', 'cam2Y','t2X', 't2Y']].values
+    # y2 = df2[['stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']].values
+    # file_name2 = script_dir / "Models"  / "isr_t3_t4_model2_only_cam2_target-steps.pth"
+    # scaled_loss2, mse2 = train_nn(X2, y2, file_name2)
+    # print("Finished training model2.")
+    # print(f"Best scaled loss: {scaled_loss2:.2f}, MSE loss: {mse2:.2f}")
+
+
+
+    # fixed isr new nn
+    data_file_name = "Data/isr_t3_t4_data_v2.csv"
+
+    df3 = pd.read_csv(data_file_name)
+    df3 = df3[~df3[['cam2X', 'cam2Y']].isin([-1]).any(axis=1)]
+    print(f"There are {df3.shape[0]} rows")
+
+    # cam2, target2 -> steps
+    X3 = df3[['cam1X', 'cam1Y', 'cam2X', 'cam2Y', 't1X', 't1Y', 't2X', 't2Y']].values
+    y3 = df3[['stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']].values
+    file_name3 = "Models/isr_t3_t4_v2_model1_cams_targets-steps.pth"
+    scaled_loss3, mse3 = train_nn(X3, y3, file_name3)
+    # print("Finished training model.")
+    print(f"Best scaled loss: {scaled_loss3:.2f}, MSE loss: {mse3:.2f}")

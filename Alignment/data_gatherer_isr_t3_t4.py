@@ -101,7 +101,7 @@ def main():
     faults = 0
 
     # open a csv file that we will use to save the training data:
-    file_name = 'isr_t3_t4_data_v2.csv'
+    file_name = "Data/isr_t3_t4_data_v2.csv"
     header = ["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y", "stepsX",
               "stepsY", "stepsPhi", "stepsTheta"]
     file_exists = os.path.isfile(file_name)
