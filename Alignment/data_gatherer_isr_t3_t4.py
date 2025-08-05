@@ -97,7 +97,7 @@ def main():
 
     move_to_references()
 
-    iterations = 2000
+    iterations = 50000
     faults = 0
 
     # open a csv file that we will use to save the training data:
