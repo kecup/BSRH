@@ -19,79 +19,61 @@ from pathlib import Path
 
 ########Parameters and names#################
 
-class FeedbackNN(nn.Module): #Not used here
-  def __init__(self, state_size, action_size, seed = 45) -> None:
-      self.NNsize = 16
-      super(FeedbackNN, self).__init__()
-      self.seed = torch.manual_seed(seed)
-      self.dropout = nn.Dropout(p=0.1)
-      self.fc1 = nn.Linear(state_size, self.NNsize) #First Neuron layer
-      self.fc2 = nn.Linear(self.NNsize,self.NNsize)#Next Neuron layer
-      self.fc3 = nn.Linear(self.NNsize,self.NNsize)#Next Neuron layer
-      self.fc4 = nn.Linear(self.NNsize, action_size)#Last Neuron layer
-
-def forward(self, state):
-    x = self.fc1(state) #output of the first layer
-    x = F.relu(x) # rectify function of the output
-    #   x = self.dropout(x)
-
-    y = self.fc2(x)
-    y = F.relu(y)
-    #   y = self.dropout(y)
-
-    z = self.fc4(y)
-    return z
-
-
-class FeedbackNN2(nn.Module):
+class FeedbackNN(nn.Module):
     def __init__(self, input_size=8, output_size=4, seed=42):
-        super(FeedbackNN2, self).__init__()
+        super(FeedbackNN, self).__init__()
         torch.manual_seed(seed)
-        self.dropout = nn.Dropout(p=0.1)
 
-        self.fc1 = nn.Linear(input_size, 32)
-        self.fc2 = nn.Linear(32, 16)
-        # self.fc3 = nn.Linear(64, 32)
-        self.fc4 = nn.Linear(16, output_size)
+        self.model = nn.Sequential(
+            nn.Linear(input_size, 64),
+            nn.BatchNorm1d(64),
+            nn.LeakyReLU(),
+            nn.Dropout(0.2),
+
+            nn.Linear(64, 64),
+            nn.BatchNorm1d(64),
+            nn.LeakyReLU(),
+            nn.Dropout(0.2),
+
+            nn.Linear(64, 32),
+            nn.LeakyReLU(),
+
+            nn.Linear(32, output_size)
+        )
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = self.dropout(x)
-        x = F.relu(self.fc2(x))
-        x = self.dropout(x)
-        # x = F.relu(self.fc3(x))
-        return self.fc4(x)
+        return self.model(x)
 
 
 def train_nn(X, y, file_name: str):
 
-    data_train, data_val, delta_train, delta_val = train_test_split(X, y, test_size = 0.2, random_state = 42, shuffle = True)
+    motor_ranges = np.array([350, 550, 800, 500])  # stepsX, stepsY, stepsPhi, stepsTheta
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, shuffle=True)
 
-    ##Scaler to normalize?
+    # Normalize inputs and outputs
     scaler_X = StandardScaler()
     scaler_y = StandardScaler()
+    X_train = scaler_X.fit_transform(X_train)
+    X_val = scaler_X.transform(X_val)
+    y_train = scaler_y.fit_transform(y_train)
+    y_val = scaler_y.transform(y_val)
 
-    data_train = scaler_X.fit_transform(data_train)
-    data_val = scaler_X.transform(data_val)
 
-    delta_train = scaler_y.fit_transform(delta_train)
-    delta_val = scaler_y.transform(delta_val)
+    train_ds = TensorDataset(torch.from_numpy(X_train).float(), torch.from_numpy(y_train).float())
+    val_ds = TensorDataset(torch.from_numpy(X_val).float(), torch.from_numpy(y_val).float())
 
-    train_ds = TensorDataset(torch.from_numpy(data_train).float(), torch.from_numpy(delta_train).float())
-    val_ds = TensorDataset(torch.from_numpy(data_val).float(), torch.from_numpy(delta_val).float())
-
-    train_loader = DataLoader(train_ds, batch_size=32, shuffle = True)
-    val_loader   = DataLoader(val_ds,   batch_size=32)
-
+    train_loader = DataLoader(train_ds, batch_size=32, shuffle=True)
+    val_loader = DataLoader(val_ds, batch_size=32)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = FeedbackNN2(data_train.shape[1], delta_train.shape[1]).to(device)
-    #model = ResidualMLP(6,2).to(device)
-    criterion = nn.MSELoss()
+    model = FeedbackNN(input_size=X_train.shape[1], output_size=y_train.shape[1]).to(device)
+
+    criterion = nn.HuberLoss(delta=1.0)
     optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay= 1e-4)
 
     num_epochs = 200
     best_val_loss = float('inf')
+    best_metrics = {}
 
     for epoch in range(1, num_epochs+1):
         # ——— TRAIN ———
@@ -111,8 +93,7 @@ def train_nn(X, y, file_name: str):
         # ——— VALIDATE ———
         model.eval()
         total_val_loss = 0
-        preds_list = []
-        targets_list = []
+        preds_list, targets_list = [], []
         with torch.no_grad():
             for xb, yb in val_loader:
                 xb, yb = xb.to(device), yb.to(device)
@@ -124,29 +105,40 @@ def train_nn(X, y, file_name: str):
 
         val_loss = total_val_loss / len(val_loader.dataset)
 
-        # ——— Convert and inverse-transform to real units ———
+        # Concatenate predictions and targets
         preds_all = np.concatenate(preds_list, axis=0)
         targets_all = np.concatenate(targets_list, axis=0)
 
+        # Inverse normalization for RMSE calculation
         preds_real = scaler_y.inverse_transform(preds_all)
         targets_real = scaler_y.inverse_transform(targets_all)
 
-        # ——— Compute RMSE in real units ———
+        ## Compute RMSE global and per motor
         mse_real = mean_squared_error(targets_real, preds_real)
-        rmse_real = np.sqrt(mse_real)
-        print(
-            f"Epoch {epoch:03d} — train_loss: {train_loss:.4f}, val_loss: {val_loss:.4f}, RMSE: {rmse_real:.2f}, MSE: {mse_real:.2f}")
+        rmse_global = np.sqrt(mse_real)
+        per_motor_rmse = np.sqrt(np.mean((preds_real - targets_real) ** 2, axis=0))
+        percent_error = per_motor_rmse / motor_ranges * 100
 
+        print(f"Epoch {epoch:03d} — train_loss: {train_loss:.4f}, val_loss: {val_loss:.4f}")
+        print(f"   RMSE Global: {rmse_global:.2f} steps")
+        print(f"   Per-motor RMSE: {per_motor_rmse}")
+        print(f"   % Error per motor: {percent_error}")
 
-        # — Optional: save best model
+        # Save best model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            best_mse = mse_real
+            best_metrics = {
+                "rmse_global": rmse_global,
+                "per_motor_rmse": per_motor_rmse,
+                "percent_error": percent_error
+            }
             torch.save(model.state_dict(), file_name)
-            joblib.dump(scaler_X, "Models/isr_model1_t3_t4_v2_X_scaler.pkl")
-            joblib.dump(scaler_y, "Models/isr_model1_t3_t4_v2_y_scaler.pkl")
+            joblib.dump(scaler_X, "Models/isr_isr_t3_t4_v2_model1_cams_m_targets-steps_X_scaler.pkl")
+            joblib.dump(scaler_y, "Models/isr_isr_t3_t4_v2_model1_cams_m_targets-steps_y_scaler.pkl")
 
-    return best_val_loss, best_mse
+    print("\n==== Training Complete ====")
+    print("Best Metrics:", best_metrics)
+    return best_val_loss, best_metrics
 
 
 if __name__ == "__main__":
@@ -244,9 +236,10 @@ if __name__ == "__main__":
     print(f"There are {df3.shape[0]} rows")
 
     # cam2, target2 -> steps
-    X3 = df3[['cam1X', 'cam1Y', 'cam2X', 'cam2Y', 't1X', 't1Y', 't2X', 't2Y']].values
+    X3 = df3[["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y", "stepsX",
+              "stepsY", "stepsPhi", "stepsTheta"]].values
     y3 = df3[['stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']].values
-    file_name3 = "Models/isr_t3_t4_v2_model1_cams_targets-steps.pth"
-    scaled_loss3, mse3 = train_nn(X3, y3, file_name3)
+    file_name3 = "Models/isr_t3_t4_v2_model1_cams_m_targets-steps.pth"
+    scaled_loss3, rmse3 = train_nn(X3, y3, file_name3)
     # print("Finished training model.")
-    print(f"Best scaled loss: {scaled_loss3:.2f}, MSE loss: {mse3:.2f}")
+    # print(f"Best scaled loss: {scaled_loss3:.2f}, MSE loss: {rmse3:.2f}")
