@@ -1,8 +1,123 @@
-while True:
-    input("Press Enter to start entering two numbers...")  # First Enter
-    numbers = input("Enter two integers separated by space: ")  # Wait for input
-    try:
-        a, b = map(int, numbers.split())  # Convert to integers
-        print(f"You entered: {a} and {b}")
-    except ValueError:
-        print("Invalid input. Please enter two integers.")
+class FeedbackNN3(nn.Module):
+    def __init__(self, input_size=8, output_size=4, seed=42):
+        super(FeedbackNN3, self).__init__()
+        torch.manual_seed(seed)
+        
+        self.model = nn.Sequential(
+            nn.Linear(input_size, 64),
+            nn.BatchNorm1d(64),
+            nn.LeakyReLU(),
+            nn.Dropout(0.2),
+
+            nn.Linear(64, 64),
+            nn.BatchNorm1d(64),
+            nn.LeakyReLU(),
+            nn.Dropout(0.2),
+
+            nn.Linear(64, 32),
+            nn.LeakyReLU(),
+
+            nn.Linear(32, output_size)
+        )
+
+    def forward(self, x):
+        return self.model(x)
+
+def train_nn(X, y, file_name: str):
+    # Motor ranges for normalization
+    motor_ranges = np.array([350, 550, 800, 500])  # stepsX, stepsY, stepsPhi, stepsTheta
+
+    # Train/validation split
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, shuffle=True)
+
+    # Normalize X with StandardScaler
+    scaler_X = StandardScaler()
+    X_train = scaler_X.fit_transform(X_train)
+    X_val = scaler_X.transform(X_val)
+
+    # Normalize y by dividing by motor ranges
+    y_train = y_train / motor_ranges
+    y_val = y_val / motor_ranges
+
+    # Convert to tensors
+    train_ds = TensorDataset(torch.from_numpy(X_train).float(), torch.from_numpy(y_train).float())
+    val_ds = TensorDataset(torch.from_numpy(X_val).float(), torch.from_numpy(y_val).float())
+
+    train_loader = DataLoader(train_ds, batch_size=32, shuffle=True)
+    val_loader = DataLoader(val_ds, batch_size=32)
+
+    # Device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = FeedbackNN3(input_size=X_train.shape[1], output_size=y_train.shape[1]).to(device)
+
+    # Loss and optimizer
+    criterion = nn.HuberLoss(delta=1.0)  # More robust than MSE
+    optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
+
+    num_epochs = 200
+    best_val_loss = float('inf')
+    best_metrics = {}
+
+    for epoch in range(1, num_epochs + 1):
+        # ---------- TRAIN ----------
+        model.train()
+        total_loss = 0
+        for xb, yb in train_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            optimizer.zero_grad()
+            preds = model(xb)
+            loss = criterion(preds, yb)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item() * xb.size(0)
+        train_loss = total_loss / len(train_loader.dataset)
+
+        # ---------- VALIDATE ----------
+        model.eval()
+        total_val_loss = 0
+        preds_list, targets_list = [], []
+        with torch.no_grad():
+            for xb, yb in val_loader:
+                xb, yb = xb.to(device), yb.to(device)
+                preds = model(xb)
+                total_val_loss += criterion(preds, yb).item() * xb.size(0)
+
+                preds_list.append(preds.cpu().numpy())
+                targets_list.append(yb.cpu().numpy())
+
+        val_loss = total_val_loss / len(val_loader.dataset)
+
+        # Concatenate predictions and targets
+        preds_all = np.concatenate(preds_list, axis=0)
+        targets_all = np.concatenate(targets_list, axis=0)
+
+        # Inverse normalization for RMSE calculation
+        preds_real = preds_all * motor_ranges
+        targets_real = targets_all * motor_ranges
+
+        # Compute RMSE global and per motor
+        mse_real = mean_squared_error(targets_real, preds_real)
+        rmse_global = np.sqrt(mse_real)
+        per_motor_rmse = np.sqrt(np.mean((preds_real - targets_real) ** 2, axis=0))
+        percent_error = per_motor_rmse / motor_ranges * 100
+
+        print(f"Epoch {epoch:03d} — train_loss: {train_loss:.4f}, val_loss: {val_loss:.4f}")
+        print(f"   RMSE Global: {rmse_global:.2f} steps")
+        print(f"   Per-motor RMSE: {per_motor_rmse}")
+        print(f"   % Error per motor: {percent_error}")
+
+        # Save best model
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_metrics = {
+                "rmse_global": rmse_global,
+                "per_motor_rmse": per_motor_rmse,
+                "percent_error": percent_error
+            }
+            torch.save(model.state_dict(), file_name)
+            joblib.dump(scaler_X, "Models/isr_X_scaler.pkl")
+            joblib.dump(motor_ranges, "Models/isr_motor_ranges.pkl")
+
+    print("\n==== Training Complete ====")
+    print("Best Metrics:", best_metrics)
+    return best_val_loss, best_metrics
