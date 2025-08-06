@@ -20,31 +20,49 @@ from pathlib import Path
 
 ########Parameters and names#################
 
-class FeedbackNN(nn.Module):
+class FeedbackNN2(nn.Module):
     def __init__(self, input_size=8, output_size=4, seed=42):
-        super(FeedbackNN, self).__init__()
+        super(FeedbackNN2, self).__init__()
         torch.manual_seed(seed)
 
         self.model = nn.Sequential(
             nn.Linear(input_size, 128),
-            # nn.BatchNorm1d(64),
-            # nn.LeakyReLU(),
             nn.ReLU(),
             # nn.Dropout(0.1),
 
             nn.Linear(128, 64),
-            # nn.BatchNorm1d(64),
-            # nn.LeakyReLU(),
             nn.ReLU(),
             # nn.Dropout(0.1),
 
             nn.Linear(64, 64),
-            # nn.BatchNorm1d(64),
-            # nn.LeakyReLU(),
             nn.ReLU(),
+            # nn.Dropout(0.1),
 
             nn.Linear(64, 32),
-            # nn.LeakyReLU(),
+            nn.ReLU(),
+
+            nn.Linear(32, output_size)
+        )
+
+    def forward(self, x):
+        return self.model(x)
+
+
+class FeedbackNN1(nn.Module):
+    def __init__(self, input_size=8, output_size=4, seed=42):
+        super(FeedbackNN1, self).__init__()
+        torch.manual_seed(seed)
+
+        self.model = nn.Sequential(
+            nn.Linear(input_size, 64),
+            nn.ReLU(),
+            # nn.Dropout(0.1),
+
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            # nn.Dropout(0.1),
+
+            nn.Linear(64, 32),
             nn.ReLU(),
 
             nn.Linear(32, output_size)
@@ -57,7 +75,7 @@ class FeedbackNN(nn.Module):
 def train_nn(X, y, file_name: str, X_scaler_name: str, y_scaler_name:str, save_model=False):
 
     motor_ranges = np.array([350, 550, 800, 500])  # stepsX, stepsY, stepsPhi, stepsTheta
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, shuffle=True)
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, shuffle=False)
 
     # Normalize inputs and outputs
     scaler_X = StandardScaler()
@@ -75,7 +93,7 @@ def train_nn(X, y, file_name: str, X_scaler_name: str, y_scaler_name:str, save_m
     val_loader = DataLoader(val_ds, batch_size=32)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = FeedbackNN(input_size=X_train.shape[1], output_size=y_train.shape[1]).to(device)
+    model = FeedbackNN2(input_size=X_train.shape[1], output_size=y_train.shape[1]).to(device)
 
     criterion = nn.HuberLoss(delta=1.0)
     optimizer = optim.Adam(model.parameters(), lr=0.00007, weight_decay= 1e-4)
@@ -247,14 +265,12 @@ if __name__ == "__main__":
     print(f"There are {df3.shape[0]} rows")
 
     # cam2, target2 -> steps
-    # X3 = df3[["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y", "stepsX",
-    #           "stepsY", "stepsPhi", "stepsTheta"]].values
-    X3 = df3[["cam1X", "cam1Y", "cam2X", "cam2Y", "t1X", "t1Y", "t2X", "t2Y", "stepsX",
-              "stepsY", "stepsPhi", "stepsTheta"]].values
+    # X3 = df3[["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y"]].values
+    X3 = df3[["cam1X", "cam1Y", "cam2X", "cam2Y", "t1X", "t1Y", "t2X", "t2Y"]].values
     y3 = df3[['stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']].values
     file_name3 = "Models/isr_t3_t4_v2(copy17254)_filtered_model2_cams_targets-steps.pth"
     X_scaler_name3 = "Models/isr_t3_t4_v2(copy17254)_filtered_model2_cams_targets-steps_X_scaler.pkl"
     y_scaler_name3 = "Models/isr_t3_t4_v2(copy17254)_filtered_model2_cams_targets-steps_y_scaler.pkl"
-    scaled_loss3, rmse3 = train_nn(X3, y3, file_name3, X_scaler_name3, y_scaler_name3, save_model=True)
+    scaled_loss3, rmse3 = train_nn(X3, y3, file_name3, X_scaler_name3, y_scaler_name3, save_model=False)
     # print("Finished training model.")
     # print(f"Best scaled loss: {scaled_loss3:.2f}, MSE loss: {rmse3:.2f}")
