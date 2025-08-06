@@ -1,36 +1,21 @@
-    # Normalize inputs and outputs
-    scaler_X = StandardScaler()
-    scaler_y = StandardScaler()
-    X_train = scaler_X.fit_transform(X_train)
-    X_val = scaler_X.transform(X_val)
-    y_train = scaler_y.fit_transform(y_train)
-    y_val = scaler_y.transform(y_val)
+import numpy as np
+import pandas as pd
 
-            # Validation Loop
-        # -----------------
-        model.eval()
-        total_val_loss = 0
-        preds_list = []
-        targets_list = []
-        with torch.no_grad():
-            for xb, yb in val_loader:
-                xb, yb = xb.to(device), yb.to(device)
-                preds = model(xb)
-                total_val_loss += criterion(preds, yb).item() * xb.size(0)
+# Assume df contains: cam1X, cam1Y, cam2X, cam2Y, stepsX, stepsY, stepsPhi, stepsTheta, ...
 
-                preds_list.append(preds.cpu().numpy())
-                targets_list.append(yb.cpu().numpy())
+# Define grid for Cam2
+x_bins = np.linspace(0, 1000, 20)  # Adjust to Cam2 range
+y_bins = np.linspace(0, 700, 20)
 
-        val_loss = total_val_loss / len(val_loader.dataset)
+# Assign each point to a bin
+df['x_bin'] = np.digitize(df['cam2X'], x_bins)
+df['y_bin'] = np.digitize(df['cam2Y'], y_bins)
 
-        # Convert predictions to real scale
-        preds_all = np.concatenate(preds_list, axis=0)
-        targets_all = np.concatenate(targets_list, axis=0)
+# Group and sample max N per bin
+max_samples_per_bin = 200  # Adjust based on desired dataset size
+filtered_df = (
+    df.groupby(['x_bin', 'y_bin'], group_keys=False)
+      .apply(lambda g: g.sample(min(len(g), max_samples_per_bin), random_state=42))
+)
 
-        preds_real = scaler_y.inverse_transform(preds_all)
-        targets_real = scaler_y.inverse_transform(targets_all)
-
-        # Compute RMSE global and per motor
-        mse_real = mean_squared_error(targets_real, preds_real)
-        rmse_real = np.sqrt(mse_real)
-        rmse_per_motor = np.sqrt(np.mean((preds_real - targets_real) ** 2, axis=0))
+print(f"Original size: {len(df)}, Filtered size: {len(filtered_df)}")
