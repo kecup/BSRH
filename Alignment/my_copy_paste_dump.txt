@@ -1,26 +1,4 @@
-import joblib
-import torch
-import numpy as np
-
-# Load model and scalers
-model = FeedbackNN2(input_size=8, output_size=4)
-model.load_state_dict(torch.load("model.pth"))
-model.eval()
-
-scaler_X = joblib.load("scaler_X.pkl")
-scaler_y = joblib.load("scaler_y.pkl")
-
-# Example input (Cam1, Cam2 positions + motor absolute positions if used)
-new_sample = np.array([[cam1X, cam1Y, cam2X, cam2Y, motorX, motorY, motorPhi, motorTheta]])
-
-# Scale input
-scaled_input = scaler_X.transform(new_sample)
-
-# Convert to tensor and predict
-with torch.no_grad():
-    inp_tensor = torch.from_numpy(scaled_input).float()
-    pred_scaled = model(inp_tensor).numpy()
-
-# Inverse scale output to real steps
-pred_real = scaler_y.inverse_transform(pred_scaled)
-print("Predicted motor steps:", pred_real)
+import pandas as pd
+corr = df[['cam1X','cam1Y','cam2X','cam2Y','motorX','motorY','motorPhi','motorTheta',
+           'stepsX','stepsY','stepsPhi','stepsTheta']].corr()
+print(corr[['stepsX','stepsY','stepsPhi','stepsTheta']])
