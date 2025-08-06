@@ -9,6 +9,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 import pandas as pd
+from lmfit.model import save_model
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import TensorDataset, DataLoader
@@ -25,18 +26,26 @@ class FeedbackNN(nn.Module):
         torch.manual_seed(seed)
 
         self.model = nn.Sequential(
-            nn.Linear(input_size, 64),
-            nn.BatchNorm1d(64),
-            nn.LeakyReLU(),
-            nn.Dropout(0.2),
+            nn.Linear(input_size, 128),
+            # nn.BatchNorm1d(64),
+            # nn.LeakyReLU(),
+            nn.ReLU(),
+            # nn.Dropout(0.1),
+
+            nn.Linear(128, 64),
+            # nn.BatchNorm1d(64),
+            # nn.LeakyReLU(),
+            nn.ReLU(),
+            # nn.Dropout(0.1),
 
             nn.Linear(64, 64),
-            nn.BatchNorm1d(64),
-            nn.LeakyReLU(),
-            nn.Dropout(0.2),
+            # nn.BatchNorm1d(64),
+            # nn.LeakyReLU(),
+            nn.ReLU(),
 
             nn.Linear(64, 32),
-            nn.LeakyReLU(),
+            # nn.LeakyReLU(),
+            nn.ReLU(),
 
             nn.Linear(32, output_size)
         )
@@ -45,7 +54,7 @@ class FeedbackNN(nn.Module):
         return self.model(x)
 
 
-def train_nn(X, y, file_name: str):
+def train_nn(X, y, file_name: str, X_scaler_name: str, y_scaler_name:str, save_model=False):
 
     motor_ranges = np.array([350, 550, 800, 500])  # stepsX, stepsY, stepsPhi, stepsTheta
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, shuffle=True)
@@ -69,7 +78,7 @@ def train_nn(X, y, file_name: str):
     model = FeedbackNN(input_size=X_train.shape[1], output_size=y_train.shape[1]).to(device)
 
     criterion = nn.HuberLoss(delta=1.0)
-    optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay= 1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=0.00007, weight_decay= 1e-4)
 
     num_epochs = 200
     best_val_loss = float('inf')
@@ -119,7 +128,7 @@ def train_nn(X, y, file_name: str):
         per_motor_rmse = np.sqrt(np.mean((preds_real - targets_real) ** 2, axis=0))
         percent_error = per_motor_rmse / motor_ranges * 100
 
-        print(f"Epoch {epoch:03d} — train_loss: {train_loss:.4f}, val_loss: {val_loss:.4f}")
+        print(f"Epoch {epoch:03d} — train_loss: {train_loss:.7f}, val_loss: {val_loss:.7f}")
         print(f"   RMSE Global: {rmse_global:.2f} steps")
         print(f"   Per-motor RMSE: {per_motor_rmse}")
         print(f"   % Error per motor: {percent_error}")
@@ -132,9 +141,10 @@ def train_nn(X, y, file_name: str):
                 "per_motor_rmse": per_motor_rmse,
                 "percent_error": percent_error
             }
-            torch.save(model.state_dict(), file_name)
-            joblib.dump(scaler_X, "Models/isr_isr_t3_t4_v2_model1_cams_m_targets-steps_X_scaler.pkl")
-            joblib.dump(scaler_y, "Models/isr_isr_t3_t4_v2_model1_cams_m_targets-steps_y_scaler.pkl")
+            if save_model:
+                torch.save(model.state_dict(), file_name)
+                joblib.dump(scaler_X, X_scaler_name)
+                joblib.dump(scaler_y, y_scaler_name)
 
     print("\n==== Training Complete ====")
     print("Best Metrics:", best_metrics)
@@ -229,17 +239,22 @@ if __name__ == "__main__":
 
 
     # fixed isr new nn
-    data_file_name = "Data/isr_t3_t4_data_v2.csv"
+    # data_file_name = "Data/isr_t3_t4_data_v2.csv"
+    data_file_name = "Data/isr_t3_t4_data_v2(copy17254)_filtered.csv"
 
     df3 = pd.read_csv(data_file_name)
     df3 = df3[~df3[['cam2X', 'cam2Y']].isin([-1]).any(axis=1)]
     print(f"There are {df3.shape[0]} rows")
 
     # cam2, target2 -> steps
-    X3 = df3[["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y", "stepsX",
+    # X3 = df3[["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y", "stepsX",
+    #           "stepsY", "stepsPhi", "stepsTheta"]].values
+    X3 = df3[["cam1X", "cam1Y", "cam2X", "cam2Y", "t1X", "t1Y", "t2X", "t2Y", "stepsX",
               "stepsY", "stepsPhi", "stepsTheta"]].values
     y3 = df3[['stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']].values
-    file_name3 = "Models/isr_t3_t4_v2_model1_cams_m_targets-steps.pth"
-    scaled_loss3, rmse3 = train_nn(X3, y3, file_name3)
+    file_name3 = "Models/isr_t3_t4_v2(copy17254)_filtered_model2_cams_targets-steps.pth"
+    X_scaler_name3 = "Models/isr_t3_t4_v2(copy17254)_filtered_model2_cams_targets-steps_X_scaler.pkl"
+    y_scaler_name3 = "Models/isr_t3_t4_v2(copy17254)_filtered_model2_cams_targets-steps_y_scaler.pkl"
+    scaled_loss3, rmse3 = train_nn(X3, y3, file_name3, X_scaler_name3, y_scaler_name3, save_model=True)
     # print("Finished training model.")
     # print(f"Best scaled loss: {scaled_loss3:.2f}, MSE loss: {rmse3:.2f}")
