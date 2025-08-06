@@ -47,7 +47,10 @@ def main():
 
     print(f"There are {df.shape[0]} samples")
 
-    visualize_target_covarage(df, cam1_bounds, cam2_bounds)
+    # visualize_target_covarage(df, cam1_bounds, cam2_bounds)
+    corr = df[['cam1X', 'cam1Y', 'cam2X', 'cam2Y', 'mX', 'mY', 'mPhi', 'mTheta', 't1X', 't1Y', 't2X', 't2Y',
+               'stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']].corr()
+    print(corr[['stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']])
 
 
 if __name__ == "__main__":
