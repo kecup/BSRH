@@ -1,53 +1,26 @@
-import pandas as pd
+import joblib
+import torch
 import numpy as np
-import matplotlib.pyplot as plt
 
-# --- Config ---
-INPUT_FILE = "isr_t3_t4_data.csv"      # your full dataset
-OUTPUT_FILE = "isr_t3_t4_filtered_15k.csv"
-TARGET_SAMPLES = 15000
-X_BINS = 20
-Y_BINS = 20
+# Load model and scalers
+model = FeedbackNN2(input_size=8, output_size=4)
+model.load_state_dict(torch.load("model.pth"))
+model.eval()
 
-# --- Load Data ---
-df = pd.read_csv(INPUT_FILE)
+scaler_X = joblib.load("scaler_X.pkl")
+scaler_y = joblib.load("scaler_y.pkl")
 
-# --- Define bins for Cam2 ---
-x_bins = np.linspace(df['cam2X'].min(), df['cam2X'].max(), X_BINS)
-y_bins = np.linspace(df['cam2Y'].min(), df['cam2Y'].max(), Y_BINS)
+# Example input (Cam1, Cam2 positions + motor absolute positions if used)
+new_sample = np.array([[cam1X, cam1Y, cam2X, cam2Y, motorX, motorY, motorPhi, motorTheta]])
 
-# --- Assign bin indices ---
-df['x_bin'] = np.digitize(df['cam2X'], x_bins)
-df['y_bin'] = np.digitize(df['cam2Y'], y_bins)
+# Scale input
+scaled_input = scaler_X.transform(new_sample)
 
-# --- Calculate max per bin ---
-num_bins = X_BINS * Y_BINS
-max_per_bin = round(TARGET_SAMPLES / num_bins)
-print(f"Max samples per bin: {max_per_bin}")
+# Convert to tensor and predict
+with torch.no_grad():
+    inp_tensor = torch.from_numpy(scaled_input).float()
+    pred_scaled = model(inp_tensor).numpy()
 
-# --- Group and sample ---
-filtered_df = (
-    df.groupby(['x_bin', 'y_bin'], group_keys=False)
-      .apply(lambda g: g.sample(min(len(g), max_per_bin), random_state=42))
-      .reset_index(drop=True)
-)
-
-print(f"Original size: {len(df)}, Filtered size: {len(filtered_df)}")
-
-# --- Drop helper columns ---
-filtered_df = filtered_df.drop(columns=['x_bin', 'y_bin'])
-
-# --- Save filtered dataset ---
-filtered_df.to_csv(OUTPUT_FILE, index=False)
-print(f"Filtered dataset saved to {OUTPUT_FILE}")
-
-# --- Optional: visualize new coverage ---
-plt.figure(figsize=(12, 6))
-plt.scatter(filtered_df['cam2X'], filtered_df['cam2Y'], s=5, c='orange', alpha=0.6, label='Cam2')
-plt.scatter(filtered_df['cam1X'], filtered_df['cam1Y'], s=5, c='green', alpha=0.6, label='Cam1')
-plt.xlabel("Cam2 X")
-plt.ylabel("Cam2 Y")
-plt.title("Filtered Beam Position Coverage (Cam2 Focus)")
-plt.legend()
-plt.grid(True)
-plt.show()
+# Inverse scale output to real steps
+pred_real = scaler_y.inverse_transform(pred_scaled)
+print("Predicted motor steps:", pred_real)
