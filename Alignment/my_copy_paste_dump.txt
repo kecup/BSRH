@@ -1,4 +1,13 @@
-import pandas as pd
-corr = df[['cam1X','cam1Y','cam2X','cam2Y','motorX','motorY','motorPhi','motorTheta',
-           'stepsX','stepsY','stepsPhi','stepsTheta']].corr()
-print(corr[['stepsX','stepsY','stepsPhi','stepsTheta']])
+              stepsX    stepsY  stepsPhi  stepsTheta
+cam1X       0.269998  0.030110  0.004794    0.271680
+cam1Y      -0.003566  0.271546 -0.315893   -0.006202
+cam2X       0.001524 -0.272010  0.315957    0.003542
+cam2Y      -0.269587 -0.032897 -0.003389   -0.271940
+mX         -0.112407  0.006907  0.000928   -0.124847
+mY         -0.012472 -0.109261  0.133367   -0.025177
+mPhi       -0.010890  0.123457 -0.138165   -0.027010
+mTheta     -0.123052 -0.022424 -0.012253   -0.113924
+stepsX      1.000000 -0.019667 -0.000865   -0.226475
+stepsY     -0.019667  1.000000  0.224954   -0.019463
+stepsPhi   -0.000865  0.224954  1.000000   -0.015304
+stepsTheta -0.226475 -0.019463 -0.015304    1.000000
