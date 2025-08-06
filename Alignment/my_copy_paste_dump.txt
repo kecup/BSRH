@@ -1,21 +1,53 @@
-import numpy as np
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 
-# Assume df contains: cam1X, cam1Y, cam2X, cam2Y, stepsX, stepsY, stepsPhi, stepsTheta, ...
+# --- Config ---
+INPUT_FILE = "isr_t3_t4_data.csv"      # your full dataset
+OUTPUT_FILE = "isr_t3_t4_filtered_15k.csv"
+TARGET_SAMPLES = 15000
+X_BINS = 20
+Y_BINS = 20
 
-# Define grid for Cam2
-x_bins = np.linspace(0, 1000, 20)  # Adjust to Cam2 range
-y_bins = np.linspace(0, 700, 20)
+# --- Load Data ---
+df = pd.read_csv(INPUT_FILE)
 
-# Assign each point to a bin
+# --- Define bins for Cam2 ---
+x_bins = np.linspace(df['cam2X'].min(), df['cam2X'].max(), X_BINS)
+y_bins = np.linspace(df['cam2Y'].min(), df['cam2Y'].max(), Y_BINS)
+
+# --- Assign bin indices ---
 df['x_bin'] = np.digitize(df['cam2X'], x_bins)
 df['y_bin'] = np.digitize(df['cam2Y'], y_bins)
 
-# Group and sample max N per bin
-max_samples_per_bin = 200  # Adjust based on desired dataset size
+# --- Calculate max per bin ---
+num_bins = X_BINS * Y_BINS
+max_per_bin = round(TARGET_SAMPLES / num_bins)
+print(f"Max samples per bin: {max_per_bin}")
+
+# --- Group and sample ---
 filtered_df = (
     df.groupby(['x_bin', 'y_bin'], group_keys=False)
-      .apply(lambda g: g.sample(min(len(g), max_samples_per_bin), random_state=42))
+      .apply(lambda g: g.sample(min(len(g), max_per_bin), random_state=42))
+      .reset_index(drop=True)
 )
 
 print(f"Original size: {len(df)}, Filtered size: {len(filtered_df)}")
+
+# --- Drop helper columns ---
+filtered_df = filtered_df.drop(columns=['x_bin', 'y_bin'])
+
+# --- Save filtered dataset ---
+filtered_df.to_csv(OUTPUT_FILE, index=False)
+print(f"Filtered dataset saved to {OUTPUT_FILE}")
+
+# --- Optional: visualize new coverage ---
+plt.figure(figsize=(12, 6))
+plt.scatter(filtered_df['cam2X'], filtered_df['cam2Y'], s=5, c='orange', alpha=0.6, label='Cam2')
+plt.scatter(filtered_df['cam1X'], filtered_df['cam1Y'], s=5, c='green', alpha=0.6, label='Cam1')
+plt.xlabel("Cam2 X")
+plt.ylabel("Cam2 Y")
+plt.title("Filtered Beam Position Coverage (Cam2 Focus)")
+plt.legend()
+plt.grid(True)
+plt.show()
