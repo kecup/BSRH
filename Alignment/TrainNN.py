@@ -72,7 +72,7 @@ class FeedbackNN1(nn.Module):
         return self.model(x)
 
 
-def train_nn(X, y, file_name: str, X_scaler_name: str, y_scaler_name:str, save_model=False):
+def train_nn(model, X, y, file_name: str, X_scaler_name: str, y_scaler_name:str, save_model=False):
 
     motor_ranges = np.array([350, 550, 800, 500])  # stepsX, stepsY, stepsPhi, stepsTheta
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, shuffle=False)
@@ -93,12 +93,13 @@ def train_nn(X, y, file_name: str, X_scaler_name: str, y_scaler_name:str, save_m
     val_loader = DataLoader(val_ds, batch_size=32)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = FeedbackNN2(input_size=X_train.shape[1], output_size=y_train.shape[1]).to(device)
+    model.to(device)
+    # model = FeedbackNN(input_size=X_train.shape[1], output_size=y_train.shape[1]).to(device)
 
     criterion = nn.HuberLoss(delta=1.0)
-    optimizer = optim.Adam(model.parameters(), lr=0.00007, weight_decay= 1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=0.0005, weight_decay= 1e-4)
 
-    num_epochs = 200
+    num_epochs = 100
     best_val_loss = float('inf')
     best_metrics = {}
 
@@ -171,106 +172,42 @@ def train_nn(X, y, file_name: str, X_scaler_name: str, y_scaler_name:str, save_m
 
 if __name__ == "__main__":
 
-    ##Open a csv file that we will use to save the training data:
-    # df = pd.read_csv('Data/BackLashData.csv')
-    # df = pd.read_csv('Data/MainCamData.csv')
-
-    # # cam, m, target -> steps
-    # X1 = df[['CamX', 'CamY', 'MotX', 'MotY', 'TgtX', 'TgtY']].values
-    # y1 = df[['StepsX', 'StepsY']].values
-    # file_name1 = "Models/model1_cam_m_target-steps.pth"
-    # loss1 = train_nn(X1,y1, file_name1)
-    # print("Finished 1st model.")
-    # print("loss: " + str(loss1))
-
-    # bad
-    # cam, target -> steps
-    # X2 = df[['CamX', 'CamY', 'TgtX', 'TgtY']].values
-    # y2 = df[['StepsX', 'StepsY']].values
-    # file_name2 = "Models/model2_cam_target-steps.pth"
-    # loss2 = train_nn(X2, y2, file_name2)
-    # print("Finished 2nd model.")
-    # print("loss: " + str(loss2))
-
-    # current working version
-    # cam, steps -> target
-    # X3 = df[['CamX', 'CamY', 'StepsX', 'StepsY']].values
-    # y3 = df[['TgtX', 'TgtY']].values
-    # file_name3 = "Models/model3_cam_steps-target.pth"
-    # loss3 = train_nn(X3, y3, file_name3)
-    # print("Finished 3rd model.")
-    # print("loss: " + str(loss3))
-    #
-    # # bad
-    # # m, target -> steps
-    # X4 = df[['MotX', 'MotY', 'TgtX', 'TgtY']].values
-    # y4 = df[['StepsX', 'StepsY']].values
-    # file_name4 = "Models/model4_m_target-steps.pth"
-    # loss4 = train_nn(X4, y4, file_name4)
-    # print("Finished 4th model.")
-    # print("loss: " + str(loss4))
-    #
-    # # # doesn't make much sense
-    # # # cam, m -> steps
-    # # X5 = df[['CamX', 'CamY', 'Mx', 'My']].values
-    # # y5 = df[['StepsX', 'StepsY']].values
-    # # file_name5 = "model5_cam-steps.pth"
-    # # loss5 = train_nn(X5, y5, file_name5)
-    # # print("Finished 5th model.")
-    # # print("loss: " + str(loss5))
-    #
-    # # mx, my changing compared to train data
-    # # cam, m, steps -> target
-    # X6 = df[['CamX', 'CamY', 'MotX', 'MotY', 'StepsX', 'StepsY']].values
-    # y6 = df[['TgtX', 'TgtY']].values
-    # file_name6 = "Models/model6_cam_m_steps-target.pth"
-    # loss6 = train_nn(X6, y6, file_name6)
-    # print("Finished 6th model.")
-    # print("loss: " + str(loss6))
-
-    # script_dir = Path(__file__).parent
-    # data_path = script_dir / "Data" / "isr_t3_t4_data.csv"
-    # data_file_name = "Data/isr_t3_t4_data.csv"
-
-    # df2 = pd.read_csv(data_path) # change slash windows/linux
-    # df2 = df2[~df2[['cam2X', 'cam2Y']].isin([-1]).any(axis=1)]
-
-
-
-    # # cam1, cam2, target1, target2 -> steps
-    # X1 = df2[['cam1X', 'cam1Y', 'cam2X', 'cam2Y', 't1X', 't1Y', 't2X', 't2Y']].values
-    # y1 = df2[['stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']].values
-    # file_name1 = "Models/isr_t3_t4_model1_cam_target-steps.pth"
-    # scaled_loss1, mse1 = train_nn(X1, y1, file_name1)
-    # print("Finished training model1.")
-    # print(f"Best scaled loss: {scaled_loss1:.2f}, MSE loss: {mse1:.2f}")
-
-    # its is made for windows now
-    # cam2, target2 -> steps
-    # X2 = df2[['cam2X', 'cam2Y','t2X', 't2Y']].values
-    # y2 = df2[['stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']].values
-    # file_name2 = script_dir / "Models"  / "isr_t3_t4_model2_only_cam2_target-steps.pth"
-    # scaled_loss2, mse2 = train_nn(X2, y2, file_name2)
-    # print("Finished training model2.")
-    # print(f"Best scaled loss: {scaled_loss2:.2f}, MSE loss: {mse2:.2f}")
-
-
-
     # fixed isr new nn
     # data_file_name = "Data/isr_t3_t4_data_v2.csv"
     data_file_name = "Data/isr_t3_t4_data_v2(copy17254)_filtered.csv"
 
-    df3 = pd.read_csv(data_file_name)
-    df3 = df3[~df3[['cam2X', 'cam2Y']].isin([-1]).any(axis=1)]
-    print(f"There are {df3.shape[0]} rows")
+    df = pd.read_csv(data_file_name)
+    print(f"There are {df.shape[0]} rows")
 
-    # cam2, target2 -> steps
-    # X3 = df3[["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y"]].values
-    X3 = df3[["cam1X", "cam1Y", "cam2X", "cam2Y", "t1X", "t1Y", "t2X", "t2Y"]].values
-    y3 = df3[['stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']].values
-    file_name3 = "Models/isr_t3_t4_v2(copy17254)_filtered_model2_cams_targets-steps.pth"
-    X_scaler_name3 = "Models/isr_t3_t4_v2(copy17254)_filtered_model2_cams_targets-steps_X_scaler.pkl"
-    y_scaler_name3 = "Models/isr_t3_t4_v2(copy17254)_filtered_model2_cams_targets-steps_y_scaler.pkl"
-    scaled_loss3, rmse3 = train_nn(X3, y3, file_name3, X_scaler_name3, y_scaler_name3, save_model=False)
-    # print("Finished training model.")
-    # print(f"Best scaled loss: {scaled_loss3:.2f}, MSE loss: {rmse3:.2f}")
+    # Compute camera errors
+    df["e1X"] = df["t1X"] - df["cam1X"]
+    df["e1Y"] = df["t1Y"] - df["cam1Y"]
+    df["e2X"] = df["t2X"] - df["cam2X"]
+    df["e2Y"] = df["t2Y"] - df["cam2Y"]
+
+    df.head()
+
+    # model 1
+    # cams, targets -> steps
+    # X1 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y"]].values
+    # X1 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "t1X", "t1Y", "t2X", "t2Y"]].values
+    X1 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "e1X", "e1Y", "e2X", "e2Y"]].values
+    # X1 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "e1X", "e1Y", "e2X", "e2Y"]].values
+    y1 = df[['stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']].values
+    file_name1 = "Models/isr_t3_t4_v2(copy17254)_filtered_model1_cams_targets-steps.pth"
+    X_scaler_name1 = "Models/isr_t3_t4_v2(copy17254)_filtered_model1_cams_targets-steps_X_scaler.pkl"
+    y_scaler_name1 = "Models/isr_t3_t4_v2(copy17254)_filtered_model1_cams_targets-steps_y_scaler.pkl"
+    model1 = FeedbackNN1(X1.shape[1], y1.shape[1])
+    scaled_loss1, rmse1 = train_nn(model1, X1, y1, file_name1, X_scaler_name1, y_scaler_name1, save_model=False)
+
+    # model 2
+    # cams, targets -> steps
+    # X2 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y"]].values
+    # X2 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "t1X", "t1Y", "t2X", "t2Y"]].values
+    # X2 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "e1X", "e1Y", "e2X", "e2Y"]].values
+    # y2 = df[['stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']].values
+    # file_name2 = "Models/isr_t3_t4_v2(copy17254)_filtered_model2_cams_targets-steps.pth"
+    # X_scaler_name2 = "Models/isr_t3_t4_v2(copy17254)_filtered_model2_cams_targets-steps_X_scaler.pkl"
+    # y_scaler_name2 = "Models/isr_t3_t4_v2(copy17254)_filtered_model2_cams_targets-steps_y_scaler.pkl"
+    # model2 = FeedbackNN2(X2.shape[1], y2.shape[1])
+    # scaled_loss2, rmse2 = train_nn(model2, X2, y2, file_name2, X_scaler_name2, y_scaler_name2, save_model=False)
