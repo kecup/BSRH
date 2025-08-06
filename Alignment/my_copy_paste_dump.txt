@@ -11,3 +11,9 @@ stepsX      1.000000 -0.019667 -0.000865   -0.226475
 stepsY     -0.019667  1.000000  0.224954   -0.019463
 stepsPhi   -0.000865  0.224954  1.000000   -0.015304
 stepsTheta -0.226475 -0.019463 -0.015304    1.000000
+
+    # Compute camera errors
+    df["e1x"] = df["t1X"] - df["cam1X"]
+    df["e1y"] = df["t1Y"] - df["cam1Y"]
+    df["e2x"] = df["t2X"] - df["cam2X"]
+    df["e2y"] = df["t2Y"] - df["cam2Y"]
