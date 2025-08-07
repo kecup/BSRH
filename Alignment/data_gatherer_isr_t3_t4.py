@@ -32,14 +32,14 @@ MOTOR_REFERENCES = {"x": 40385, "y": 41740, "phi": 139931, "theta": 163051}
 
 # How many steps the motor can make from reference to keep the image on the camera
 # we only care about the second camera
-# motor_range_x_t2 = 320
-# motor_range_y_t2 = 620
-# motor_range_phi_t2 = 450
-# motor_range_theta_t2 = 900
-motor_range_x_t2 = 350 # new
-motor_range_y_t2 = 550
-motor_range_phi_t2 = 800
-motor_range_theta_t2 = 500
+motor_range_x_plus_t2 = 350
+motor_range_x_minus_t2 = 350
+motor_range_y_plus_t2 = 550
+motor_range_y_minus_t2 = 700
+motor_range_phi_plus_t2 = 1050
+motor_range_phi_minus_t2 = 800
+motor_range_theta_plus_t2 = 600
+motor_range_theta_minus_t2 = 500
 
 
 def measure_cam(camera):
@@ -57,19 +57,59 @@ def measure_cam(camera):
     return camX, camY
 
 def get_steps():
-    steps_x = (random.randint(motor_x.getPosition() - motor_range_x_t2,
-                              motor_x.getPosition() + motor_range_x_t2)) - motor_x.getPosition()
+    steps_x = (random.randint(motor_x.getPosition() - motor_range_x_plus_t2,
+                              motor_x.getPosition() + motor_range_x_plus_t2)) - motor_x.getPosition()
 
-    steps_y = (random.randint(motor_y.getPosition() - motor_range_y_t2,
-                              motor_y.getPosition() + motor_range_y_t2)) - motor_y.getPosition()
+    steps_y = (random.randint(motor_y.getPosition() - motor_range_y_plus_t2,
+                              motor_y.getPosition() + motor_range_y_plus_t2)) - motor_y.getPosition()
 
-    steps_phi = (random.randint(motor_phi.getPosition() - motor_range_phi_t2,
-                                motor_phi.getPosition() + motor_range_phi_t2)) - motor_phi.getPosition()
+    steps_phi = (random.randint(motor_phi.getPosition() - motor_range_phi_minus_t2,
+                                motor_phi.getPosition() + motor_range_phi_minus_t2)) - motor_phi.getPosition()
 
-    steps_theta = (random.randint(motor_theta.getPosition() - motor_range_theta_t2,
-                                  motor_theta.getPosition() + motor_range_theta_t2)) - motor_theta.getPosition()
+    steps_theta = (random.randint(motor_theta.getPosition() - motor_range_theta_minus_t2,
+                                  motor_theta.getPosition() + motor_range_theta_minus_t2)) - motor_theta.getPosition()
 
     return steps_x, steps_y, steps_phi, steps_theta
+
+def get_steps_only_x_y():
+    x_sign = random.randint(0,1)
+    if x_sign == 1:
+        steps_x = (random.randint(motor_x.getPosition() - motor_range_x_plus_t2,
+                                  motor_x.getPosition() + motor_range_x_plus_t2)) - motor_x.getPosition()
+    else:
+        steps_x = (random.randint(motor_x.getPosition() - motor_range_x_minus_t2,
+                                  motor_x.getPosition() + motor_range_x_minus_t2)) - motor_x.getPosition()
+
+    y_sign = random.randint(0,1)
+    if y_sign == 1:
+
+        steps_y = (random.randint(motor_y.getPosition() - motor_range_y_plus_t2,
+                                      motor_y.getPosition() + motor_range_y_plus_t2)) - motor_y.getPosition()
+    else:
+        steps_y = (random.randint(motor_y.getPosition() - motor_range_y_minus_t2,
+                                      motor_y.getPosition() + motor_range_y_minus_t2)) - motor_y.getPosition()
+
+    return steps_x, steps_y, 0, 0
+
+def get_steps_only_phi_theta():
+    phi_sign = random.randint(0,1)
+    if phi_sign == 1:
+        steps_phi = (random.randint(motor_phi.getPosition() - motor_range_phi_plus_t2,
+                                  motor_phi.getPosition() + motor_range_phi_plus_t2)) - motor_phi.getPosition()
+    else:
+        steps_phi = (random.randint(motor_phi.getPosition() - motor_range_phi_minus_t2,
+                                  motor_phi.getPosition() + motor_range_phi_minus_t2)) - motor_phi.getPosition()
+
+    theta_sign = random.randint(0,1)
+    if theta_sign == 1:
+
+        steps_theta = (random.randint(motor_theta.getPosition() - motor_range_theta_plus_t2,
+                                      motor_theta.getPosition() + motor_range_theta_plus_t2)) - motor_theta.getPosition()
+    else:
+        steps_theta = (random.randint(motor_theta.getPosition() - motor_range_theta_minus_t2,
+                                      motor_theta.getPosition() + motor_range_theta_minus_t2)) - motor_theta.getPosition()
+
+    return 0, 0, steps_phi, steps_theta
 
 def move_motors(stepsX, stepsY, stepsPhi, stepsTheta):
     motor_x.setRelPosition(stepsX)
@@ -97,11 +137,11 @@ def main():
 
     move_to_references()
 
-    iterations = 50000
+    iterations = 5000
     faults = 0
 
     # open a csv file that we will use to save the training data:
-    file_name = "Data/isr_t3_t4_data_v2.csv"
+    file_name = "Data/isr_t3_t4_data_only_phi_theta.csv"
     header = ["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y", "stepsX",
               "stepsY", "stepsPhi", "stepsTheta"]
     file_exists = os.path.isfile(file_name)
@@ -125,7 +165,8 @@ def main():
             mPhi = motor_phi.getPosition()
             mTheta = motor_theta.getPosition()
 
-            stepsX, stepsY, stepsPhi, stepsTheta = get_steps()
+            # stepsX, stepsY, stepsPhi, stepsTheta = get_steps_only_x_y()
+            stepsX, stepsY, stepsPhi, stepsTheta = get_steps_only_phi_theta()
             # print(stepsX, stepsY, stepsPhi, stepsTheta)
             move_motors(stepsX, stepsY, stepsPhi, stepsTheta)
 
