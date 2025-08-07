@@ -42,15 +42,15 @@ def main():
     cam1_bounds = {"x_min": 659, "x_max": 844, "y_min": 51, "y_max": 237}
     cam2_bounds = {"x_min": 0, "x_max": 960, "y_min": 0, "y_max": 640}
 
-    df = pd.read_csv('Data/isr_t3_t4_data_v2(copy17254)_filtered.csv')
+    df = pd.read_csv('Data/isr_t3_t4_data_only_xy.csv')
     df = df[~df[['cam2X', 'cam2Y']].isin([-1]).any(axis=1)]
 
     print(f"There are {df.shape[0]} samples")
 
-    # visualize_target_covarage(df, cam1_bounds, cam2_bounds)
-    corr = df[['cam1X', 'cam1Y', 'cam2X', 'cam2Y', 'mX', 'mY', 'mPhi', 'mTheta', 't1X', 't1Y', 't2X', 't2Y',
-               'stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']].corr()
-    print(corr[['stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']])
+    visualize_target_covarage(df, cam1_bounds, cam2_bounds)
+    # corr = df[['cam1X', 'cam1Y', 'cam2X', 'cam2Y', 'mX', 'mY', 'mPhi', 'mTheta', 't1X', 't1Y', 't2X', 't2Y',
+    #            'stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']].corr()
+    # print(corr[['stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']])
 
 
 if __name__ == "__main__":
