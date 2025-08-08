@@ -57,17 +57,39 @@ def measure_cam(camera):
     return camX, camY
 
 def get_steps():
-    steps_x = (random.randint(motor_x.getPosition() - motor_range_x_plus_t2,
-                              motor_x.getPosition() + motor_range_x_plus_t2)) - motor_x.getPosition()
+    x_sign = random.randint(0, 1)
+    if x_sign == 1:
+        steps_x = (random.randint(motor_x.getPosition() - motor_range_x_plus_t2,
+                                  motor_x.getPosition() + motor_range_x_plus_t2)) - motor_x.getPosition()
+    else:
+        steps_x = (random.randint(motor_x.getPosition() - motor_range_x_minus_t2,
+                                  motor_x.getPosition() + motor_range_x_minus_t2)) - motor_x.getPosition()
 
-    steps_y = (random.randint(motor_y.getPosition() - motor_range_y_plus_t2,
-                              motor_y.getPosition() + motor_range_y_plus_t2)) - motor_y.getPosition()
+    y_sign = random.randint(0,1)
+    if y_sign == 1:
 
-    steps_phi = (random.randint(motor_phi.getPosition() - motor_range_phi_minus_t2,
-                                motor_phi.getPosition() + motor_range_phi_minus_t2)) - motor_phi.getPosition()
+        steps_y = (random.randint(motor_y.getPosition() - motor_range_y_plus_t2,
+                                      motor_y.getPosition() + motor_range_y_plus_t2)) - motor_y.getPosition()
+    else:
+        steps_y = (random.randint(motor_y.getPosition() - motor_range_y_minus_t2,
+                                      motor_y.getPosition() + motor_range_y_minus_t2)) - motor_y.getPosition()
 
-    steps_theta = (random.randint(motor_theta.getPosition() - motor_range_theta_minus_t2,
-                                  motor_theta.getPosition() + motor_range_theta_minus_t2)) - motor_theta.getPosition()
+    phi_sign = random.randint(0, 1)
+    if phi_sign == 1:
+        steps_phi = (random.randint(motor_phi.getPosition() - motor_range_phi_plus_t2,
+                                    motor_phi.getPosition() + motor_range_phi_plus_t2)) - motor_phi.getPosition()
+    else:
+        steps_phi = (random.randint(motor_phi.getPosition() - motor_range_phi_minus_t2,
+                                    motor_phi.getPosition() + motor_range_phi_minus_t2)) - motor_phi.getPosition()
+
+    theta_sign = random.randint(0, 1)
+    if theta_sign == 1:
+
+        steps_theta = (random.randint(motor_theta.getPosition() - motor_range_theta_plus_t2,
+                                      motor_theta.getPosition() + motor_range_theta_plus_t2)) - motor_theta.getPosition()
+    else:
+        steps_theta = (random.randint(motor_theta.getPosition() - motor_range_theta_minus_t2,
+                                      motor_theta.getPosition() + motor_range_theta_minus_t2)) - motor_theta.getPosition()
 
     return steps_x, steps_y, steps_phi, steps_theta
 
@@ -130,18 +152,27 @@ def move_to_references():
     while motor_x.isBusy() or motor_y.isBusy() or motor_phi.isBusy() or motor_theta.isBusy():
         sleep(0.2)
 
+def move_motors_by_backlash():
+    motor_x.setRelPosition(motor_x.backlash_steps)
+    motor_y.setRelPosition(motor_y.backlash_steps)
+    motor_phi.setRelPosition(motor_phi.backlash_steps)
+    motor_theta.setRelPosition(motor_theta.backlash_steps)
+    while motor_x.isBusy() or motor_y.isBusy() or motor_phi.isBusy() or motor_theta.isBusy():
+        sleep(0.2)
+
 def main():
 
     japc.startSubscriptions()
     sleep(2)
 
+    move_motors_by_backlash()
     move_to_references()
 
-    iterations = 5000
+    iterations = 50000
     faults = 0
 
     # open a csv file that we will use to save the training data:
-    file_name = "Data/isr_t3_t4_data_only_phi_theta.csv"
+    file_name = "Data/isr_t3_t4_data_v3.csv"
     header = ["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y", "stepsX",
               "stepsY", "stepsPhi", "stepsTheta"]
     file_exists = os.path.isfile(file_name)
@@ -165,8 +196,8 @@ def main():
             mPhi = motor_phi.getPosition()
             mTheta = motor_theta.getPosition()
 
-            # stepsX, stepsY, stepsPhi, stepsTheta = get_steps_only_x_y()
-            stepsX, stepsY, stepsPhi, stepsTheta = get_steps_only_phi_theta()
+            stepsX, stepsY, stepsPhi, stepsTheta = get_steps()
+            # stepsX, stepsY, stepsPhi, stepsTheta = get_steps_only_phi_theta()
             # print(stepsX, stepsY, stepsPhi, stepsTheta)
             move_motors(stepsX, stepsY, stepsPhi, stepsTheta)
 
@@ -186,6 +217,7 @@ def main():
 
 
     move_to_references()
+
     japc.stopSubscriptions()
 
 if __name__ == "__main__":
