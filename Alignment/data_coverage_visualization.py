@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 
-def visualize_target_covarage(df, cam1_bounds, cam2_bounds):
+def visualize_target_coverage(df, cam1_bounds, cam2_bounds):
 
     fig, ax = plt.subplots(figsize=(6, 6))
 
@@ -21,8 +21,8 @@ def visualize_target_covarage(df, cam1_bounds, cam2_bounds):
     rectangle2 = patches.Rectangle(rect_start, width, height,
                                   linewidth=1, edgecolor='red', facecolor='none')
 
-    ax.add_patch(rectangle1)
-    ax.add_patch(rectangle2)
+    # ax.add_patch(rectangle1)
+    # ax.add_patch(rectangle2)
 
     # Scatter points from DataFrame
     ax.scatter(df['cam1X'], df['cam1Y'], color='green', alpha=0.5, label='Cam1', s=5)
@@ -42,12 +42,13 @@ def main():
     cam1_bounds = {"x_min": 659, "x_max": 844, "y_min": 51, "y_max": 237}
     cam2_bounds = {"x_min": 0, "x_max": 960, "y_min": 0, "y_max": 640}
 
-    df = pd.read_csv('Data/isr_t3_t4_data_only_xy.csv')
-    df = df[~df[['cam2X', 'cam2Y']].isin([-1]).any(axis=1)]
+    df = pd.read_csv('Data/lhc_t1_t2_data_v2.csv')
+    df = df.apply(pd.to_numeric, errors='coerce')
+    df = df[~(df == -1.0).any(axis=1)] # for the accidental -1 values
+    df = df[~(df == df.columns).all(axis=1)] # for the accidental header repeat
 
-    print(f"There are {df.shape[0]} samples")
 
-    visualize_target_covarage(df, cam1_bounds, cam2_bounds)
+    visualize_target_coverage(df, cam1_bounds, cam2_bounds)
     # corr = df[['cam1X', 'cam1Y', 'cam2X', 'cam2Y', 'mX', 'mY', 'mPhi', 'mTheta', 't1X', 't1Y', 't2X', 't2Y',
     #            'stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']].corr()
     # print(corr[['stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']])
