@@ -11,9 +11,9 @@ import matplotlib.pyplot as plt
 from scipy import stats
 from skimage import restoration
 
-File_H = 61
-File_V = 64
-File_BSRH = 104
+File_H = 57
+File_V = 60
+File_BSRH = 91
 
 def chi2(a, b):
     p = len(a)
@@ -50,7 +50,7 @@ def moving_average(a, n=3):
 
 def CoolFuncH(params, bwsArray, bsrhArray, fbctArray, n=12):  # Params[0] = PSF, Params[1] = pixel size, Params[2] = (scale of bsrh) tail of the PSF, arrays come already as 1000 points from -4 to 4
     newX = np.linspace(-4, 4, 1000)
-    crop = 530#600 ###change here if needed
+    crop = 510#600 ###change here if needed
     tmpPSF = gaussian(newX, 1, 0, params[0])
     tmpPSF = tmpPSF / np.sum(tmpPSF)
 
@@ -255,7 +255,6 @@ else:
 
         y = np.asarray(profilesBSRH_H[bunchIndex])
         max_index = np.argmax(y)
-        print(max_index)
         x = np.arange(len(y))
         out, _ = curve_fit(gaussian, x[:max_index+30], y[:max_index+30], (170000, max_index, 25.0))
         x = x - out[1]
@@ -294,7 +293,7 @@ else:
 
     grid = np.zeros((100,100))
     gridX = np.linspace(0.5,0.7,100)
-    gridY = np.linspace(18.0, 22.0, 100)
+    gridY = np.linspace(19.0, 23.0, 100)
 
     for bla in range(100):
         #gridX.append(5e-4*(bla-50)+hPSF_c)
@@ -472,7 +471,7 @@ else:
 
     grid = np.zeros((100, 100))
     gridX = np.linspace(0.2, 0.3, 100)
-    gridY = np.linspace(16.5, 18.5, 100)
+    gridY = np.linspace(17.5, 19.5, 100)
 
     for bla in range(100):
         for ble in range(100):

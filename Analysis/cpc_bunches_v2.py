@@ -284,8 +284,6 @@ def process_image(first_image, fbct, time, sigma_x_um, sigma_y_um, pixel_size_x,
         # result[run] = run_result
     return time, bg_x, bg_y, charge_x*fbct, charge_y*fbct
 
-
-
 if __name__ == "__main__":
     runs = ['run_02', 'run_04', 'run_09', 'run_11', 'run_13']
     japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
@@ -299,13 +297,13 @@ if __name__ == "__main__":
 
     size_x = 263.0 # sizes of the beam at the dipole location
     size_y = 361.0
-    sigma_x_um = 350 ## sigma of the PSF in micrometers
-    sigma_y_um = 232
-    px_x = 19.8 # pixel sizes of the images, might have to change for different PSF...
-    px_y = 18.2
+    sigma_x_um = 450 ## sigma of the PSF in micrometers
+    sigma_y_um = 250
+    px_x = 18.5 # pixel sizes of the images, might have to change for different PSF...
+    px_y = 17.5
 
     results = compute_bg(directory, files, runs, sigma_x_um, sigma_y_um, px_x, px_y, size_x, size_y, 3.5)
 
-    f = open("BG_results_v6.pkl", 'wb')
+    f = open("BG_results_v8.pkl", 'wb')
     pickle.dump(results, f)
     f.close()

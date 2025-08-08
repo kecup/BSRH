@@ -8,8 +8,8 @@ import zstandard as zstd
 import datetime as dt
 import numpy as np
 import matplotlib.pyplot as plt
-from future.backports.datetime import datetime
 from scipy.optimize import curve_fit
+from scipy.integrate import quad
 
 
 def gaussian(x, amp, cen, wid):#, const):
@@ -56,7 +56,8 @@ def haloBWS(x_out, y_out, sigma, size): #Calculates the halo from the BWS from f
     y = y_out - np.mean(y_out[:50])
     y= moving_average(np.asarray(y), 3) #MOVING AVERAGE HERE, change for probably better scaling of the PSF output??
 
-    out, _ = curve_fit(gaussian, x_in, y, (1000, 0.3, 0.28))
+    max_index, max_value = max(enumerate(y), key=lambda x: x[1])
+    out, _ = curve_fit(gaussian, x_in, y, (max_value, x_in[max_index], 0.28))
     x_found = (x_in - out[1]) # Recenter...
     newY = np.interp(newX, x_found, y)
 
@@ -87,6 +88,48 @@ def haloBWS(x_out, y_out, sigma, size): #Calculates the halo from the BWS from f
         halo = (np.sum(newY[ll:lh]) + np.sum(newY[rh:rl]))/np.sum(newY[ll:rl])
     return halo #This halo just needs to be multiplied by the FBCT and we get the charge...
 
+def q_gaussian(x, A, beta, q, x0):
+    """
+    q-Gaussian (Tsallis distribution) function:
+        f(x) = A * [1 - (1-q) * beta * (x - x0)**2]**(1/(1-q))
+
+    Parameters:
+    - x : array_like
+        Independent variable.
+    - A : float
+        Amplitude (normalization constant).
+    - beta : float
+        Inverse width parameter (beta > 0).
+    - q : float
+        Entropic index (for q -> 1, recovers Gaussian).
+    - x0 : float
+        Center of the distribution.
+
+    Returns:
+    - f : array_like
+        q-Gaussian evaluated at x.
+    """
+    arg = 1 - (1 - q) * beta * (x - x0) ** 2
+    with np.errstate(invalid='ignore'):
+        f = A * np.power(arg, 1 / (1 - q))
+    if np.isscalar(arg):
+        return f if arg >= 0 else 0.0
+    else:
+        f[arg < 0] = 0
+        return f
+
+def integrate_q_gaussian(params, xmin, xmax):
+    """
+    Numerically integrate the q-Gaussian over [xmin, xmax].
+
+    Returns:
+    - integral: float
+        \int_{xmin}^{xmax} q_gaussian(x; params) dx
+    """
+    A, beta, q, x0 = params
+    result, _ = quad(lambda x: q_gaussian(x, A, beta, q, x0), xmin, xmax)
+    return result
+
 japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
 dctx = zstd.ZstdDecompressor()
 
@@ -98,9 +141,11 @@ fileBWSv = '/user/jpucek/GitLab/bsrh-scripts/Analysis/BWS_Vertical_Sofia_out.pkl
 
 H_BWS_time = [[],[],[],[],[],[],[]]
 H_BWS_halo = [[],[],[],[],[],[],[]]
+H_BWS_qhalo = [[],[],[],[],[],[],[]]
 
 V_BWS_time = [[],[],[],[],[],[],[]]
 V_BWS_halo = [[],[],[],[],[],[],[]]
+V_BWS_qhalo = [[],[],[],[],[],[],[]]
 
 f = open(fileBWSh,'rb')
 g = open(fileBWSv,'rb')
@@ -133,9 +178,9 @@ SIGMA_TO_MM_X = 263.0  # previously hardcoded as 263.0
 SIGMA_TO_MM_Y = 361.0
 
 INTENSIFIER_GAIN = 5623
-cPc = 43.5 #This is the charge per count constant, should not need to be changed...
+cPc = 44.0 #This is the charge per count constant, should not need to be changed...
 
-pixelSizeH = 19.8
+pixelSizeH = 18.5
 pixelSizeV = 17.5
 
 x1 = 284
@@ -191,26 +236,54 @@ for run in runs:
                 # this is where we should perform the BWS analysis using the FBCT data...
                 for bunch_index in range(len(H.x[hindex])):
                 #So there are 7 bunches, how to easily save this? Into a list...
-                    halo = haloBWS(H.x[hindex][bunch_index], H.y[hindex][bunch_index], sigma, hSize)*tmpFBCT[bunch_index]
-                    H_BWS_time[bunch_index].append(event.timestamp)
-                    H_BWS_halo[bunch_index].append(halo)
+                    haloOut = haloBWS(H.x[hindex][bunch_index], H.y[hindex][bunch_index], sigma, hSize) # This is real data
+
+                    lower = [0, 0, 0, np.min(H.x[hindex][bunch_index])]
+                    upper = [np.inf, np.inf, 3, np.max(H.x[hindex][bunch_index])]
+                    bounds = (lower, upper)
+                    try:
+                        qOut, _ = curve_fit(q_gaussian, H.x[hindex][bunch_index], H.y[hindex][bunch_index], p0=(np.max(H.y[hindex][bunch_index]), 1.0, 1.1, np.mean(H.x[hindex][bunch_index])), bounds = bounds) # This is q-Gaussian fit to get the integral...
+                        qPortion = 1 - (integrate_q_gaussian(qOut, -sigma * hSize, sigma * hSize) / integrate_q_gaussian(qOut, -6*hSize, 6*hSize))
+                    except:
+                        qPortion = 0
+
+                    if haloOut != -1:
+                        halo = haloOut*tmpFBCT[bunch_index]
+                        H_BWS_time[bunch_index].append(event.timestamp)
+                        H_BWS_halo[bunch_index].append(halo)
+                        H_BWS_qhalo[bunch_index].append(qPortion*tmpFBCT[bunch_index])
                 #Now look at the next BWS
-                hindex+=1
-            elif (event.timestamp - htime).total_seconds() > 0:
+                if len(H.x) > hindex + 1:
+                    hindex+=1
+            elif (event.timestamp - htime).total_seconds() > 0 and len(H.x) > hindex +1:
                 hindex += 1
                 #print(event.timestamp, htime)
 
             if abs((event.timestamp - vtime).total_seconds()) < 0.250:
                 # this is where we should perform the BWS analysis using the FBCT data...
-                for bunch_index in range(len(V.x[hindex])):
+                for bunch_index in range(len(V.x[vindex])):
                 #So there are 7 bunches, how to easily save this? Into a list...
-                    halo = haloBWS(V.x[vindex][bunch_index], V.y[vindex][bunch_index], sigma, vSize)*tmpFBCT[bunch_index]
+                    haloOut = haloBWS(V.x[vindex][bunch_index], V.y[vindex][bunch_index], sigma, vSize)
+
+                lower = [0, 0, 0, np.min(V.x[vindex][bunch_index])]
+                upper = [np.inf, np.inf, 3, np.max(V.x[vindex][bunch_index])]
+                bounds = (lower, upper)
+                try:
+                    qOut, _ = curve_fit(q_gaussian, V.x[vindex][bunch_index], V.y[vindex][bunch_index], p0=(np.max(V.y[vindex][bunch_index]), 1.0, 1.1, np.mean(V.x[vindex][bunch_index])), bounds=bounds)  # This is q-Gaussian fit to get the integral...
+                    qPortion = 1 - (integrate_q_gaussian(qOut, -sigma * vSize, sigma * vSize) / integrate_q_gaussian(qOut, -6*vSize, 6*vSize))
+                except:
+                    qPortion = 0
+
+                if haloOut!= -1:
+                    halo = haloOut*tmpFBCT[bunch_index]
                     V_BWS_time[bunch_index].append(event.timestamp)
                     V_BWS_halo[bunch_index].append(halo)
+                    V_BWS_qhalo[bunch_index].append(qPortion*tmpFBCT[bunch_index])
                 #Now look at the next BWS
-                vindex+=1
+                if len(V.x) > vindex +1:
+                    vindex+=1
 
-            elif(event.timestamp - vtime).total_seconds() > 0:
+            elif(event.timestamp - vtime).total_seconds() > 0 and len(V.x) > vindex +1:
                 vindex+=1
 
             if delaySlots not in results:
@@ -317,12 +390,12 @@ for run in runs:
                 results[delaySlots]['haloV'].append(chargeY)
                 ##ADD VERTICAL halo charge calculation!!!!
 
-OutFile = open('HaloCharge_v2.pkl', 'wb')
+OutFile = open('HaloCharge_v4.pkl', 'wb')
 pickle.dump(results, OutFile)
 OutFile.close()
 
-BWS_data = [H_BWS_time, H_BWS_halo, V_BWS_time, V_BWS_halo]
+BWS_data = [H_BWS_time, H_BWS_halo, H_BWS_qhalo, V_BWS_time, V_BWS_halo, V_BWS_qhalo]
 
-BWS_out = open('BWSCharge_v1.pkl', 'wb')
+BWS_out = open('BWSCharge_v4.pkl', 'wb')
 pickle.dump(BWS_data, BWS_out)
 BWS_out.close()

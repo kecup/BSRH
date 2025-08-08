@@ -7,7 +7,7 @@ if __name__ == "__main__":
      # so first_images contains the last images without occulter, so we can then calculate the BG by performing a 2D deconvolution...
     #graph_cpc(results)
 
-    f = open("BG_results_v6.pkl", 'rb')
+    f = open("BG_results_v8.pkl", 'rb')
     results = pickle.load(f)
     f.close()
 
@@ -51,11 +51,11 @@ if __name__ == "__main__":
 
 
 
-    g = open("AvgBG3.pkl", 'wb')
+    g = open("AvgBG5.pkl", 'wb')
     pickle.dump(bg, g)
     g.close()
 
-    h = open('AvgHalo3.pkl','wb')
+    h = open('AvgHalo5.pkl','wb')
     pickle.dump(charge,h)
     h.close()
 
