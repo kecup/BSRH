@@ -17,4 +17,4 @@ stepsPhi   -0.000865  0.224954  1.000000   -0.015304
 stepsTheta -0.226475 -0.019463 -0.015304    1.000000
 
 df = df[~(df == df.columns).all(axis=1)]
-
+df = df[~(df == -1).any(axis=1)]
