@@ -48,6 +48,7 @@ class Motor:
         self.outPos = outPos
         self.busy = True
         self.lastMotionRel = 0
+        self.lastMotionAbs = 0
         self.backlash_steps = backlash_steps
         self.japc = japc
         self.japc.subscribeParam(self.name+'/Acquisition#position_counter', self.callbackPosition)
@@ -97,10 +98,16 @@ class Motor:
             out = False
         return out
 
-    def setAbsPosition(self, absPosition):  # This is motion in absolute raw steps! No backlash taken into account!!!
+    def setAbsPosition(self, absPosition):
         absPosition = int(absPosition)
         self.desiredAbsPosition = absPosition
+
         if self.japc.getParam(self.name + '/Acquisition#motor_busy') == False:
+
+            if np.abs(absPosition-self.position) > self.backlash_steps: # when change bigger than backlash, only direction needed
+                self.lastMotionRel = absPosition-self.position
+            elif self.lastMotionRel * (absPosition-self.position) < 0: # this is when the direction is changed only partially - need to remember the amount of steps; the other scenario is by default ok..
+                self.lastMotionAbs += (absPosition-self.position) # do not change the backlash direction yet..
             mv = {'value': absPosition, 'mode': 2, 'units': 2}
             self.japc.setParam(self.name + '/Move', mv)
             self.busy = True
@@ -116,9 +123,12 @@ class Motor:
 
             if relPosition * self.lastMotionRel < 0:  # Change of sign
                 self.lastMotionRel = relPosition
-                relPosition = relPosition + np.sign(relPosition) * self.backlash_steps
+                relPosition = relPosition + np.sign(relPosition) * self.backlash_steps - self.lastMotionAbs
             else:
-                self.lastMotionRel = relPosition
+                self.lastMotionRel = relPosition - self.lastMotionAbs
+            if self.lastMotionAbs != 0:
+                self.lastMotionAbs = 0
+
             self.desiredAbsPosition = self.position+relPosition
             mv = {'value': relPosition, 'mode': 1, 'units': 2}
             self.japc.setParam(self.name + '/Move', mv)
