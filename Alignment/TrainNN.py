@@ -202,7 +202,8 @@ if __name__ == "__main__":
     # fixed isr new nn
     # data_file_name = "Data/isr_t3_t4_data_v2.csv"
     # data_file_name = "Data/isr_t3_t4_data_v2(copy17254)_filtered.csv"
-    data_file_name = "Data/isr_t3_t4_data_only_xy.csv"
+    # data_file_name = "Data/isr_t3_t4_data_only_xy.csv"
+    data_file_name = "Data/isr_t3_t4_data_only_phi_theta_filtered.csv"
 
     df = pd.read_csv(data_file_name)
     print(f"There are {df.shape[0]} rows")
@@ -244,12 +245,27 @@ if __name__ == "__main__":
     # cam2, target2 -> steps
     # X3 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y"]].values
     # X3 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "t1X", "t1Y", "t2X", "t2Y"]].values
-    X3 = df[["cam2X", "cam2Y", "t2X", "t2Y"]].values
+    # X3 = df[["cam2X", "cam2Y", "t2X", "t2Y"]].values
     # X3 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "e1X", "e1Y", "e2X", "e2Y"]].values
     # X3 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "e1X", "e1Y", "e2X", "e2Y"]].values
-    y3 = df[['stepsX', 'stepsY']].values
-    file_name3 = "Models/isr_t3_t4_v2(copy17254)_filtered_model3_cam2_target2-steps.pth"
-    X_scaler_name3 = "Models/isr_t3_t4_v2(copy17254)_filtered_model3_cam2_target2-steps_X_scaler.pkl"
-    y_scaler_name3 = "Models/isr_t3_t4_v2(copy17254)_filtered_model3_cam2_target2-steps_y_scaler.pkl"
-    model3 = FeedbackNN3(X3.shape[1], y3.shape[1])
-    scaled_loss3, rmse3 = train_nn(model3, X3, y3, file_name3, X_scaler_name3, y_scaler_name3, save_model=False)
+    # y3 = df[['stepsX', 'stepsY']].values
+    # file_name3 = "Models/isr_t3_t4_v2(copy17254)_filtered_model3_cam2_target2-steps.pth"
+    # X_scaler_name3 = "Models/isr_t3_t4_v2(copy17254)_filtered_model3_cam2_target2-steps_X_scaler.pkl"
+    # y_scaler_name3 = "Models/isr_t3_t4_v2(copy17254)_filtered_model3_cam2_target2-steps_y_scaler.pkl"
+    # model3 = FeedbackNN3(X3.shape[1], y3.shape[1])
+    # scaled_loss3, rmse3 = train_nn(model3, X3, y3, file_name3, X_scaler_name3, y_scaler_name3, save_model=False)
+
+    # model 4
+    # cam2, target2 -> steps
+    # X4 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y"]].values
+    # X4 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "t1X", "t1Y", "t2X", "t2Y"]].values
+    X4 = df[["cam2X", "cam2Y", "t2X", "t2Y"]].values
+    # X4 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "e1X", "e1Y", "e2X", "e2Y"]].values
+    # X4 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "e1X", "e1Y", "e2X", "e2Y"]].values
+    y4 = df[['stepsPhi', 'stepsTheta']].values
+    file_name4 = "Models/isr_t3_t4_v2(copy17254)_filtered_model4_cam2_target2-steps.pth"
+    X_scaler_name4 = "Models/isr_t3_t4_v2(copy17254)_filtered_model4_cam2_target2-steps_X_scaler.pkl"
+    y_scaler_name4 = "Models/isr_t3_t4_v2(copy17254)_filtered_model4_cam2_target2-steps_y_scaler.pkl"
+    model4 = FeedbackNN3(X4.shape[1], y4.shape[1])
+    scaled_loss4, rmse4 = train_nn(model4, X4, y4, file_name4, X_scaler_name4, y_scaler_name4, save_model=False)
+
