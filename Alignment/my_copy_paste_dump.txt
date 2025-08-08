@@ -16,5 +16,7 @@ stepsY     -0.019667  1.000000  0.224954   -0.019463
 stepsPhi   -0.000865  0.224954  1.000000   -0.015304
 stepsTheta -0.226475 -0.019463 -0.015304    1.000000
 
-df = df[~(df == df.columns).all(axis=1)]
-df = df[~(df == -1).any(axis=1)]
+df_numeric = df.apply(pd.to_numeric, errors='coerce')
+
+# Now remove rows that contain -1.0
+df = df[~(df_numeric == -1.0).any(axis=1)]
