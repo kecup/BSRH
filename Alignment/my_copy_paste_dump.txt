@@ -1,22 +1,11 @@
-              stepsX    stepsY  stepsPhi  stepsTheta
-cam1X       0.269998  0.030110  0.004794    0.271680
-cam1Y      -0.003566  0.271546 -0.315893   -0.006202
-cam2X       0.001524 -0.272010  0.315957    0.003542
-cam2Y      -0.269587 -0.032897 -0.003389   -0.271940
-mX         -0.112407  0.006907  0.000928   -0.124847
-mY         -0.012472 -0.109261  0.133367   -0.025177
-mPhi       -0.010890  0.123457 -0.138165   -0.027010
-mTheta     -0.123052 -0.022424 -0.012253   -0.113924
-t1X        -0.344680 -0.013526 -0.011868   -0.378377
-t1Y         0.025144 -0.368332  0.361733    0.000529
-t2X        -0.021282  0.364568 -0.376486    0.003851
-t2Y         0.345045  0.017489  0.008444    0.379358
-stepsX      1.000000 -0.019667 -0.000865   -0.226475
-stepsY     -0.019667  1.000000  0.224954   -0.019463
-stepsPhi   -0.000865  0.224954  1.000000   -0.015304
-stepsTheta -0.226475 -0.019463 -0.015304    1.000000
+import pandas as pd
+import matplotlib.pyplot as plt
 
-df_numeric = df.apply(pd.to_numeric, errors='coerce')
+# Example: assuming df is your DataFrame
+filtered = df[(df['phi'] == 1) & (df['theta'] == 3)]
 
-# Now remove rows that contain -1.0
-df = df[~(df_numeric == -1.0).any(axis=1)]
+plt.scatter(filtered['cam1X'], filtered['cam1Y'])
+plt.xlabel('cam1X')
+plt.ylabel('cam1Y')
+plt.title('cam1X vs cam1Y where phi=1 and theta=3')
+plt.show()
