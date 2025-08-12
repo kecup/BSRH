@@ -1,11 +1,8 @@
 import pandas as pd
-import matplotlib.pyplot as plt
 
-# Example: assuming df is your DataFrame
-filtered = df[(df['phi'] == 1) & (df['theta'] == 3)]
+# Load your data
+df = pd.read_csv("your_file.csv")  # adjust filename
 
-plt.scatter(filtered['cam1X'], filtered['cam1Y'])
-plt.xlabel('cam1X')
-plt.ylabel('cam1Y')
-plt.title('cam1X vs cam1Y where phi=1 and theta=3')
-plt.show()
+# Group by motor positions to see how much spread there is in camera readings
+spread = df.groupby(["mX", "mY", "mPhi", "mTheta"])[["cam1X", "cam1Y"]].agg(['mean', 'std', 'count'])
+print(spread.sort_values(('cam1X', 'std'), ascending=False).head(10))
