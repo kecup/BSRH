@@ -10,7 +10,7 @@ import math
 
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, parent_dir)
-from devices_lib import Camera, Motor, Pneumatics
+from devices_lib import Camera, Motor
 import pyrbac
 
 japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
@@ -168,11 +168,11 @@ def main():
     move_motors_by_backlash()
     move_to_references()
 
-    iterations = 50000
+    iterations = 30000
     faults = 0
 
     # open a csv file that we will use to save the training data:
-    file_name = "Data/isr_t3_t4_data_v3.csv"
+    file_name = "Data/isr_t3_t4_data_v3_only_phi_theta.csv"
     header = ["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y", "stepsX",
               "stepsY", "stepsPhi", "stepsTheta"]
     file_exists = os.path.isfile(file_name)
@@ -196,8 +196,8 @@ def main():
             mPhi = motor_phi.getPosition()
             mTheta = motor_theta.getPosition()
 
-            stepsX, stepsY, stepsPhi, stepsTheta = get_steps()
-            # stepsX, stepsY, stepsPhi, stepsTheta = get_steps_only_phi_theta()
+            # stepsX, stepsY, stepsPhi, stepsTheta = get_steps()
+            stepsX, stepsY, stepsPhi, stepsTheta = get_steps_only_phi_theta()
             # print(stepsX, stepsY, stepsPhi, stepsTheta)
             move_motors(stepsX, stepsY, stepsPhi, stepsTheta)
 
