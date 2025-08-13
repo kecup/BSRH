@@ -1,9 +1,18 @@
-i            input_vector = np.concatenate((cam2_pos, target), axis=0, dtype=np.float32())
-            # input_tensor = torch.tensor(input_vector).unsqueeze(0)
-            scaled_input = X_scaler.transform(input_vector)
-            scaled_tensor = torch.from_numpy(scaled_input).float().unsqueeze(0)
-            with torch.no_grad():
-                # inp_tensor = torch.from_numpy(scaled_input).float()
-                prediction = model(scaled_tensor).squeeze(0).numpy() # steps
+# Concatenate into a single 1D vector, ensure correct dtype
+input_vector = np.concatenate((cam2_pos, target), axis=0).astype(np.float32)
 
-            prediction_real = y_scaler.inverse_transform(prediction)
+# Make it 2D (1 sample, n_features) for the scaler
+input_vector_2d = input_vector.reshape(1, -1)
+
+# Scale
+scaled_input = X_scaler.transform(input_vector_2d)
+
+# Convert to tensor
+scaled_tensor = torch.from_numpy(scaled_input).float()
+
+# Predict
+with torch.no_grad():
+    prediction_scaled = model(scaled_tensor).numpy()
+
+# Inverse scale prediction back to real motor steps
+prediction_real = y_scaler.inverse_transform(prediction_scaled)
