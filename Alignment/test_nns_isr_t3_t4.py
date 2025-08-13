@@ -10,7 +10,7 @@ import joblib
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, parent_dir)
 from devices_lib import Camera, Motor
-from TrainNN import FeedbackNN1, FeedbackNN2
+from TrainNN import FeedbackNN1, FeedbackNN2, FeedbackNN3, FeedbackNN4
 
 japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
 client = pyrbac.AuthenticationClient()
@@ -57,15 +57,14 @@ def move_motors(stepsX, stepsY, stepsPhi, stepsTheta):
         sleep(0.2)
 
 def move_to_target(model, targets_cam2, X_scaler, y_scaler, dist_tolerance=14):
+    # only cam2 + target2 -> steps (phi + theta)
     counts = []
     faults = 0
     for i in range(len(targets_cam2)):
         target = np.array(targets_cam2[i], dtype=np.float32)
         count = 0
-        cam1_pos = np.array(cam1.getBeamPosition(), dtype=np.float32)
         cam2_pos = np.array(cam2.getBeamPosition(), dtype=np.float32)
-        while (np.abs(cam2_pos[0] - target[0]) > dist_tolerance and np.abs(cam2_pos[1] - target[1]) > dist_tolerance and
-               np.abs(cam1_pos[0] - CAM1_TARGET[0]) > dist_tolerance and np.abs(cam1_pos[1] - CAM1_TARGET[1]) > dist_tolerance):
+        while (np.abs(cam2_pos[0] - target[0]) > dist_tolerance or np.abs(cam2_pos[1] - target[1]) > dist_tolerance):
             if count > 30:
                 print("Not getting closer reasonably fast.")
                 faults += 1
@@ -77,17 +76,17 @@ def move_to_target(model, targets_cam2, X_scaler, y_scaler, dist_tolerance=14):
                 count = -1
                 break
 
-            input_vector = np.concatenate((cam1_pos, cam2_pos, CAM1_TARGET, target), axis=0, dtype=np.float32())
-            scaled_input = X_scaler.transform(input_vector)
-            input_tensor = torch.tensor(input_vector).unsqueeze(0)
+            input_vector = np.concatenate((cam2_pos, target), axis=0).astype(np.float32)
+            input_vector_2d = input_vector.reshape(1, -1)
+            scaled_input = X_scaler.transform(input_vector_2d)
+            scaled_tensor = torch.from_numpy(scaled_input).float()
+
             with torch.no_grad():
-                # inp_tensor = torch.from_numpy(scaled_input).float()
-                prediction = model(input_tensor).squeeze(0).numpy() # steps
+                prediction_scaled = model(scaled_tensor).numpy()
 
-            prediction_real = y_scaler.inverse_transform(prediction)
-            move_motors(prediction_real[0], prediction_real[1], prediction_real[2], prediction_real[3])
+            prediction_real = y_scaler.inverse_transform(prediction_scaled)
+            move_motors(0, 0, prediction_real[0][0], prediction_real[0][1]) # only phi + theta moves
 
-            cam1_pos = np.array(cam1.getBeamPosition(), dtype=np.float32) # new camera position
             cam2_pos = np.array(cam2.getBeamPosition(), dtype=np.float32) # new camera position
             count += 1
         print("finished target " + str(i+1) + " out of " + str(len(targets_cam2)))
@@ -108,25 +107,15 @@ def main():
 
     # model 1
     # cams, targets -> steps
-    file_name1 = "Models/isr_t3_t4_v2(copy17254)_filtered_model1_cams_targets-steps.pth"
-    X_scaler_name1 = "Models/isr_t3_t4_v2(copy17254)_filtered_model1_cams_targets-steps_X_scaler.pkl"
-    y_scaler_name1 = "Models/isr_t3_t4_v2(copy17254)_filtered_model1_cams_targets-steps_X_scaler.pkl"
+    file_name1 = "Models/isr_t3_t4_v3_only_phi_theta_10770_samples_filtered_model3_only_cam2_target2-steps.pth"
+    X_scaler_name1 = "Models/isr_t3_t4_v3_only_phi_theta_10770_samples_filtered_model3_only_cam2_target2-steps_X_scaler.pkl"
+    y_scaler_name1 = "Models/isr_t3_t4_v3_only_phi_theta_10770_samples_filtered_model3_only_cam2_target2-steps_y_scaler.pkl"
     X_scaler1 = joblib.load(X_scaler_name1)
     y_scaler1 = joblib.load(y_scaler_name1)
-    model1 = FeedbackNN1(8, 4)
+    model1 = FeedbackNN2(4, 2)
     model1.load_state_dict(torch.load(file_name1))
     model1.eval()
 
-    # model 2
-    # cams, targets -> steps
-    file_name2 = "Models/isr_t3_t4_v2(copy17254)_filtered_model2_cams_targets-steps.pth"
-    X_scaler_name2 = "Models/isr_t3_t4_v2(copy17254)_filtered_model2_cams_targets-steps_X_scaler.pkl"
-    y_scaler_name2 = "Models/isr_t3_t4_v2(copy17254)_filtered_model2_cams_targets-steps_X_scaler.pkl"
-    X_scaler2 = joblib.load(X_scaler_name2)
-    y_scaler2 = joblib.load(y_scaler_name2)
-    model2 = FeedbackNN2(8, 4)
-    model2.load_state_dict(torch.load(file_name2))
-    model2.eval()
 
     japc.startSubscriptions()
     sleep(2)
@@ -135,17 +124,12 @@ def main():
     avg_count1, faults1 = move_to_target(model1, targets_cam2, X_scaler1, y_scaler1, dist_tolerance=10)
     print("finished model1")
     move_to_references()
-    avg_count2, faults2 = move_to_target(model2, targets_cam2, X_scaler2, y_scaler2, dist_tolerance=10)
-    print("finished model2")
-    move_to_references()
 
 
     japc.stopSubscriptions()
     japc.clearSubscriptions()
 
     print(f"avg_count1: {avg_count1:.4f}, faults1: {faults1}")
-    print(f"avg_count2: {avg_count2:.4f}, faults2: {faults2}")
-
 
 if __name__ == "__main__":
     main()

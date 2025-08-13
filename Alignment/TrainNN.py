@@ -232,15 +232,15 @@ if __name__ == "__main__":
 
     # model 1
     # cams, targets -> steps
-    X1 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "t1X", "t1Y", "t2X", "t2Y"]].values
-    # X1 = df[["cam2X", "cam2Y", "t2X", "t2Y"]].values
+    # X1 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "t1X", "t1Y", "t2X", "t2Y"]].values
+    X1 = df[["cam2X", "cam2Y", "t2X", "t2Y"]].values
     # X1 = df[["cam1X", "cam1Y", "t1X", "t1Y"]].values
     # X1 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "e1X", "e1Y", "e2X", "e2Y"]].values
     # X1 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y"]].values
     # X1 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "e1X", "e1Y", "e2X", "e2Y"]].values
     y1 = df[['stepsPhi', 'stepsTheta']].values
-    file_name1 = "Models/isr_t3_t4_v3_only_phi_theta_10770_samples_filtered_model2_cams_targets-steps.pth"
-    X_scaler_name1 = "Models/isr_t3_t4_v3_only_phi_theta_10770_samples_filtered_model2_cams_targets-steps_X_scaler.pkl"
-    y_scaler_name1 = "Models/isr_t3_t4_v3_only_phi_theta_10770_samples_filtered_model2_cams_targets-steps_y_scaler.pkl"
+    file_name1 = "Models/isr_t3_t4_v3_only_phi_theta_10770_samples_filtered_model3_only_cam2_target2-steps.pth"
+    X_scaler_name1 = "Models/isr_t3_t4_v3_only_phi_theta_10770_samples_filtered_model3_only_cam2_target2-steps_X_scaler.pkl"
+    y_scaler_name1 = "Models/isr_t3_t4_v3_only_phi_theta_10770_samples_filtered_model3_only_cam2_target2-steps_y_scaler.pkl"
     model1 = FeedbackNN2(X1.shape[1], y1.shape[1])
     scaled_loss1, rmse1 = train_nn(model1, X1, y1, file_name1, X_scaler_name1, y_scaler_name1, save_model=True)
