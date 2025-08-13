@@ -1,8 +1,9 @@
-import pandas as pd
+i            input_vector = np.concatenate((cam2_pos, target), axis=0, dtype=np.float32())
+            # input_tensor = torch.tensor(input_vector).unsqueeze(0)
+            scaled_input = X_scaler.transform(input_vector)
+            scaled_tensor = torch.from_numpy(scaled_input).float().unsqueeze(0)
+            with torch.no_grad():
+                # inp_tensor = torch.from_numpy(scaled_input).float()
+                prediction = model(scaled_tensor).squeeze(0).numpy() # steps
 
-# Load your data
-df = pd.read_csv("your_file.csv")  # adjust filename
-
-# Group by motor positions to see how much spread there is in camera readings
-spread = df.groupby(["mX", "mY", "mPhi", "mTheta"])[["cam1X", "cam1Y"]].agg(['mean', 'std', 'count'])
-print(spread.sort_values(('cam1X', 'std'), ascending=False).head(10))
+            prediction_real = y_scaler.inverse_transform(prediction)
