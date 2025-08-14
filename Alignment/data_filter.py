@@ -41,15 +41,29 @@ def filter_references(df, motor_references):
 
     return df_references
 
+def filter_outliers(df, cam1_bounds, cam2_bounds):
+
+    df_filtered1 = df[
+        (df['cam1X'] >= cam1_bounds['x_min']) & (df['cam1X'] <= cam1_bounds['x_max']) &
+        (df['cam1Y'] >= cam1_bounds['y_min']) & (df['cam1Y'] <= cam1_bounds['y_max'])]
+
+    df_filtered2 = df_filtered1[
+        (df_filtered1['cam2X'] >= cam2_bounds['x_min']) & (df_filtered1['cam2X'] <= cam2_bounds['x_max']) &
+        (df_filtered1['cam2Y'] >= cam2_bounds['y_min']) & (df_filtered1['cam2Y'] <= cam2_bounds['y_max'])]
+
+    return df_filtered2
 
 def main():
+    cam1_bounds = {"x_min": 659, "x_max": 844, "y_min": 51, "y_max": 237}
+    cam2_bounds = {"x_min": 0, "x_max": 960, "y_min": 0, "y_max": 640}
     motor_references = {"x": 40385, "y": 41740, "phi": 139931, "theta": 163051} # isr t3 t4 data collection
-    df = pd.read_csv('Data/isr_t3_t4_data_v3_only_phi_theta_10770_samples.csv')
+    df = pd.read_csv('Data/isr_t3_t4_data_v3_only_phi_theta_24700_samples.csv')
 
-    filtered_df = filter_references(df, motor_references)
+    filtered_df = filter_outliers(df, cam1_bounds, cam2_bounds)
+    filtered_df = filter_references(filtered_df, motor_references)
     print(f"Original size: {df.shape[0]}, Filtered size: {filtered_df.shape[0]}")
 
-    output_file = "Data/isr_t3_t4_data_v3_only_phi_theta_10770_samples_filtered.csv"
+    output_file = "Data/isr_t3_t4_data_v3_only_phi_theta_24700_samples_filtered.csv"
 
     filtered_df.to_csv(output_file, index=False)
     print(f"Filtered dataset saved to {output_file}")
