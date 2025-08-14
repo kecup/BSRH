@@ -168,7 +168,7 @@ def main():
     move_motors_by_backlash()
     move_to_references()
 
-    iterations = 30000
+    iterations = 25000
     faults = 0
 
     # open a csv file that we will use to save the training data:

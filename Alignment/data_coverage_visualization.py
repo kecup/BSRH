@@ -8,17 +8,17 @@ def visualize_target_coverage(df, cam1_bounds, cam2_bounds):
     fig, ax = plt.subplots(figsize=(6, 6))
 
     # Draw rectangle for cam1
-    width = cam1_bounds["x_max"] - cam1_bounds["x_min"]
-    height = cam1_bounds["y_max"] - cam1_bounds["y_min"]
-    rect_start = (cam1_bounds["x_min"], cam1_bounds["y_min"])
-    rectangle1 = patches.Rectangle(rect_start, width, height,
+    width1 = cam1_bounds["x_max"] - cam1_bounds["x_min"]
+    height1 = cam1_bounds["y_max"] - cam1_bounds["y_min"]
+    rect_start1 = (cam1_bounds["x_min"], cam1_bounds["y_min"])
+    rectangle1 = patches.Rectangle(rect_start1, width1, height1,
                                   linewidth=1, edgecolor='blue', facecolor='none')
 
     # Draw rectangle for cam2
-    width = cam2_bounds["x_max"] - cam2_bounds["x_min"]
-    height = cam2_bounds["y_max"] - cam2_bounds["y_min"]
-    rect_start = (cam2_bounds["x_min"], cam2_bounds["y_min"])
-    rectangle2 = patches.Rectangle(rect_start, width, height,
+    width2 = cam2_bounds["x_max"] - cam2_bounds["x_min"]
+    height2 = cam2_bounds["y_max"] - cam2_bounds["y_min"]
+    rect_start2 = (cam2_bounds["x_min"], cam2_bounds["y_min"])
+    rectangle2 = patches.Rectangle(rect_start2, width2, height2,
                                   linewidth=1, edgecolor='red', facecolor='none')
 
     ax.add_patch(rectangle1)
@@ -46,7 +46,7 @@ def main():
     cam2_bounds = {"x_min": 0, "x_max": 960, "y_min": 0, "y_max": 640}
     motor_references = {"x": 40385, "y": 41740, "phi": 139931, "theta": 163051}
 
-    df = pd.read_csv('Data/isr_t3_t4_data_v3_only_phi_theta_10770_samples_filtered.csv')
+    df = pd.read_csv('Data/isr_t3_t4_data_v3_only_phi_theta_24700_samples_filtered.csv')
 
     print(f"There are {df.shape[0]} rows.")
 
