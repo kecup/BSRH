@@ -1,18 +1,8 @@
-# Concatenate into a single 1D vector, ensure correct dtype
-input_vector = np.concatenate((cam2_pos, target), axis=0).astype(np.float32)
+x_min, x_max = 100, 200
+y_min, y_max = 50, 150
 
-# Make it 2D (1 sample, n_features) for the scaler
-input_vector_2d = input_vector.reshape(1, -1)
-
-# Scale
-scaled_input = X_scaler.transform(input_vector_2d)
-
-# Convert to tensor
-scaled_tensor = torch.from_numpy(scaled_input).float()
-
-# Predict
-with torch.no_grad():
-    prediction_scaled = model(scaled_tensor).numpy()
-
-# Inverse scale prediction back to real motor steps
-prediction_real = y_scaler.inverse_transform(prediction_scaled)
+# Keep only points inside the bounding box
+df_filtered = df[
+    (df['cam1X'] >= x_min) & (df['cam1X'] <= x_max) &
+    (df['cam1Y'] >= y_min) & (df['cam1Y'] <= y_max)
+]
