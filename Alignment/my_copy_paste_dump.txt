@@ -1,67 +1,11 @@
-from abc import ABC, abstractmethod
-import torch
-
-class AlignmentNN(ABC):
-    def __init__(self, model=None, scaler=None):
-        self.model = model
-        self.scaler = scaler
-
-    @abstractmethod
-    def prepare_input(self, raw_data):
-        """Turn raw sensor/camera/motor data into model-ready input"""
-        pass
-
-    @abstractmethod
-    def prepare_output(self, prediction):
-        """Convert NN output into motor commands or next-stage input"""
-        pass
-
-    def train(self, X, y, epochs=20, lr=0.001):
-        """Generic training loop"""
-        # Uses self.model and self.scaler
-        pass
-
-    def predict(self, raw_data):
-        X = self.prepare_input(raw_data)
-        with torch.no_grad():
-            y_pred = self.model(X)
-        return self.prepare_output(y_pred)
-
-    def save(self, path):
-        torch.save({
-            'model_state_dict': self.model.state_dict(),
-            'scaler': self.scaler
-        }, path)
-
-    def load(self, path):
-        checkpoint = torch.load(path)
-        self.model.load_state_dict(checkpoint['model_state_dict'])
-        self.scaler = checkpoint['scaler']
+    def __init__(self, model=None, scaler=None, camera_ids=(3, 4), motor_ids=("x_tilt", "y_tilt")):
+        super().__init__(model=model, scaler=scaler, name="T3T4AlignmentNN")
+        
+        # Extra properties specific to this alignment stage
+        self.camera_ids = camera_ids
+        self.motor_ids = motor_ids
+        self.last_prediction = None
+        self.history = []
 
 
-class T3T4AlignmentNN(AlignmentNN):
-    def prepare_input(self, raw_data):
-        # Extract cam3, cam4 positions and possibly motor data
-        X = [raw_data['cam3X'], raw_data['cam3Y'],
-             raw_data['cam4X'], raw_data['cam4Y']]
-        return torch.tensor(self.scaler.transform([X]), dtype=torch.float32)
-
-    def prepare_output(self, prediction):
-        # Prediction -> delta X tilt, delta Y tilt
-        return prediction.numpy().flatten()
-
-
-class BeamAlignmentPipeline:
-    def __init__(self, models):
-        self.models = models  # list: [T1T2, T3T4, T5T6]
-
-    def align(self, initial_data):
-        data = initial_data
-        for model in self.models:
-            correction = model.predict(data)
-            data = self.apply_correction(data, correction)
-        return data
-
-    def apply_correction(self, data, correction):
-        # Send commands to motors, update measured data
-        pass
+self.name = name or self.__class__.__name__
