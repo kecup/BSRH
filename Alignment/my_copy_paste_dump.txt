@@ -1,67 +1,67 @@
-class AlignmentNN:
-    def __init__(self, name, input_size, output_size, hidden_layers, scaler=None):
-        self.name = name
-        self.model = self._build_model(input_size, output_size, hidden_layers)
-        self.scaler = scaler  # For pre/post-processing
+from abc import ABC, abstractmethod
+import torch
 
-    def _build_model(self, input_size, output_size, hidden_layers):
-        layers = []
-        in_features = input_size
-        for h in hidden_layers:
-            layers.append(nn.Linear(in_features, h))
-            layers.append(nn.ReLU())
-            in_features = h
-        layers.append(nn.Linear(in_features, output_size))
-        return nn.Sequential(*layers)
+class AlignmentNN(ABC):
+    def __init__(self, model=None, scaler=None):
+        self.model = model
+        self.scaler = scaler
 
-    def train(self, X_train, y_train, epochs, lr):
-        # training loop
+    @abstractmethod
+    def prepare_input(self, raw_data):
+        """Turn raw sensor/camera/motor data into model-ready input"""
         pass
 
-    def predict(self, X):
-        X_scaled = self.scaler.transform(X)
-        X_tensor = torch.tensor(X_scaled, dtype=torch.float32)
+    @abstractmethod
+    def prepare_output(self, prediction):
+        """Convert NN output into motor commands or next-stage input"""
+        pass
+
+    def train(self, X, y, epochs=20, lr=0.001):
+        """Generic training loop"""
+        # Uses self.model and self.scaler
+        pass
+
+    def predict(self, raw_data):
+        X = self.prepare_input(raw_data)
         with torch.no_grad():
-            return self.model(X_tensor).numpy()
-
-    def fine_tune(self, X_new, y_new, epochs, lr):
-        # load old model weights, keep training
-        pass
+            y_pred = self.model(X)
+        return self.prepare_output(y_pred)
 
     def save(self, path):
         torch.save({
-            'model_state': self.model.state_dict(),
+            'model_state_dict': self.model.state_dict(),
             'scaler': self.scaler
         }, path)
 
     def load(self, path):
         checkpoint = torch.load(path)
-        self.model.load_state_dict(checkpoint['model_state'])
+        self.model.load_state_dict(checkpoint['model_state_dict'])
         self.scaler = checkpoint['scaler']
 
 
-class AlignmentPipeline:
-    def __init__(self, stage1, stage2, stage3):
-        self.stage1 = stage1
-        self.stage2 = stage2
-        self.stage3 = stage3
+class T3T4AlignmentNN(AlignmentNN):
+    def prepare_input(self, raw_data):
+        # Extract cam3, cam4 positions and possibly motor data
+        X = [raw_data['cam3X'], raw_data['cam3Y'],
+             raw_data['cam4X'], raw_data['cam4Y']]
+        return torch.tensor(self.scaler.transform([X]), dtype=torch.float32)
 
-    def run_full_alignment(self, initial_state):
-        # Stage 1
-        steps1 = self.stage1.predict(initial_state)
-        # apply steps1 to motors, get new state
-        state1 = self._apply_and_measure(steps1)
+    def prepare_output(self, prediction):
+        # Prediction -> delta X tilt, delta Y tilt
+        return prediction.numpy().flatten()
 
-        # Stage 2
-        steps2 = self.stage2.predict(state1)
-        state2 = self._apply_and_measure(steps2)
 
-        # Stage 3
-        steps3 = self.stage3.predict(state2)
-        state3 = self._apply_and_measure(steps3)
+class BeamAlignmentPipeline:
+    def __init__(self, models):
+        self.models = models  # list: [T1T2, T3T4, T5T6]
 
-        return state3
+    def align(self, initial_data):
+        data = initial_data
+        for model in self.models:
+            correction = model.predict(data)
+            data = self.apply_correction(data, correction)
+        return data
 
-    def _apply_and_measure(self, steps):
-        # send commands to hardware, read new camera/motor state
+    def apply_correction(self, data, correction):
+        # Send commands to motors, update measured data
         pass
