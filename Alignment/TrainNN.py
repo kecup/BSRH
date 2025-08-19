@@ -43,7 +43,7 @@ class FeedbackNN1(nn.Module):
     def forward(self, x):
         return self.model(x)
 
-class FeedbackNN2(nn.Module):
+class FeedbackNN2(nn.Module): # do not touch this, t3 t4 uses this
     def __init__(self, input_size=8, output_size=4, seed=42):
         super(FeedbackNN2, self).__init__()
         torch.manual_seed(seed)
@@ -70,44 +70,60 @@ class FeedbackNN2(nn.Module):
     def forward(self, x):
         return self.model(x)
 
-
-class FeedbackNN3(nn.Module):
+class FeedbackNN3(nn.Module): # do not touch this, t5 t6 uses this
     def __init__(self, input_size=4, output_size=2, seed=42):
         super(FeedbackNN3, self).__init__()
         torch.manual_seed(seed)
 
         self.model = nn.Sequential(
-            nn.Linear(input_size, 32),
+            nn.Linear(input_size, 128),
             nn.ReLU(),
-            nn.Dropout(0.1),
+            # nn.Dropout(0.1),
 
-            nn.Linear(32, 32),
+            nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Dropout(0.1),
+            # nn.Dropout(0.1),
 
-            nn.Linear(32, 32),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-
-            # nn.Linear(64, 32),
+            # nn.Linear(64, 64),
             # nn.ReLU(),
+            # nn.Dropout(0.1),
+
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            # nn.Dropout(0.1),
+
+            nn.Linear(64, 32),
+            nn.ReLU(),
 
             nn.Linear(32, output_size)
         )
+
+    def forward(self, x):
+        return self.model(x)
 
 class FeedbackNN4(nn.Module):
     def __init__(self, input_size=4, output_size=2, seed=42):
         super(FeedbackNN4, self).__init__()
         torch.manual_seed(seed)
-
         self.model = nn.Sequential(
-            nn.Linear(input_size, 32),
+            nn.Linear(input_size, 128),
             nn.ReLU(),
             # nn.Dropout(0.1),
 
-            # nn.Linear(32, 32),
-            # nn.ReLU(),
+            nn.Linear(128, 128),
+            nn.ReLU(),
             # nn.Dropout(0.1),
+
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            # nn.Dropout(0.1),
+
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            # nn.Dropout(0.1),
+
+            nn.Linear(64, 32),
+            nn.ReLU(),
 
             nn.Linear(32, output_size)
         )
@@ -120,7 +136,7 @@ def train_nn(model, X, y, file_name: str, X_scaler_name: str, y_scaler_name:str,
 
     # the motor ranges might not be accurate as they differ in the opposite directions (these are the minima)
     # motor_ranges = np.array([350, 550, 800, 500])
-    motor_ranges = np.array([800, 500])  #stepsX, stepsY, stepsPhi, stepsTheta
+    motor_ranges = np.array([360, 300])  #stepsX, stepsY, stepsPhi, stepsTheta
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, shuffle=False)
 
     # Normalize inputs and outputs
@@ -143,7 +159,7 @@ def train_nn(model, X, y, file_name: str, X_scaler_name: str, y_scaler_name:str,
     # model = FeedbackNN(input_size=X_train.shape[1], output_size=y_train.shape[1]).to(device)
 
     criterion = nn.HuberLoss(delta=1.0)
-    optimizer = optim.Adam(model.parameters(), lr=0.00007, weight_decay= 1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=0.0004, weight_decay= 1e-4)
 
     num_epochs = 200
     best_val_loss = float('inf')
@@ -218,29 +234,51 @@ def train_nn(model, X, y, file_name: str, X_scaler_name: str, y_scaler_name:str,
 
 if __name__ == "__main__":
 
-    ################ V3 #####################
-    data_file_name = "Data/isr_t3_t4_data_v3_only_phi_theta_10770_samples_filtered.csv"
+    ################ t3 t4 V3 #####################
+    # data_file_name = "Data/isr_t3_t4_data_v3_only_phi_theta_10770_samples_filtered.csv"
+
+    # df = pd.read_csv(data_file_name)
+    # print(f"There are {df.shape[0]} rows")
+    #
+    # # Compute camera errors
+    # df["e1X"] = df["t1X"] - df["cam1X"]
+    # df["e1Y"] = df["t1Y"] - df["cam1Y"]
+    # df["e2X"] = df["t2X"] - df["cam2X"]
+    # df["e2Y"] = df["t2Y"] - df["cam2Y"]
+
+    # model 1
+    # cams, targets -> steps
+    # X1 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "t1X", "t1Y", "t2X", "t2Y"]].values
+    # X1 = df[["cam2X", "cam2Y", "t2X", "t2Y"]].values
+    # X1 = df[["cam1X", "cam1Y", "t1X", "t1Y"]].values
+    # X1 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "e1X", "e1Y", "e2X", "e2Y"]].values
+    # X1 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y"]].values
+    # X1 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "e1X", "e1Y", "e2X", "e2Y"]].values
+    # y1 = df[['stepsPhi', 'stepsTheta']].values
+    # file_name1 = "Models/isr_t3_t4_v3_only_phi_theta_10770_samples_filtered_model3_only_cam2_target2-steps.pth"
+    # X_scaler_name1 = "Models/isr_t3_t4_v3_only_phi_theta_10770_samples_filtered_model3_only_cam2_target2-steps_X_scaler.pkl"
+    # y_scaler_name1 = "Models/isr_t3_t4_v3_only_phi_theta_10770_samples_filtered_model3_only_cam2_target2-steps_y_scaler.pkl"
+    # model1 = FeedbackNN2(X1.shape[1], y1.shape[1])
+    # scaled_loss1, rmse1 = train_nn(model1, X1, y1, file_name1, X_scaler_name1, y_scaler_name1, save_model=True)
+
+
+    ###################### t5 t6 V1 ######################
+    data_file_name = "Data/isr_t5_t6_data_v1_20270_samples.csv"
 
     df = pd.read_csv(data_file_name)
     print(f"There are {df.shape[0]} rows")
 
     # Compute camera errors
-    df["e1X"] = df["t1X"] - df["cam1X"]
-    df["e1Y"] = df["t1Y"] - df["cam1Y"]
     df["e2X"] = df["t2X"] - df["cam2X"]
     df["e2Y"] = df["t2Y"] - df["cam2Y"]
 
     # model 1
     # cams, targets -> steps
-    # X1 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "t1X", "t1Y", "t2X", "t2Y"]].values
     X1 = df[["cam2X", "cam2Y", "t2X", "t2Y"]].values
-    # X1 = df[["cam1X", "cam1Y", "t1X", "t1Y"]].values
-    # X1 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "e1X", "e1Y", "e2X", "e2Y"]].values
-    # X1 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mY", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y"]].values
-    # X1 = df[["cam1X", "cam1Y", "cam2X", "cam2Y", "e1X", "e1Y", "e2X", "e2Y"]].values
+    # X1 = df[["cam2X", "cam2Y", "mPhi", "mTheta", "t2X", "t2Y"]].values
     y1 = df[['stepsPhi', 'stepsTheta']].values
-    file_name1 = "Models/isr_t3_t4_v3_only_phi_theta_10770_samples_filtered_model3_only_cam2_target2-steps.pth"
-    X_scaler_name1 = "Models/isr_t3_t4_v3_only_phi_theta_10770_samples_filtered_model3_only_cam2_target2-steps_X_scaler.pkl"
-    y_scaler_name1 = "Models/isr_t3_t4_v3_only_phi_theta_10770_samples_filtered_model3_only_cam2_target2-steps_y_scaler.pkl"
-    model1 = FeedbackNN2(X1.shape[1], y1.shape[1])
+    file_name1 = "Models/isr_t5_t6_model3_cam2_target2-steps.pth"
+    X_scaler_name1 = "Models/isr_t5_t6_model3_cam2_target2-steps_X_scaler.pkl"
+    y_scaler_name1 = "Models/isr_t5_t6_model3_cam2_target2-steps_y_scaler.pkl"
+    model1 = FeedbackNN4(X1.shape[1], y1.shape[1])
     scaled_loss1, rmse1 = train_nn(model1, X1, y1, file_name1, X_scaler_name1, y_scaler_name1, save_model=True)
