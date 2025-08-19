@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 
-def visualize_target_coverage(df, cam1_bounds, cam2_bounds):
+def visualize_target_coverage_t3_t4(df, cam1_bounds, cam2_bounds):
 
     fig, ax = plt.subplots(figsize=(6, 6))
 
@@ -40,22 +40,45 @@ def visualize_target_coverage(df, cam1_bounds, cam2_bounds):
     # plt.grid(True)
     plt.show()
 
+def visualize_target_coverage_t5_t6(df, cam_bounds):
+    fig, ax = plt.subplots(figsize=(6, 6))
+
+    # Draw rectangle for cam
+    width = cam_bounds["x_max"] - cam_bounds["x_min"]
+    height = cam_bounds["y_max"] - cam_bounds["y_min"]
+    rect_start = (cam_bounds["x_min"], cam_bounds["y_min"])
+    rectangle = patches.Rectangle(rect_start, width, height,
+                                  linewidth=1, edgecolor='blue', facecolor='none')
+
+    ax.add_patch(rectangle)
+
+    # Scatter points from DataFrame
+    ax.scatter(df['cam2X'], df['cam2Y'], color='orange', alpha=0.5, label='Cam2', s=5)
+
+    # ax.scatter(df['t2X'], df['t2Y'], color='blue', alpha=0.5, label='Cam2', s=5)
+
+    # Formatting
+    ax.set_xlabel("cam_x")
+    ax.set_ylabel("cam_y")
+    ax.legend()
+    ax.set_title("Beam Position Coverage")
+
+    # plt.grid(True)
+    plt.show()
 
 def main():
     cam1_bounds = {"x_min": 659, "x_max": 844, "y_min": 51, "y_max": 237}
     cam2_bounds = {"x_min": 0, "x_max": 960, "y_min": 0, "y_max": 640}
     motor_references = {"x": 40385, "y": 41740, "phi": 139931, "theta": 163051}
 
-    df = pd.read_csv('Data/isr_t3_t4_data_v3_only_phi_theta_24700_samples_filtered.csv')
+    df = pd.read_csv('Data/isr_t5_t6_data_v1.csv')
 
     print(f"There are {df.shape[0]} rows.")
 
 
-    # spread = df.groupby(["mX", "mY", "mPhi", "mTheta"])[["cam1X", "cam1Y"]].agg(['mean', 'std', 'count'])
-    # print(spread.sort_values(('cam1X', 'std'), ascending=False).head(10))
+    # visualize_target_coverage_t3_t4(df, cam1_bounds, cam2_bounds)
+    visualize_target_coverage_t5_t6(df, cam2_bounds)
 
-    # visualize_target_coverage(df_references, cam1_bounds, cam2_bounds)
-    visualize_target_coverage(df, cam1_bounds, cam2_bounds)
     # corr = df[['cam1X', 'cam1Y', 'cam2X', 'cam2Y', 'mX', 'mY', 'mPhi', 'mTheta', 't1X', 't1Y', 't2X', 't2Y',
     #            'stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']].corr()
     # print(corr[['stepsX', 'stepsY', 'stepsPhi', 'stepsTheta']])

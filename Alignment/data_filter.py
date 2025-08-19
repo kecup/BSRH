@@ -41,31 +41,40 @@ def filter_references(df, motor_references):
 
     return df_references
 
-def filter_outliers(df, cam1_bounds, cam2_bounds):
+def filter_outliers(df, cam2_bounds, cam1_bounds=None):
 
-    df_filtered1 = df[
-        (df['cam1X'] >= cam1_bounds['x_min']) & (df['cam1X'] <= cam1_bounds['x_max']) &
-        (df['cam1Y'] >= cam1_bounds['y_min']) & (df['cam1Y'] <= cam1_bounds['y_max'])]
+    df_filtered2 = df[
+        (df['cam2X'] >= cam2_bounds['x_min']) & (df['cam2X'] <= cam2_bounds['x_max']) &
+        (df['cam2Y'] >= cam2_bounds['y_min']) & (df['cam2Y'] <= cam2_bounds['y_max'])]
 
-    df_filtered2 = df_filtered1[
-        (df_filtered1['cam2X'] >= cam2_bounds['x_min']) & (df_filtered1['cam2X'] <= cam2_bounds['x_max']) &
-        (df_filtered1['cam2Y'] >= cam2_bounds['y_min']) & (df_filtered1['cam2Y'] <= cam2_bounds['y_max'])]
+    if cam1_bounds != None:
+        df_filtered1 = df[
+            (df_filtered2['cam1X'] >= cam1_bounds['x_min']) & (df_filtered2['cam1X'] <= cam1_bounds['x_max']) &
+            (df_filtered2['cam1Y'] >= cam1_bounds['y_min']) & (df_filtered2['cam1Y'] <= cam1_bounds['y_max'])]
+
+        return df_filtered1
 
     return df_filtered2
 
 def main():
     cam1_bounds = {"x_min": 659, "x_max": 844, "y_min": 51, "y_max": 237}
     cam2_bounds = {"x_min": 0, "x_max": 960, "y_min": 0, "y_max": 640}
-    motor_references = {"x": 40385, "y": 41740, "phi": 139931, "theta": 163051} # isr t3 t4 data collection
-    df = pd.read_csv('Data/isr_t3_t4_data_v3_only_phi_theta_24700_samples.csv')
+    motor_references_t3_t4 = {"x": 40385, "y": 41740, "phi": 139931, "theta": 163051} # isr t3 t4 data collection
+    motor_references_t5_t6 = {"phi": 13444, "theta": 13360} # isr t5 t6 data collection v1
 
-    filtered_df = filter_outliers(df, cam1_bounds, cam2_bounds)
-    filtered_df = filter_references(filtered_df, motor_references)
+    df = pd.read_csv('Data/isr_t5_t6_data_v1.csv')
+
+    filtered_df = filter_outliers(df, cam2_bounds)
+    filtered_df = filter_references(filtered_df, motor_references_t5_t6)
+
     print(f"Original size: {df.shape[0]}, Filtered size: {filtered_df.shape[0]}")
 
-    output_file = "Data/isr_t3_t4_data_v3_only_phi_theta_24700_samples_filtered.csv"
+    output_file = "Data/isr_t5_t6_data_v1_filtered_7500.csv"
 
-    filtered_df.to_csv(output_file, index=False)
+    filtered_cropped_df = filtered_df.head(7500)
+    print(f"Original size: {df.shape[0]}, Filtered size: {filtered_cropped_df.shape[0]}")
+
+    filtered_cropped_df.to_csv(output_file, index=False)
     print(f"Filtered dataset saved to {output_file}")
 
 if __name__ == "__main__":
