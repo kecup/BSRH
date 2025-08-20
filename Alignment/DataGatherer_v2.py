@@ -58,7 +58,7 @@ MonM3 = Camera('LHC.BSRH.MON.TGTM3.B2', japc) # camera 2
 #cam = Camera('LHC.BSRH.BTVDC-CAM.MAIN', japc)
 
 # t1 t2 lhc
-MOTOR_REFERENCES = {"x":?, "phi": 13444, "theta": 13360}
+MOTOR_REFERENCES = {"x":7880, "phi": 219374, "theta": 236211}
 
 
 def get_steps(cam_width=968.0, cam_height=608.0):

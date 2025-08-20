@@ -24,7 +24,7 @@ motor_theta = Motor('LHC.BSRH.FOLDING-V.B2', japc,0)
 # LHC Cameras
 cam2 = Camera('LHC.BSRH.BTVDC-CAM.MAIN', japc)
 
-MOTOR_REFERENCES = {"phi": 13444, "theta": 13360}
+MOTOR_REFERENCES = {"phi": 74740, "theta": 56120}
 
 def generate_targets():
     # targets = [[145, 466], [135, 135], [800, 172], [814, 480], [106, 290], [477, 113], [801, 313], [470, 483],
@@ -103,7 +103,7 @@ def move_to_target(model, targets_cam2, X_scaler, y_scaler, dist_tolerance=14):
 def main():
 
     # targets_cam2 = generate_targets()
-    targets_cam2 = [[145, 450], [484, 304]]
+    targets_cam2 = [[800, 200], [200, 350], [484, 304]]
 
     # model 1
     # cams, targets -> steps

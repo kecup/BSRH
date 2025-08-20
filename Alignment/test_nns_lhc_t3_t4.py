@@ -18,14 +18,14 @@ token = client.login_kerberos()
 japc.rbacLogin(token=token)
 
 # LHC Motors
-motor_phi = Motor('LHC.BSRH.M3-THETA.B2', japc, 0) #Backlash not measured!!
-motor_theta = Motor('LHC.BSRH.M3-PHI.B2', japc, 0) #Backlash not measured!!
+motor_theta = Motor('LHC.BSRH.M3-THETA.B2', japc, 30) #Backlash measured (not accurately)!!
+motor_phi = Motor('LHC.BSRH.M3-PHI.B2', japc, 40) #Backlash measured (not accurately)!!
 
 # ISR Cameras
-cam1 = Camera("?", japc)
-cam2 = Camera("?", japc)
+# cam1 = Camera("?", japc)
+cam2 = Camera("LHC.BSRH.CAM.CM.B2", japc)
 
-MOTOR_REFERENCES = {"phi": 139931, "theta": 163051}
+MOTOR_REFERENCES = {"phi": 83130, "theta": 70280}
 CAM1_TARGET = [751, 144] # cam1 target centre
 
 def generate_targets():
@@ -98,7 +98,7 @@ def move_to_target(model, targets_cam2, X_scaler, y_scaler, dist_tolerance=14):
 def main():
 
     targets_cam2 = generate_targets()
-    targets_cam2 = [[480, 320], [100, 200], [700, 600], [480, 320]]
+    # targets_cam2 = [[480, 320], [100, 200], [700, 600], [480, 320]]
 
     # model 1
     # cams, targets -> steps
@@ -116,7 +116,7 @@ def main():
     sleep(2)
 
     # move_to_references()
-    avg_count1, faults1 = move_to_target(model1, targets_cam2, X_scaler1, y_scaler1, dist_tolerance=14)
+    avg_count1, faults1 = move_to_target(model1, targets_cam2, X_scaler1, y_scaler1, dist_tolerance=8)
     print("finished model1")
     # move_to_references()
 
