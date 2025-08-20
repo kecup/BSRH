@@ -101,7 +101,7 @@ class FeedbackNN3(nn.Module): # do not touch this, t5 t6 uses this
     def forward(self, x):
         return self.model(x)
 
-class FeedbackNN4(nn.Module):
+class FeedbackNN4(nn.Module):  # do not touch this, t5 t6 uses this
     def __init__(self, input_size=4, output_size=2, seed=42):
         super(FeedbackNN4, self).__init__()
         torch.manual_seed(seed)
