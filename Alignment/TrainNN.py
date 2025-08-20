@@ -20,7 +20,7 @@ from pathlib import Path
 
 ########Parameters and names#################
 
-class FeedbackNN1(nn.Module):
+class FeedbackNN1(nn.Module): # dont touch main cam model uses this
     def __init__(self, input_size=8, output_size=4, seed=42):
         super(FeedbackNN1, self).__init__()
         torch.manual_seed(seed)
@@ -28,6 +28,10 @@ class FeedbackNN1(nn.Module):
         self.model = nn.Sequential(
             nn.Linear(input_size, 64),
             nn.ReLU(),
+            # nn.Dropout(0.1),
+
+            # nn.Linear(input_size, 64),
+            # nn.ReLU(),
             # nn.Dropout(0.1),
 
             nn.Linear(64, 64),
@@ -106,7 +110,7 @@ class FeedbackNN4(nn.Module):  # do not touch this, t5 t6 uses this
         super(FeedbackNN4, self).__init__()
         torch.manual_seed(seed)
         self.model = nn.Sequential(
-            nn.Linear(input_size, 128),
+            nn.Linear(input_size, 64),
             nn.ReLU(),
             # nn.Dropout(0.1),
 
@@ -114,7 +118,7 @@ class FeedbackNN4(nn.Module):  # do not touch this, t5 t6 uses this
             nn.ReLU(),
             # nn.Dropout(0.1),
 
-            nn.Linear(128, 64),
+            nn.Linear(64, 64),
             nn.ReLU(),
             # nn.Dropout(0.1),
 
@@ -159,7 +163,7 @@ def train_nn(model, X, y, file_name: str, X_scaler_name: str, y_scaler_name:str,
     # model = FeedbackNN(input_size=X_train.shape[1], output_size=y_train.shape[1]).to(device)
 
     criterion = nn.HuberLoss(delta=1.0)
-    optimizer = optim.Adam(model.parameters(), lr=0.0004, weight_decay= 1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=0.0005, weight_decay= 1e-4)
 
     num_epochs = 200
     best_val_loss = float('inf')
@@ -263,22 +267,22 @@ if __name__ == "__main__":
 
 
     ###################### t5 t6 V1 ######################
-    data_file_name = "Data/isr_t5_t6_data_v1_20270_samples.csv"
+    data_file_name = "Data/MainCamData.csv"
 
     df = pd.read_csv(data_file_name)
     print(f"There are {df.shape[0]} rows")
 
     # Compute camera errors
-    df["e2X"] = df["t2X"] - df["cam2X"]
-    df["e2Y"] = df["t2Y"] - df["cam2Y"]
+    # df["e2X"] = df["t2X"] - df["cam2X"]
+    # df["e2Y"] = df["t2Y"] - df["cam2Y"]
 
     # model 1
     # cams, targets -> steps
     X1 = df[["cam2X", "cam2Y", "t2X", "t2Y"]].values
     # X1 = df[["cam2X", "cam2Y", "mPhi", "mTheta", "t2X", "t2Y"]].values
     y1 = df[['stepsPhi', 'stepsTheta']].values
-    file_name1 = "Models/isr_t5_t6_model3_cam2_target2-steps.pth"
-    X_scaler_name1 = "Models/isr_t5_t6_model3_cam2_target2-steps_X_scaler.pkl"
-    y_scaler_name1 = "Models/isr_t5_t6_model3_cam2_target2-steps_y_scaler.pkl"
-    model1 = FeedbackNN4(X1.shape[1], y1.shape[1])
+    file_name1 = "Models/MainCam_model1_cam2_target2-steps.pth"
+    X_scaler_name1 = "Models/MainCam_model1_cam2_target2-steps_X_scaler.pkl"
+    y_scaler_name1 = "Models/MainCam_model1_cam2_target2-steps_y_scaler.pkl"
+    model1 = FeedbackNN1(X1.shape[1], y1.shape[1])
     scaled_loss1, rmse1 = train_nn(model1, X1, y1, file_name1, X_scaler_name1, y_scaler_name1, save_model=True)
