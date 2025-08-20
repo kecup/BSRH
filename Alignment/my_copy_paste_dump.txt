@@ -1,11 +1,19 @@
-    def __init__(self, model=None, scaler=None, camera_ids=(3, 4), motor_ids=("x_tilt", "y_tilt")):
-        super().__init__(model=model, scaler=scaler, name="T3T4AlignmentNN")
-        
-        # Extra properties specific to this alignment stage
-        self.camera_ids = camera_ids
-        self.motor_ids = motor_ids
-        self.last_prediction = None
-        self.history = []
+import pandas as pd
 
+# Example DataFrame
+df = pd.DataFrame({
+    "t2X": [10, 15, 30, 45],
+    "t2Y": [5, 25, 35, 50]
+})
 
-self.name = name or self.__class__.__name__
+# Define ranges
+x_min, x_max = 10, 40
+y_min, y_max = 10, 40
+
+# Filter rows
+filtered_df = df[
+    (df["t2X"].between(x_min, x_max)) &
+    (df["t2Y"].between(y_min, y_max))
+]
+
+print(filtered_df)
