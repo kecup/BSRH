@@ -34,6 +34,10 @@ motor_range_phi_minus_t2 = 360
 motor_range_theta_plus_t2 = 300
 motor_range_theta_minus_t2 = 300
 
+# motor_range_phi_plus_t2 = 180
+# motor_range_phi_minus_t2 = 180
+# motor_range_theta_plus_t2 = 150
+# motor_range_theta_minus_t2 = 150
 
 def measure_cam(camera):
     """
@@ -55,20 +59,20 @@ def get_steps():
     """
     phi_sign = random.randint(0, 1)
     if phi_sign == 1:
-        steps_phi = (random.randint(motor_phi.getPosition() - motor_range_phi_plus_t2,
-                                    motor_phi.getPosition() + motor_range_phi_plus_t2)) - motor_phi.getPosition()
+        steps_phi = (random.randint(MOTOR_REFERENCES["phi"] - motor_range_phi_plus_t2,
+                                    MOTOR_REFERENCES["phi"] + motor_range_phi_plus_t2)) - motor_phi.getPosition()
     else:
-        steps_phi = (random.randint(motor_phi.getPosition() - motor_range_phi_minus_t2,
-                                    motor_phi.getPosition() + motor_range_phi_minus_t2)) - motor_phi.getPosition()
+        steps_phi = (random.randint(MOTOR_REFERENCES["phi"] - motor_range_phi_minus_t2,
+                                    MOTOR_REFERENCES["phi"] + motor_range_phi_minus_t2)) - motor_phi.getPosition()
 
     theta_sign = random.randint(0, 1)
     if theta_sign == 1:
 
-        steps_theta = (random.randint(motor_theta.getPosition() - motor_range_theta_plus_t2,
-                                      motor_theta.getPosition() + motor_range_theta_plus_t2)) - motor_theta.getPosition()
+        steps_theta = (random.randint(MOTOR_REFERENCES["theta"] - motor_range_theta_plus_t2,
+                                      MOTOR_REFERENCES["theta"] + motor_range_theta_plus_t2)) - motor_theta.getPosition()
     else:
-        steps_theta = (random.randint(motor_theta.getPosition() - motor_range_theta_minus_t2,
-                                      motor_theta.getPosition() + motor_range_theta_minus_t2)) - motor_theta.getPosition()
+        steps_theta = (random.randint(MOTOR_REFERENCES["theta"] - motor_range_theta_minus_t2,
+                                      MOTOR_REFERENCES["theta"] + motor_range_theta_minus_t2)) - motor_theta.getPosition()
 
     return steps_phi, steps_theta
 
@@ -108,11 +112,11 @@ def main():
     move_motors_by_backlash()
     move_to_references()
 
-    iterations = 10000
+    iterations = 2000
     faults = 0
 
     # open a csv file that we will use to save the training data:
-    file_name = "Data/isr_t5_t6_data_v1.csv"
+    file_name = "Data/isr_t5_t6_data_v2.csv"
     header = ["cam2X", "cam2Y", "mPhi", "mTheta", "t2X", "t2Y", "stepsPhi", "stepsTheta"]
     file_exists = os.path.isfile(file_name)
 
