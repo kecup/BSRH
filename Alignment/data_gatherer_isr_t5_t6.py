@@ -112,11 +112,11 @@ def main():
     move_motors_by_backlash()
     move_to_references()
 
-    iterations = 2000
+    iterations = 20000
     faults = 0
 
     # open a csv file that we will use to save the training data:
-    file_name = "Data/isr_t5_t6_data_v2.csv"
+    file_name = "Data/isr_t5_t6_data_v2_slow.csv"
     header = ["cam2X", "cam2Y", "mPhi", "mTheta", "t2X", "t2Y", "stepsPhi", "stepsTheta"]
     file_exists = os.path.isfile(file_name)
 
@@ -138,6 +138,7 @@ def main():
 
             stepsPhi, stepsTheta = get_steps()
             move_motors(stepsPhi, stepsTheta)
+            sleep(1) # important!
 
             t2X, t2Y = cam2.getBeamPosition()
 
