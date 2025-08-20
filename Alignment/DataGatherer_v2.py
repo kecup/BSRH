@@ -57,6 +57,9 @@ MonM3 = Camera('LHC.BSRH.MON.TGTM3.B2', japc) # camera 2
 
 #cam = Camera('LHC.BSRH.BTVDC-CAM.MAIN', japc)
 
+# t1 t2 lhc
+MOTOR_REFERENCES = {"x":?, "phi": 13444, "theta": 13360}
+
 
 def get_steps(cam_width=968.0, cam_height=608.0):
   # this needs some brain cells
@@ -89,6 +92,23 @@ def get_steps_v2():
 
   return steps_x, steps_phi, steps_theta
 
+def get_steps_v3():
+  """
+  Randomly generate motor movements based on their range and current position.
+  """
+
+  steps_x = (random.randint(MOTOR_REFERENCES["x"] - motor_range_x_t2,
+                                MOTOR_REFERENCES["x"] + motor_range_x_t2)) - M1x.getPosition()
+
+  steps_phi = (random.randint(MOTOR_REFERENCES["phi"] - motor_range_phi_t2,
+                                MOTOR_REFERENCES["phi"] + motor_range_phi_t2)) - M1Phi.getPosition()
+
+  steps_theta = (random.randint(MOTOR_REFERENCES["theta"] - motor_range_theta_t2,
+                                  MOTOR_REFERENCES["theta"] + motor_range_theta_t2)) - M1Theta.getPosition()
+
+
+  return steps_x, steps_phi, steps_theta
+
 def move_motors(stepsX, stepsPhi, stepsTheta):
   """
   Moves all three motors by their respective steps and waits for them to move there.
@@ -98,12 +118,8 @@ def move_motors(stepsX, stepsPhi, stepsTheta):
   M1Theta.setRelPosition(stepsTheta)
 
   # wait for motors to move
-  counter = 0
   while M1x.isBusy() or M1Phi.isBusy() or M1Theta.isBusy():
-    sleep(2)
-    counter += 1
-    if counter > 5:
-      break
+    sleep(0.2)
   sleep(1)
 
 def measure_c1():
@@ -159,52 +175,53 @@ ref_phi = M1Phi.getPosition()
 ref_theta = M1Theta.getPosition()
 
 # open a csv file that we will use to save the training data:
-TrainingFile = open('lhc_t1_t2_data_v2.csv', 'a')
-writeTraining = csv.writer(TrainingFile)
+file_name = 'Data/lhc_t1_t2_data_v3.csv'
 header = ["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y", "stepsX", "stepsPhi", "stepsTheta"]
-writeTraining.writerow(header)
+file_exists = os.path.isfile(file_name)
 
-iterations = 2000
+with open(file_name, 'a') as file:
+  file_writer = csv.writer(file)
 
-# make sure target 1 is IN
-if TargetEA.getPosition() == 0: # 0 is OUT and 1 is IN
-  TargetEA.changePosition()
-  sleep(3)
+  if not file_exists:
+    file_writer.writerow(header)
 
-for i in range(iterations):
-  print("Starting iteration " + str(i+1))
-  cam1X, cam1Y = measure_c1()
+  iterations = 2000
 
-  mX = M1x.getPosition()
-  mPhi = M1Phi.getPosition()
-  mTheta = M1Theta.getPosition()
+  # make sure target 1 is IN
+  if TargetEA.getPosition() == 0: # 0 is OUT and 1 is IN
+    TargetEA.changePosition()
+    sleep(3)
 
-  # print("Identifikator 1: ", MonEA.motorX.isIn())
-  MonEA.motorX.changePosition()
-  sleep(2)
-  cam2X, cam2Y = measure_c2()
+  for i in range(iterations):
+    print("Starting iteration " + str(i+1))
+    cam1X, cam1Y = measure_c1()
 
-  stepsX, stepsPhi, stepsTheta = get_steps_v2()
-  move_motors(stepsX, stepsPhi, stepsTheta)
+    mX = M1x.getPosition()
+    mPhi = M1Phi.getPosition()
+    mTheta = M1Theta.getPosition()
 
-  t2X, t2Y = MonM3.getBeamPosition()
+    # print("Identifikator 1: ", MonEA.motorX.isIn())
+    MonEA.motorX.changePosition()
+    sleep(2)
+    cam2X, cam2Y = measure_c2()
 
-  t1X, t1Y = MonEA.getBeamPosition()
+    stepsX, stepsPhi, stepsTheta = get_steps_v3()
+    move_motors(stepsX, stepsPhi, stepsTheta)
 
-  if not math.isclose(t1X, -1.0, rel_tol=1e-9) or not math.isclose(t1Y, -1.0, rel_tol=1e-9) or not math.isclose(t2X, -1.0, rel_tol=1e-9) or not math.isclose(t2Y, -1.0, rel_tol=1e-9):
-    row = [cam1X, cam1Y, cam2X, cam2Y, mX, mPhi, mTheta, t1X, t1Y, t2X, t2Y, stepsX, stepsPhi, stepsTheta]
-    writeTraining.writerow(row)
-    TrainingFile.flush()
+    t2X, t2Y = MonM3.getBeamPosition()
+
+    t1X, t1Y = MonEA.getBeamPosition()
+
+    if not math.isclose(t1X, -1.0, rel_tol=1e-9) or not math.isclose(t1Y, -1.0, rel_tol=1e-9) or not math.isclose(t2X, -1.0, rel_tol=1e-9) or not math.isclose(t2Y, -1.0, rel_tol=1e-9):
+      row = [cam1X, cam1Y, cam2X, cam2Y, mX, mPhi, mTheta, t1X, t1Y, t2X, t2Y, stepsX, stepsPhi, stepsTheta]
+      file_writer.writerow(row)
+      file.flush()
+
+    print('Done {} movements. '.format(i), end='\r')
 
 
-  # cam1X = t1X
-  # cam1Y = t1Y
-  print('Done {} movements. '.format(i), end='\r')
+  M1x.setAbsPosition(ref_x)
+  M1Phi.setAbsPosition(ref_phi)
+  M1Theta.setAbsPosition(ref_theta)
 
-
-M1x.setAbsPosition(ref_x)
-M1Phi.setAbsPosition(ref_phi)
-M1Theta.setAbsPosition(ref_theta)
-
-japc.stopSubscriptions()
-TrainingFile.close()
+  japc.stopSubscriptions()
