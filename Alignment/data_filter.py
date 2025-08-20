@@ -56,25 +56,35 @@ def filter_outliers(df, cam2_bounds, cam1_bounds=None):
 
     return df_filtered2
 
+def filter_center_targets(df, bounds):
+    filtered_df = df[
+        (df["t2X"].between(bounds["x_min"], bounds["x_max"])) &
+        (df["t2Y"].between(bounds["y_min"], bounds["y_max"]))
+        ]
+
+    return filtered_df
+
 def main():
     cam1_bounds = {"x_min": 659, "x_max": 844, "y_min": 51, "y_max": 237}
     cam2_bounds = {"x_min": 0, "x_max": 960, "y_min": 0, "y_max": 640}
+    cam2_central = {"x_min": 400, "x_max": 560, "y_min": 270, "y_max": 370}
     motor_references_t3_t4 = {"x": 40385, "y": 41740, "phi": 139931, "theta": 163051} # isr t3 t4 data collection
     motor_references_t5_t6 = {"phi": 13444, "theta": 13360} # isr t5 t6 data collection v1
 
     df = pd.read_csv('Data/isr_t5_t6_data_v1.csv')
 
-    filtered_df = filter_outliers(df, cam2_bounds)
-    filtered_df = filter_references(filtered_df, motor_references_t5_t6)
+    # filtered_df = filter_outliers(df, cam2_bounds)
+    filtered_df = filter_references(df, motor_references_t5_t6)
+    filtered_df = filter_center_targets(filtered_df, cam2_central)
 
     print(f"Original size: {df.shape[0]}, Filtered size: {filtered_df.shape[0]}")
 
-    output_file = "Data/isr_t5_t6_data_v1_filtered_7500.csv"
+    output_file = "Data/isr_t5_t6_data_v1_filtered_central_targets.csv"
 
-    filtered_cropped_df = filtered_df.head(7500)
-    print(f"Original size: {df.shape[0]}, Filtered size: {filtered_cropped_df.shape[0]}")
+    # filtered_cropped_df = filtered_df.head(7500)
+    # print(f"Original size: {df.shape[0]}, Filtered size: {filtered_cropped_df.shape[0]}")
 
-    filtered_cropped_df.to_csv(output_file, index=False)
+    filtered_df.to_csv(output_file, index=False)
     print(f"Filtered dataset saved to {output_file}")
 
 if __name__ == "__main__":
