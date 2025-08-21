@@ -36,9 +36,9 @@ TargetM3 = Motor('LHC.BSRH.TARGET-M3-TS100.B2', japc, 0, 0, 42661) # target 2?
 # TargetLS = Pneumatics('LHC.BSRH.IN-OUT.B2', japc, 2)
 
 ##Motors
-M1x = Motor('LHC.BSRH.M1-X-TS50.B2', japc, 0) ##Carefull, moves only from 0 to 30mm (12000 steps)
-M1Phi = Motor('LHC.BSRH.STEERING-H.B2', japc, 110) #Backlash not measured!!
-M1Theta = Motor('LHC.BSRH.STEERING-V.B2', japc, 100) #Backlash not measured!!
+M1x = Motor('LHC.BSRH.M1-X-TS50.B2', japc, 0) ##Careful, moves only from 0 to 30mm (12000 steps)
+M1Phi = Motor('LHC.BSRH.STEERING-H.B2', japc, 110)
+M1Theta = Motor('LHC.BSRH.STEERING-V.B2', japc, 100)
 
 # M3x = Motor('LHC.BSRH.M3-X-TSZ100.B2', japc, 0) #Backlash not measured!!
 # M3y = Motor('LHC.BSRH.M3-Y-TSZ100.B2', japc, 0) #Backlash not measured!!
