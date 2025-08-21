@@ -60,39 +60,7 @@ MonM3 = Camera('LHC.BSRH.MON.TGTM3.B2', japc) # camera 2
 # t1 t2 lhc
 MOTOR_REFERENCES = {"x":7880, "phi": 219374, "theta": 236211}
 
-
-def get_steps(cam_width=968.0, cam_height=608.0):
-  # this needs some brain cells
-
-  steps_x = random.randint(
-    -int(2 * cam2X / cam_width * motor_range_x_t2),
-    int(2 * (cam_width - cam2X) / cam_width * motor_range_x_t2)
-  )
-
-  steps_phi = random.randint(
-    -int(2 * cam2X / cam_width * motor_range_phi_t2),
-    int(2 * (cam_width - cam2X) / cam_width * motor_range_phi_t2)
-  )
-
-  steps_theta = random.randint(
-    -int(2 * (cam_height - cam2Y) / cam_height * motor_range_theta_t2),
-    int(2 * cam2Y / cam_height * motor_range_theta_t2)
-  )
-
-  return steps_x, steps_phi, steps_theta
-
-def get_steps_v2():
-  steps_x = (random.randint(M1x.getPosition()-motor_range_x_t2, M1x.getPosition()+motor_range_x_t2))-M1x.getPosition()
-
-  steps_phi = (random.randint(M1Phi.getPosition() - motor_range_phi_t2,
-                            M1Phi.getPosition() + motor_range_phi_t2)) - M1Phi.getPosition()
-
-  steps_theta = (random.randint(M1Theta.getPosition() - motor_range_theta_t2,
-                            M1Theta.getPosition() + motor_range_theta_t2)) - M1Theta.getPosition()
-
-  return steps_x, steps_phi, steps_theta
-
-def get_steps_v3():
+def get_steps():
   """
   Randomly generate motor movements based on their range and current position.
   """
@@ -120,7 +88,7 @@ def move_motors(stepsX, stepsPhi, stepsTheta):
   # wait for motors to move
   while M1x.isBusy() or M1Phi.isBusy() or M1Theta.isBusy():
     sleep(0.2)
-  sleep(1)
+  sleep(1) # important
 
 def measure_c1():
   """
@@ -205,7 +173,7 @@ with open(file_name, 'a') as file:
     sleep(2)
     cam2X, cam2Y = measure_c2()
 
-    stepsX, stepsPhi, stepsTheta = get_steps_v3()
+    stepsX, stepsPhi, stepsTheta = get_steps()
     move_motors(stepsX, stepsPhi, stepsTheta)
 
     t2X, t2Y = MonM3.getBeamPosition()
