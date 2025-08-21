@@ -267,7 +267,7 @@ if __name__ == "__main__":
 
 
     ###################### t5 t6 V1 ######################
-    data_file_name = "Data/MainCamData.csv"
+    data_file_name = "Data/isr_t5_t6_data_v2_slow.csv"
 
     df = pd.read_csv(data_file_name)
     print(f"There are {df.shape[0]} rows")
@@ -285,4 +285,4 @@ if __name__ == "__main__":
     X_scaler_name1 = "Models/MainCam_model1_cam2_target2-steps_X_scaler.pkl"
     y_scaler_name1 = "Models/MainCam_model1_cam2_target2-steps_y_scaler.pkl"
     model1 = FeedbackNN1(X1.shape[1], y1.shape[1])
-    scaled_loss1, rmse1 = train_nn(model1, X1, y1, file_name1, X_scaler_name1, y_scaler_name1, save_model=True)
+    scaled_loss1, rmse1 = train_nn(model1, X1, y1, file_name1, X_scaler_name1, y_scaler_name1, save_model=False)
