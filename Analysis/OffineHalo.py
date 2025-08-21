@@ -3,15 +3,40 @@ import datetime as dt
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from PyQt5.QtCore import center
 from scipy.optimize import curve_fit
 import os
 import pyjapc
 import zstandard as zstd
+from scipy.interpolate import interp1d
 
 
 def gaussian(x, amp, cen, wid):  # , const):
     return amp * np.exp(-(x - cen) ** 2 / (2 * wid ** 2))  # +const
+
+
+def chi2_displacement(proj1, proj2, max_shift=15, axis="x"):
+    x = np.arange(len(proj1))
+    f2 = interp1d(x, proj2, bounds_error=False, fill_value=0.0)
+
+    # exclude masked central region
+    if axis == "x":
+        exclude = np.arange(maskX - maskR, maskX + maskR)
+    else:
+        exclude = np.arange(maskY - maskR, maskY + maskR)
+
+    valid = np.ones_like(proj1, dtype=bool)
+    valid[exclude] = False
+
+    chi2_vals = []
+
+    for shift in range(-max_shift, max_shift + 1): # We should make sure that we use the same amount of points for each chi2, but ok for now...
+        shifted = f2(x - shift)
+        diff = (proj1 - shifted)[valid]
+        chi2 = np.sum(diff**2)
+        chi2_vals.append((shift, chi2))
+
+    best_shift = min(chi2_vals, key=lambda t: t[1])[0]
+    return best_shift
 
 
 def moving_average(a, n=3):
