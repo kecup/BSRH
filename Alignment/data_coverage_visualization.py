@@ -71,7 +71,7 @@ def main():
     cam2_bounds = {"x_min": 0, "x_max": 960, "y_min": 0, "y_max": 640}
     motor_references = {"x": 40385, "y": 41740, "phi": 139931, "theta": 163051}
 
-    df = pd.read_csv('Data/isr_t5_t6_data_v2_slow.csv')
+    df = pd.read_csv('Data/isr_t5_t6_data_v3.csv')
 
     print(f"There are {df.shape[0]} rows.")
 
