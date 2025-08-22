@@ -153,8 +153,8 @@ def main():
 
         aligner.align(5) # init align
 
-        # manual_collection(aligner, file_writer, align_iter=2)
-        auto_collection(aligner, file_writer, align_iter=2, stepsX=0, stepsY=-300)
+        manual_collection(aligner, file_writer, align_iter=2)
+        # auto_collection(aligner, file_writer, align_iter=2, stepsX=0, stepsY=-300)
 
 
     japc.stopSubscriptions()

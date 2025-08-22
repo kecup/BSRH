@@ -27,7 +27,7 @@ motor_theta = Motor('TST.cfv-375-bsrdev.mot.3-5', japc, 125)
 cam1 = Camera("TST.BSRH.MON.M2", japc)
 cam2 = Camera("TST.BSRH.CAM.CM", japc)
 
-MOTOR_REFERENCES = {"x": 40385, "y": 41740, "phi": 139931, "theta": 163051}
+MOTOR_REFERENCES = {"x": 40385, "y": 41740, "phi": 140381, "theta": 163301}
 CAM1_TARGET = [751, 144] # cam1 target centre
 
 def generate_targets():
