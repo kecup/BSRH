@@ -66,8 +66,25 @@ def filter_center_targets(df, bounds):
 
 def filter_minus_ones(df):
     filtered_df = df[~((df["t2X"] == -1) | (df["t2Y"] == -1))]
-
     return filtered_df
+
+def filter_t1t2_limit_motor_x_values(df):
+    filtered_df = df[df["mX"] < 11200]
+    return filtered_df
+
+def clip_and_recalculate_mx_steps(df):
+
+    # Clip mX at 11200
+    df["mX"] = df["mX"].clip(upper=11200)
+
+    # Recalculate steps as forward difference
+    df["stepsX"] = (df["mX"].shift(-1, fill_value=df["mX"].iloc[-1]) - df["mX"]).astype(int)
+
+    # Last row has no "next", so steps should be 0
+    df.loc[df.index[-1], "stepsX"] = 0
+
+    return df
+
 
 def main():
     cam1_bounds = {"x_min": 659, "x_max": 844, "y_min": 51, "y_max": 237}
@@ -77,18 +94,19 @@ def main():
     motor_references_t3_t4_v4 = {"x": 40385, "y": 41740, "phi": 140381, "theta": 163301}
     motor_references_t5_t6 = {"phi": 13444, "theta": 13360} # isr t5 t6 data collection v1
 
-    df1 = pd.read_csv('Data/lhc_t1_t2_data_v2_filtered.csv')
-    df2 = pd.read_csv('Data/lhc_t1_t2_data_v3.csv')
+    df = pd.read_csv('Data/lhc_t1_t2_data_v3.csv')
 
     # filtered_df = filter_outliers(df, cam2_bounds)
     # filtered_df = filter_references(df, motor_references_t3_t4_v4)
     # filtered_df = filter_center_targets(filtered_df, cam2_central)
     # filtered_df = filter_minus_ones(df)
-    filtered_df = pd.concat([df1, df2], ignore_index=True)
+    # filtered_df = pd.concat([df1, df2], ignore_index=True)
+    # filtered_df = filter_t1t2_limit_motor_x_values(df)
+    filtered_df = clip_and_recalculate_mx_steps(df)
 
-    print(f"Original size: {df1.shape[0]}, Filtered size: {filtered_df.shape[0]}")
+    print(f"Original size: {df.shape[0]}, Filtered size: {filtered_df.shape[0]}")
 
-    output_file = "Data/lhc_t1_t2_data_v4_combined.csv"
+    output_file = "Data/lhc_t1_t2_data_v3_clipped_and_recalculated.csv"
 
     filtered_df.to_csv(output_file, index=False)
     print(f"Filtered dataset saved to {output_file}")

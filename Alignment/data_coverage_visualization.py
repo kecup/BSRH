@@ -111,7 +111,7 @@ def main():
     cam2_bounds_t3_t4 = {"x_min": 0, "x_max": 960, "y_min": 0, "y_max": 640}
 
 
-    df = pd.read_csv("Data/lhc_t1_t2_data_v3.csv")
+    df = pd.read_csv("Data/lhc_t1_t2_data_v3_clipped_and_recalculated.csv")
 
     print(f"There are {df.shape[0]} rows.")
 
