@@ -1,1 +1,9 @@
-filtered_df = df[~((df["t2X"] == -1) | (df["t2Y"] == -1))]
+df["mX_clipped"] = df["mX"].clip(upper=11200)
+
+# Shift previous clipped position
+df["prev_mX"] = df["mX_clipped"].shift(fill_value=df["mX_clipped"].iloc[0])
+
+# Recalculate steps as difference
+df["stepsX_recalc"] = (df["mX_clipped"] - df["prev_mX"]).abs().astype(int)
+
+df.to_csv("your_file_corrected.csv", index=False)
