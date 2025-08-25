@@ -241,7 +241,7 @@ class Camera:
 
     def getBeamPosition(self, com = False): #com = Center of Mass, different way of center determination for images that cannot be represented by a Gaussian...
         ##Get an image that we will analyse:
-        if self.bgImage:
+        if len(self.bgImage) != 0:
             image = np.asarray(self.captureImage()) - self.bgImage # Well, here we should be careful that the exposure time did not change
         else:
             image = np.asarray(self.captureImage())
