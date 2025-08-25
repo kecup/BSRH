@@ -1,8 +1,26 @@
-# Clip mX at 11200
-df["mX"] = df["mX"].clip(upper=11200)
+import pandas as pd
+import matplotlib.pyplot as plt
 
-# Recalculate steps as forward difference
-df["stepsX"] = (df["mX"].shift(-1, fill_value=df["mX"].iloc[-1]) - df["mX"]).astype(int)
+df = pd.read_csv("your_file.csv")
 
-# Last row has no "next", so steps should be 0
-df.loc[df.index[-1], "stepsX"] = 0
+plt.figure(figsize=(6,6))
+plt.scatter(df["xA"], df["xB"], alpha=0.6, label="X comparison")
+plt.scatter(df["yA"], df["yB"], alpha=0.6, label="Y comparison")
+plt.plot([df[["xA","xB","yA","yB"]].min().min(), 
+          df[["xA","xB","yA","yB"]].max().max()],
+         [df[["xA","xB","yA","yB"]].min().min(), 
+          df[["xA","xB","yA","yB"]].max().max()],
+         'r--', label="Perfect match")
+plt.xlabel("Method A")
+plt.ylabel("Method B")
+plt.legend()
+plt.title("Coordinate Comparison (A vs B)")
+plt.show()
+
+
+df["dx"] = df["xA"] - df["xB"]
+df["dy"] = df["yA"] - df["yB"]
+
+df[["dx","dy"]].hist(bins=30)
+plt.suptitle("Error Distribution (A - B)")
+plt.show()
