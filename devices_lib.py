@@ -87,7 +87,7 @@ class Motor:
         self.position = value
 
     def callbackBusy(self, name, value):
-        if self.position == self.desiredAbsPosition:
+        if np.abs(self.position - self.desiredAbsPosition) < 20 :
             self.busy = value
         else:
             self.busy = True
@@ -251,8 +251,8 @@ class Camera:
 
         if com == True:
             center = center_of_mass(image)
-            outX = center[0]
-            outY = center[1]
+            outX = center[1]
+            outY = center[0]
 
         else:
             try:
