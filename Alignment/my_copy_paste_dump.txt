@@ -1,15 +1,8 @@
-import pandas as pd
-
-# Load your CSV
-df = pd.read_csv("your_file.csv")
-
-# --- Recalculate mX ---
-# Clip positions at 11200
+# Clip mX at 11200
 df["mX"] = df["mX"].clip(upper=11200)
 
-# --- Recalculate stepsX ---
-# Use clipped positions to recompute steps
-df["stepsX"] = (df["mX"] - df["mX"].shift(fill_value=df["mX"].iloc[0])).abs().astype(int)
+# Recalculate steps as forward difference
+df["stepsX"] = (df["mX"].shift(-1, fill_value=df["mX"].iloc[-1]) - df["mX"]).astype(int)
 
-# Save back to CSV (same columns as original)
-df.to_csv("your_file_corrected.csv", index=False)
+# Last row has no "next", so steps should be 0
+df.loc[df.index[-1], "stepsX"] = 0
