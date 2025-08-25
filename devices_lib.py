@@ -4,7 +4,6 @@ from scipy.optimize import curve_fit
 from scipy.ndimage import center_of_mass
 from time import sleep
 
-
 def gaussian(x, amp, cen, wid, const):
     return amp * np.exp(-(x - cen) ** 2 / (2 * wid ** 2)) + const
 
@@ -49,6 +48,9 @@ class Pneumatics:
         self.japc.setParam(self.name + '/Setting#channelState', self.state, checkDims=False)
 
 
+
+## Few comments on the motor logic - a) motion is non-blocking, so one has to carefully treat the busy statement, b) busy does not get turned on the milisecond one sends a new position to go to, c) all motion of a motor is done in raw steps
+## d) getPosition is blocking, if non-blocking position is required, use Motor.position
 class Motor:
     def __init__(self, name, japc, backlash_steps=0, inPos = None, outPos = None): ##inPos/outPos should be provided in case one wants to use the changePosition function
         self.name = name
@@ -158,7 +160,13 @@ class Motor:
 
 
 class FWheel(Motor): # This is a motor with specific positions/values
-    ## We need to redefine the motion...
+    ## Redefining the motion, using units of filters...
+
+    def getPosition(self):  ## This is NEW
+        while self.japc.getParam(self.name + '/Acquisition#motor_busy') == True:
+            sleep(0.5)
+        return np.round(self.japc.getParam(self.name + '/Acquisition#position')) # Uses position in units! So careful with movements...
+
     def setAbsPosition(self, absPosition):
         absPosition = int(absPosition)
         self.desiredAbsPosition = absPosition
@@ -191,7 +199,7 @@ class FWheel(Motor): # This is a motor with specific positions/values
                 self.lastMotionAbs = 0
 
             self.desiredAbsPosition = self.position+relPosition
-            mv = {'value': relPosition, 'mode': 1, 'units': 1}
+            mv = {'value': relPosition, 'mode': 1, 'units': 1} #units of the filter wheel
             self.japc.setParam(self.name + '/Move', mv)
             self.busy = True
 
@@ -199,21 +207,12 @@ class FWheel(Motor): # This is a motor with specific positions/values
             print('Cannot comply, motor is busy!')
 
 class Camera:
-    def __init__(self, name, japc, motorX=None, motorY=None, returnTarget = False):  ## Provide motors as Class and positions in steps...
+    def __init__(self, name, japc):  ## Provide motors as Class and positions in steps...
         self.name = name
-        self.motorX = motorX
-        self.motorY = motorY
         self.japc = japc
         self.updated = dt.datetime.now()
         self.image = []
-        self.returnTarget = returnTarget
-        if motorX is not None:
-            self.movableAxis = 1
-            self.isIn = motorX.isIn() # TODO
-            if motorY is not None:
-                self.movableAxis = 2
-        else:
-            self.movableAxis = 0
+        self.bgImage = []
         try:
             self.subscription = self.japc.subscribeParam(self.name + '/Acquisition#image1', self.updateImage)
         except:
@@ -223,18 +222,8 @@ class Camera:
         self.image = value
         self.updated = dt.datetime.now()
 
-    def captureImage(self):  ## Should think whether subscription is the way forward or not...
+    def captureImage(self, bg = False):  ## Should think whether subscription is the way forward or not...
         lastUpdate = self.updated
-        if self.movableAxis>0 and self.motorX.isIn() == 0:  # Checking if the camera/target is in.
-            ##This means that we have to move motor(s)
-            self.motorX.changePosition()  # at least one motor must be present
-            if self.movableAxis == 2:
-                self.motorY.changePosition()
-                while self.motorX.isBusy() or self.motorY.isBusy():
-                    sleep(0.2)
-            while self.motorX.isBusy():
-                sleep(0.2)
-
         cycle = 0
         while lastUpdate == self.updated and cycle < 10:
             sleep(0.2)
@@ -246,17 +235,16 @@ class Camera:
         else:
             outImage = self.image
 
-        ##Testing to send the position out again?
-        if self.movableAxis > 0 and self.returnTarget == True:
-            self.motorX.changePosition()  # at least one motor must be present
-            if self.movableAxis == 2:
-                self.motorY.changePosition()
-
+        if bg == True:
+            self.bgImage = outImage
         return outImage
 
     def getBeamPosition(self, com = False): #com = Center of Mass, different way of center determination for images that cannot be represented by a Gaussian...
         ##Get an image that we will analyse:
-        image = self.captureImage()
+        if self.bgImage:
+            image = np.asarray(self.captureImage()) - self.bgImage # Well, here we should be careful that the exposure time did not change
+        else:
+            image = np.asarray(self.captureImage())
         outX = -1
         outY = -1
 
@@ -301,6 +289,9 @@ class Camera:
             outY = resY[1]
 
         return outX, outY
+
+    def deleteBG(self):
+        self.bgImage = []
 
     def getBeamInfo(self):
       """
