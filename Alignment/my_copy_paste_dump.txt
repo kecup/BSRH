@@ -1,9 +1,15 @@
-df["mX_clipped"] = df["mX"].clip(upper=11200)
+import pandas as pd
 
-# Shift previous clipped position
-df["prev_mX"] = df["mX_clipped"].shift(fill_value=df["mX_clipped"].iloc[0])
+# Load your CSV
+df = pd.read_csv("your_file.csv")
 
-# Recalculate steps as difference
-df["stepsX_recalc"] = (df["mX_clipped"] - df["prev_mX"]).abs().astype(int)
+# --- Recalculate mX ---
+# Clip positions at 11200
+df["mX"] = df["mX"].clip(upper=11200)
 
+# --- Recalculate stepsX ---
+# Use clipped positions to recompute steps
+df["stepsX"] = (df["mX"] - df["mX"].shift(fill_value=df["mX"].iloc[0])).abs().astype(int)
+
+# Save back to CSV (same columns as original)
 df.to_csv("your_file_corrected.csv", index=False)
