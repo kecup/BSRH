@@ -10,7 +10,7 @@ import os
 import torch
 import joblib
 from TrainNN import FeedbackNN1, FeedbackNN2, FeedbackNN3, FeedbackNN4, FeedbackNN5, FeedbackNN6
-from aligners_lib import AlignmentPipeline, T3T4AlignmentNN, T5T6AlignmentNN
+from aligners_lib import AlignmentPipeline, T1T2AlignmentNN, T3T4AlignmentNN, T5T6AlignmentNN
 from time import sleep
 
 
@@ -27,7 +27,14 @@ japc.rbacLogin(token=token)
 def main():
 
     # t1 - t2 Alignment
-    # t1_t2_alignment = AlignmentNN()
+    file_name1 = "Models/lhc_t1_t2_v5_model1_cams_targets-steps.pth"
+    X_scaler_name1 = "Models/lhc_t1_t2_v5_model1_cams_targets-steps_X_scaler.pkl"
+    y_scaler_name1 = "Models/lhc_t1_t2_v5_model1_cams_targets-steps_y_scaler.pkl"
+
+    # only cam2 model now
+    t1_t2_alignment = T1T2AlignmentNN(model_file_name=file_name1, input_size=8, output_size=3, feedback_nn=FeedbackNN5,
+                                      X_scaler_name=X_scaler_name1, y_scaler_name=y_scaler_name1, japc=japc,
+                                      dist_tolerance=15)
 
     # t3 - t4 Alignment
     file_name2 = "Models/isr_t3_t4_v4_filtered_model3_only_cam2_target2-steps.pth"
@@ -49,7 +56,7 @@ def main():
                                       dist_tolerance=15, isr=True)
 
 
-    alignment_pipeline = AlignmentPipeline(t1_t2_alignment=None, t3_t4_alignment=t3_t4_alignment,
+    alignment_pipeline = AlignmentPipeline(t1_t2_alignment=t1_t2_alignment, t3_t4_alignment=t3_t4_alignment,
                                            t5_t6_alignment=t5_t6_alignment, japc=japc, isr=True)
 
 
