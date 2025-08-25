@@ -1,9 +1,8 @@
 import datetime as dt
 import numpy as np
 from scipy.optimize import curve_fit
+from scipy.ndimage import center_of_mass
 from time import sleep
-
-from sympy import false
 
 
 def gaussian(x, amp, cen, wid, const):
@@ -38,6 +37,17 @@ class Pneumatics:
         while np.any(self.japc.getParam(self.name+'/Acquisition#channelState') != self.state):
             sleep(3)
         return False
+
+    def moveIn(self):
+        self.getPosition()
+        self.state[self.slot] = 1
+        self.japc.setParam(self.name + '/Setting#channelState', self.state, checkDims=False)
+
+    def moveOut(self):
+        self.getPosition()
+        self.state[self.slot] = 0
+        self.japc.setParam(self.name + '/Setting#channelState', self.state, checkDims=False)
+
 
 class Motor:
     def __init__(self, name, japc, backlash_steps=0, inPos = None, outPos = None): ##inPos/outPos should be provided in case one wants to use the changePosition function
@@ -147,6 +157,47 @@ class Motor:
             print('In/out not provided, doing nothing')
 
 
+class FWheel(Motor): # This is a motor with specific positions/values
+    ## We need to redefine the motion...
+    def setAbsPosition(self, absPosition):
+        absPosition = int(absPosition)
+        self.desiredAbsPosition = absPosition
+
+        if self.japc.getParam(self.name + '/Acquisition#motor_busy') == False:
+
+            if np.abs(absPosition-self.position) > self.backlash_steps: # when change bigger than backlash, only direction needed
+                self.lastMotionRel = absPosition-self.position
+            elif self.lastMotionRel * (absPosition-self.position) < 0: # this is when the direction is changed only partially - need to remember the amount of steps; the other scenario is by default ok..
+                self.lastMotionAbs += (absPosition-self.position) # do not change the backlash direction yet..
+            mv = {'value': absPosition, 'mode': 2, 'units': 1} #In the units of the filter wheel
+            self.japc.setParam(self.name + '/Move', mv)
+            self.busy = True
+            #while absPosition != self.position:
+            #    sleep(0.5)
+
+        else:
+            print('Cannot comply, motor is busy!')
+
+    def setRelPosition(self, relPosition):  # Motion in relative steps!
+        relPosition = int(relPosition)
+        if self.japc.getParam(self.name + '/Acquisition#motor_busy') == False:
+
+            if relPosition * self.lastMotionRel < 0:  # Change of sign
+                self.lastMotionRel = relPosition
+                relPosition = relPosition + np.sign(relPosition) * self.backlash_steps - self.lastMotionAbs
+            else:
+                self.lastMotionRel = relPosition - self.lastMotionAbs
+            if self.lastMotionAbs != 0:
+                self.lastMotionAbs = 0
+
+            self.desiredAbsPosition = self.position+relPosition
+            mv = {'value': relPosition, 'mode': 1, 'units': 1}
+            self.japc.setParam(self.name + '/Move', mv)
+            self.busy = True
+
+        else:
+            print('Cannot comply, motor is busy!')
+
 class Camera:
     def __init__(self, name, japc, motorX=None, motorY=None, returnTarget = False):  ## Provide motors as Class and positions in steps...
         self.name = name
@@ -203,42 +254,53 @@ class Camera:
 
         return outImage
 
-    def getBeamPosition(self):
+    def getBeamPosition(self, com = False): #com = Center of Mass, different way of center determination for images that cannot be represented by a Gaussian...
         ##Get an image that we will analyse:
         image = self.captureImage()
-        ##Perform a 1D fit of projections:
-        try:
-            projection_x = np.sum(image, axis=0)
-            projection_y = np.sum(image, axis=1)
-        except:
-            projection_x = []
-            projection_y = []
+        outX = -1
+        outY = -1
 
-        ##Prepare bounds for fits:
 
-        gBounds = ([1e2, 0, 1, 10], [1e7, 960, 100, 2e4])
+        if com == True:
+            center = center_of_mass(image)
+            outX = center[0]
+            outY = center[1]
 
-        try:
-            # resX = [np.max(projection_x), np.argmax(projection_x)]
-            resX, _ = curve_fit(gaussian, range(len(projection_x)), projection_x,
-                                (6e4, np.argmax(projection_x), 10.0, 300.0), bounds=gBounds)
-            if resX[0] < 2e3:
-                resX[1] = -1
-        except:
-            print("Did not fit in X.")
-            resX = [-1, -1, -1]
+        else:
+            try:
+                projection_x = np.sum(image, axis=0)
+                projection_y = np.sum(image, axis=1)
+            except:
+                projection_x = []
+                projection_y = []
 
-        try:
-            # resY = [np.max(projection_y), np.argmax(projection_y)]
-            resY, _ = curve_fit(gaussian, range(len(projection_y)), projection_y,
-                                (6e4, np.argmax(projection_y), 10.0, 300.0), bounds=gBounds)
-            if resY[0] < 2e3:
-                resY[1] = -1
-        except:
-            print("Did not fit in Y.")
-            resY = [-1, -1, -1]
+            ##Prepare bounds for fits:
+            gBounds = ([1e2, 0, 1, 10], [1e7, 960, 100, 2e4])
 
-        return resX[1], resY[1]
+            try:
+                # resX = [np.max(projection_x), np.argmax(projection_x)]
+                resX, _ = curve_fit(gaussian, range(len(projection_x)), projection_x,
+                                    (6e4, np.argmax(projection_x), 10.0, 300.0), bounds=gBounds)
+                if resX[0] < 2e3:
+                    resX[1] = -1
+            except:
+                print("Did not fit in X.")
+                resX = [-1, -1, -1]
+
+            try:
+                # resY = [np.max(projection_y), np.argmax(projection_y)]
+                resY, _ = curve_fit(gaussian, range(len(projection_y)), projection_y,
+                                    (6e4, np.argmax(projection_y), 10.0, 300.0), bounds=gBounds)
+                if resY[0] < 2e3:
+                    resY[1] = -1
+            except:
+                print("Did not fit in Y.")
+                resY = [-1, -1, -1]
+
+            outX = resX[1]
+            outY = resY[1]
+
+        return outX, outY
 
     def getBeamInfo(self):
       """
