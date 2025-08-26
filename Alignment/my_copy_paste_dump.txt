@@ -1,27 +1,14 @@
-import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
-
-# Example: load CSV
-df = pd.read_csv("your_file.csv")
-
-# Make sure time is datetime
-df["time"] = pd.to_datetime(df["time"])
-
-# Convert datetime to numeric for coloring
-time_numeric = df["time"].astype(np.int64) // 10**9  # seconds since epoch
+import matplotlib.dates as mdates
 
 plt.figure(figsize=(8,6))
 scatter = plt.scatter(df["x"], df["y"], 
-                      c=time_numeric, 
-                      cmap="viridis",   # color goes from yellow→blue
-                      s=10)             # point size
+                      c=df["time"].map(mdates.date2num), 
+                      cmap="viridis", s=10)
 plt.xlabel("x coordinate")
 plt.ylabel("y coordinate")
 plt.title("Trajectory colored by Time")
 
 cbar = plt.colorbar(scatter)
 cbar.ax.yaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
-cbar.set_label("Time (seconds since epoch)")
-
+cbar.set_label("Time")
 plt.show()
