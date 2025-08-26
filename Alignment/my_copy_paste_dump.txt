@@ -1,13 +1,16 @@
-import matplotlib.dates as mdates
+df = pd.read_csv("your_file.csv")
+df["time"] = pd.to_datetime(df["time"])
+
+# Convert to numeric for coloring
+time_numeric = df["time"].map(mdates.date2num)
 
 plt.figure(figsize=(8,6))
-scatter = plt.scatter(df["x"], df["y"], 
-                      c=df["time"].map(mdates.date2num), 
-                      cmap="viridis", s=10)
+scatter = plt.scatter(df["x"], df["y"], c=time_numeric, cmap="viridis", s=10)
 plt.xlabel("x coordinate")
 plt.ylabel("y coordinate")
 plt.title("Trajectory colored by Time")
 
+# Colorbar with proper datetime labels
 cbar = plt.colorbar(scatter)
 cbar.ax.yaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
 cbar.set_label("Time")
