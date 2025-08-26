@@ -22,24 +22,31 @@ class CoronagraphDevices:
         self.motXCM.setAbsPosition(60113)
         self.motYCM.setAbsPosition(11940)
         self.filterCM.setAbsPosition(0)
-
-        #This should make all in... So take bg images
+        sleep(1)
+        #This should make all in... So set correct exposure times, take BG images
 
     def measureT1(self): # These are now blocking...
         self.lsTgt.moveIn()  ## SAFETY
         self.eaTgt.moveIn()
+        sleep(1)
 
     def measureT2(self):
         self.lsTgt.moveIn()  ## SAFETY
         self.eaTgt.moveOut()
         self.m2Tgt.setAbsPosition(42650)
-        self.m2Tgt.getPosition() # This is blocking...
+
+        # sleep(1)
+        while self.m2Tgt.isBusy():
+            sleep(0.5)
 
     def measureT3(self):
         self.lsTgt.moveIn()  ## SAFETY
         self.eaTgt.moveOut()
         self.m2Tgt.setAbsPosition(22600)
-        self.m2Tgt.getPosition()
+
+        # sleep(1)
+        while self.m2Tgt.isBusy(): #This needs polishing....
+            sleep(0.5)
 
     def measureT4(self):
         self.lsTgt.moveIn()  ## SAFETY
@@ -48,23 +55,27 @@ class CoronagraphDevices:
         self.m2Tgt.setAbsPosition(0)
         self.motXCM.setAbsPosition(60113)
         self.motYCM.setAbsPosition(11940)
-        self.m2Tgt.getPosition()
-        self.motXCM.getPosition()
-        self.motYCM.getPosition()
+
+        # sleep(1)
+        while self.m2Tgt.isBusy() or self.motXCM.isBusy() or self.motYCM.isBusy():
+            sleep(0.5)
 
     def measureT5(self):
         self.lsTgt.moveIn()  ## SAFETY
         self.eaTgt.moveOut()
 
-        self.motXCM.setAbsPosition(40333)
+        self.motXCM.setAbsPosition(36000)
         self.motYCM.setAbsPosition(12240)
         self.m2Tgt.setAbsPosition(0)
 
-        self.motXCM.getPosition()
-        self.motYCM.getPosition()
+        # sleep(1)
+        while self.motXCM.isBusy() or self.motYCM.isBusy():
+            sleep(0.5)
         self.filterCM.setAbsPosition(4)  # Protect camera before it is out
 
-        self.m2Tgt.getPosition()
+        # sleep(1)
+        while self.m2Tgt.isBusy() or self.filterCM.isBusy():
+            sleep(0.5)
 
     def measureT6(self): # This is tricky, I will get back to this later
         self.eaTgt.moveOut()
@@ -73,10 +84,9 @@ class CoronagraphDevices:
         self.motYCM.setAbsPosition(12240)
         self.m2Tgt.setAbsPosition(0)
 
-        self.motXCM.getPosition()
-        self.motYCM.getPosition()
+        while self.m2Tgt.isBusy() or self.motXCM.isBusy() or self.motYCM.isBusy():
+            sleep(0.5)
 
-        self.m2Tgt.getPosition()
         self.filterCM.setAbsPosition(0)
         self.lsTgt.moveOut()  ## SAFETY
         #This puts an ND4 filter at the CM to block also the main camera, one has to then remove the filters accordingly...

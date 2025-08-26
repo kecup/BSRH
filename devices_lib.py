@@ -47,8 +47,6 @@ class Pneumatics:
         self.state[self.slot] = 0
         self.japc.setParam(self.name + '/Setting#channelState', self.state, checkDims=False)
 
-
-
 ## Few comments on the motor logic - a) motion is non-blocking, so one has to carefully treat the busy statement, b) busy does not get turned on the milisecond one sends a new position to go to, c) all motion of a motor is done in raw steps
 ## d) getPosition is blocking, if non-blocking position is required, use Motor.position
 class Motor:
@@ -80,14 +78,18 @@ class Motor:
         else:
             return 0
 
-    def isBusy(self):
+    def isBusy(self, debug = False):
+        if debug == True:
+            print(self.position, self.desiredAbsPosition)
+
         return self.busy
 
     def callbackPosition(self, name, value):
         self.position = value
 
     def callbackBusy(self, name, value):
-        if np.abs(self.position - self.desiredAbsPosition) < 20 :
+        self.limitSwitchActive()
+        if self.position == self.desiredAbsPosition:
             self.busy = value
         else:
             self.busy = True
@@ -104,8 +106,17 @@ class Motor:
         minusSwitch = self.japc.getParam(self.name + '/Acquisition#end_switch_minus_active')
         out = -1
 
-        if plusSwitch or minusSwitch:
+        if plusSwitch:
             out = True
+            if self.desiredAbsPosition > self.position:
+                self.desiredAbsPosition = self.position
+                self.busy = False
+
+        elif minusSwitch:
+            out = True
+            if self.desiredAbsPosition < self.position:
+                self.desiredAbsPosition = self.position
+
         else:
             out = False
         return out
@@ -157,7 +168,6 @@ class Motor:
                 self.setAbsPosition(self.outPos)
         else:
             print('In/out not provided, doing nothing')
-
 
 class FWheel(Motor): # This is a motor with specific positions/values
     ## Redefining the motion, using units of filters...
@@ -217,6 +227,16 @@ class Camera:
             self.subscription = self.japc.subscribeParam(self.name + '/Acquisition#image1', self.updateImage)
         except:
             self.subscription = self.japc.subscribeParam(self.name + '/LastImage#image2D', self.updateImage)
+
+
+    def changeExpTime(self, exposure):
+        if 40 < exposure < 1e5:
+            self.japc.setParam(self.name+'/Setting#ExposureTime', exposure)
+        else:
+            print('Exposure not valid')
+
+    def setBg(self, image): # We should make some fail-safes...
+        self.bgImage = image
 
     def updateImage(self, parameter, value):
         self.image = value
