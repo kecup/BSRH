@@ -21,5 +21,7 @@ plt.ylabel("y coordinate")
 plt.title("Trajectory colored by Time")
 
 cbar = plt.colorbar(scatter)
+cbar.ax.yaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
 cbar.set_label("Time (seconds since epoch)")
+
 plt.show()
