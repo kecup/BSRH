@@ -1,26 +1,34 @@
+fig, axs = plt.subplots(2, 1, figsize=(10,8))
+
+# x and y over time
+axs[0].plot(df["time"], df["x"], label="x")
+axs[0].plot(df["time"], df["y"], label="y")
+axs[0].set_xlabel("Time")
+axs[0].set_ylabel("Coordinate value")
+axs[0].legend()
+axs[0].set_title("x and y over time")
+
+# trajectory
+sc = axs[1].scatter(df["x"], df["y"], c=df["time"], cmap="plasma")
+axs[1].set_xlabel("x")
+axs[1].set_ylabel("y")
+axs[1].set_title("Trajectory (color = time)")
+fig.colorbar(sc, ax=axs[1], label="Time")
+
+plt.tight_layout()
+plt.show()
+
+
 import pandas as pd
 import matplotlib.pyplot as plt
 
 df = pd.read_csv("your_file.csv")
 
-plt.figure(figsize=(6,6))
-plt.scatter(df["xA"], df["xB"], alpha=0.6, label="X comparison")
-plt.scatter(df["yA"], df["yB"], alpha=0.6, label="Y comparison")
-plt.plot([df[["xA","xB","yA","yB"]].min().min(), 
-          df[["xA","xB","yA","yB"]].max().max()],
-         [df[["xA","xB","yA","yB"]].min().min(), 
-          df[["xA","xB","yA","yB"]].max().max()],
-         'r--', label="Perfect match")
-plt.xlabel("Method A")
-plt.ylabel("Method B")
+plt.figure(figsize=(10,5))
+plt.plot(df["time"], df["x"], label="x-coordinate")
+plt.plot(df["time"], df["y"], label="y-coordinate")
+plt.xlabel("Time")
+plt.ylabel("Coordinate value")
+plt.title("Coordinates over Time")
 plt.legend()
-plt.title("Coordinate Comparison (A vs B)")
-plt.show()
-
-
-df["dx"] = df["xA"] - df["xB"]
-df["dy"] = df["yA"] - df["yB"]
-
-df[["dx","dy"]].hist(bins=30)
-plt.suptitle("Error Distribution (A - B)")
 plt.show()
