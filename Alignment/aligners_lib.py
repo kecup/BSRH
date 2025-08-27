@@ -15,7 +15,7 @@ from devices_lib import Camera, Motor, Pneumatics
 
 class AlignmentNN(ABC):
     def __init__(self, model_file_name=None, input_size=None, output_size=None, feedback_nn=None,
-                 X_scaler_name=None, y_scaler_name=None, japc=None, dist_tolerance=None):
+                 X_scaler_name=None, y_scaler_name=None, japc=None, dist_tolerance=None, config=None):
 
         self.dist_tolerance = dist_tolerance
         self.japc = japc
@@ -24,6 +24,8 @@ class AlignmentNN(ABC):
         self.feedback_nn = feedback_nn
         self.load(model_file_name, X_scaler_name, y_scaler_name)
         self.model.eval()
+
+        self.config = config
 
 
     @abstractmethod
@@ -49,16 +51,16 @@ class AlignmentNN(ABC):
         self.y_scaler = joblib.load(y_scaler_name)
 
 
-class T1T2AlignmentNN(AlignmentNN): # TODO: target movements from config? the whole thing not tested
+class T1T2AlignmentNN(AlignmentNN): # TODO: the whole thing not tested
     """
     Encompasses the logic of alignment for target 1 and target 2. (first optical line)
     """
 
     def __init__(self, model_file_name=None, input_size=None, output_size=None, feedback_nn=None,
-                 X_scaler_name=None, y_scaler_name=None, japc=None, dist_tolerance=15):
+                 X_scaler_name=None, y_scaler_name=None, japc=None, dist_tolerance=15, config=None):
         super().__init__(model_file_name=model_file_name, input_size=input_size, output_size=output_size,
                          feedback_nn=feedback_nn, X_scaler_name=X_scaler_name, y_scaler_name=y_scaler_name,
-                         japc=japc, dist_tolerance=dist_tolerance) # parent init
+                         japc=japc, dist_tolerance=dist_tolerance, config=config) # parent init
 
         self.name = "T1T2Model"
 
@@ -71,7 +73,7 @@ class T1T2AlignmentNN(AlignmentNN): # TODO: target movements from config? the wh
         self.target_ea = Pneumatics('LHC.BSRH.IN-OUT.B2', japc, 1)  # target1
 
         # LHC Cameras
-        self.cam1 = Camera('LHC.BSRH.MON.EA.B2', japc, motorX=self.target_ea, returnTarget=False)
+        self.cam1 = Camera('LHC.BSRH.MON.EA.B2', japc)
         self.cam2 = Camera('LHC.BSRH.MON.TGTM3.B2', japc)
 
         self.motor_references = {"x":7880, "phi": 219374, "theta": 236211}
@@ -104,10 +106,10 @@ class T1T2AlignmentNN(AlignmentNN): # TODO: target movements from config? the wh
         """
         Align to target in a loop until close enough.
         """
-        self.move_target_in() # target IN: can measure cam1
+        self.config.measureT1()
         cam1_pos = np.array(self.cam1.getBeamPosition())
 
-        self.move_target_out() # target OUT: can measure cam2
+        self.config.measureT2()
         cam2_pos = np.array(self.cam2.getBeamPosition())
         count = 0
 
@@ -124,24 +126,25 @@ class T1T2AlignmentNN(AlignmentNN): # TODO: target movements from config? the wh
             motor_prediction = self.predict([cam1_pos, cam2_pos])
             self.move_motors(motor_prediction)
 
+            self.config.measureT2() # not necessary
             cam2_pos = np.array(self.cam2.getBeamPosition())
 
-            self.move_target_in()
+            self.config.measureT1()
             cam1_pos = np.array(self.cam1.getBeamPosition())
 
             count += 1
 
         return count
 
-    def move_target_in(self):
-        if self.target_ea.getPosition() == 0:  # 0 is OUT and 1 is IN
-            self.target_ea.changePosition()
-            sleep(3)
-
-    def move_target_out(self):
-        if self.target_ea.getPosition() == 1:  # 0 is OUT and 1 is IN
-            self.target_ea.changePosition()
-            sleep(3)
+    # def move_target_in(self):
+    #     if self.target_ea.getPosition() == 0:  # 0 is OUT and 1 is IN
+    #         self.target_ea.changePosition()
+    #         sleep(3)
+    #
+    # def move_target_out(self):
+    #     if self.target_ea.getPosition() == 1:  # 0 is OUT and 1 is IN
+    #         self.target_ea.changePosition()
+    #         sleep(3)
 
     def send_to_references(self):
         """
@@ -170,10 +173,10 @@ class T3T4AlignmentNN(AlignmentNN):
     """
 
     def __init__(self, model_file_name=None, input_size=None, output_size=None, feedback_nn=None,
-                 X_scaler_name=None, y_scaler_name=None, japc=None, dist_tolerance=15, isr=True):
+                 X_scaler_name=None, y_scaler_name=None, japc=None, dist_tolerance=15, config=None, isr=True):
         super().__init__(model_file_name=model_file_name, input_size=input_size, output_size=output_size,
                          feedback_nn=feedback_nn, X_scaler_name=X_scaler_name, y_scaler_name=y_scaler_name,
-                         japc=japc, dist_tolerance=dist_tolerance) # parent init
+                         japc=japc, dist_tolerance=dist_tolerance, config=config) # parent init
 
         self.name = "T3T4Model"
         self.isr = isr # whether aligning on ISR or LHC
@@ -207,10 +210,8 @@ class T3T4AlignmentNN(AlignmentNN):
         """
         Use nn to predict next motor movement.
         """
-        # cam1_pos, cam2_pos = cams_pos[0], cams_pos[1]
         cam2_pos = cams_pos[0]
 
-        # input_vector = np.concatenate((cam1_pos, cam2_pos, self.cam1_target, self.cam2_target), axis=0)
         input_vector = np.concatenate((cam2_pos, self.cam2_target), axis=0)
         input_vector_2d = input_vector.reshape(1, -1)
         scaled_input = self.X_scaler.transform(input_vector_2d)
@@ -227,7 +228,7 @@ class T3T4AlignmentNN(AlignmentNN):
         """
         Align to target in a loop until close enough.
         """
-        # cam1_pos = np.array(self.cam1.getBeamPosition())
+        self.config.measureT4()
         cam2_pos = np.array(self.cam2.getBeamPosition())
         count = 0
 
@@ -241,11 +242,10 @@ class T3T4AlignmentNN(AlignmentNN):
                 self.send_to_references()
                 break
 
-            # motor_prediction = self.predict([cam1_pos, cam2_pos])
             motor_prediction = self.predict([cam2_pos])
             self.move_motors(motor_prediction)
 
-            # cam1_pos = np.array(self.cam1.getBeamPosition())
+            self.config.measureT4()
             cam2_pos = np.array(self.cam2.getBeamPosition())
             count += 1
         return count
@@ -279,10 +279,10 @@ class T5T6AlignmentNN(AlignmentNN): # TODO: adapt for t5 t6, its only copied now
     """
 
     def __init__(self, model_file_name=None, input_size=None, output_size=None, feedback_nn=None,
-                 X_scaler_name=None, y_scaler_name=None, japc=None, dist_tolerance=15, isr=True):
+                 X_scaler_name=None, y_scaler_name=None, japc=None, dist_tolerance=15, config=None, isr=True):
         super().__init__(model_file_name=model_file_name, input_size=input_size, output_size=output_size,
                          feedback_nn=feedback_nn, X_scaler_name=X_scaler_name, y_scaler_name=y_scaler_name,
-                         japc=japc, dist_tolerance=dist_tolerance) # parent init
+                         japc=japc, dist_tolerance=dist_tolerance, config=config) # parent init
 
         self.name = "T5T6Model"
         self.isr = isr # whether aligning on ISR or LHC
@@ -335,6 +335,7 @@ class T5T6AlignmentNN(AlignmentNN): # TODO: adapt for t5 t6, its only copied now
         """
         Align to target in a loop until close enough.
         """
+        self.config.measureT6()
         cam2_pos = np.array(self.cam2.getBeamPosition())
         count = 0
 
@@ -351,6 +352,7 @@ class T5T6AlignmentNN(AlignmentNN): # TODO: adapt for t5 t6, its only copied now
             motor_prediction = self.predict([cam2_pos])
             self.move_motors(motor_prediction)
 
+            self.config.measureT6()
             cam2_pos = np.array(self.cam2.getBeamPosition())
             count += 1
 
@@ -383,43 +385,46 @@ class AlignmentPipeline:
         if self.isr:
             self.t3_t4_alignment = t3_t4_alignment
             self.t5_t6_alignment = t5_t6_alignment
+
         else:
             self.t1_t2_alignment = t1_t2_alignment
             self.t3_t4_alignment = t3_t4_alignment
             self.t5_t6_alignment = t5_t6_alignment
 
-        self.cam4_abs_pos_in = 15142 # 22.713mm
-        self.cam4_abs_pos_out = 40000 # 40mm
-        self.cam4 = Motor('TST.cfv-375-bsrdev.mot.4-2', japc, 0) # backlash not measured
-
-        self.nd_filter_abs_pos_out = 0 # 0mm
-        self.nd_filter_abs_pos_in = 26000 # 39mm
-        self.nd_filter = Motor('TST.cfv-375-bsrdev.mot.4-5', japc, 0) # backlash not measured
 
 
-    def move_cam4_out(self):
+        # self.cam4_abs_pos_in = 15142 # 22.713mm
+        # self.cam4_abs_pos_out = 40000 # 40mm
+        # self.cam4 = Motor('TST.cfv-375-bsrdev.mot.4-2', japc, 0) # backlash not measured
+        #
+        # self.nd_filter_abs_pos_out = 0 # 0mm
+        # self.nd_filter_abs_pos_in = 26000 # 39mm
+        # self.nd_filter = Motor('TST.cfv-375-bsrdev.mot.4-5', japc, 0) # backlash not measured
 
-        self.cam4.setAbsPosition(self.cam4_abs_pos_out)
-        while self.cam4.isBusy():
-            sleep(0.2)
 
-    def move_cam4_in(self):
-
-        self.cam4.setAbsPosition(self.cam4_abs_pos_in)
-        while self.cam4.isBusy():
-            sleep(0.2)
-
-    def move_nd_filter_in(self):
-
-        self.nd_filter.setAbsPosition(self.nd_filter_abs_pos_in)
-        while self.nd_filter.isBusy():
-            sleep(0.2)
-
-    def move_nd_filter_out(self):
-
-        self.nd_filter.setAbsPosition(self.nd_filter_abs_pos_out)
-        while self.nd_filter.isBusy():
-            sleep(0.2)
+    # def move_cam4_out(self):
+    #
+    #     self.cam4.setAbsPosition(self.cam4_abs_pos_out)
+    #     while self.cam4.isBusy():
+    #         sleep(0.2)
+    #
+    # def move_cam4_in(self):
+    #
+    #     self.cam4.setAbsPosition(self.cam4_abs_pos_in)
+    #     while self.cam4.isBusy():
+    #         sleep(0.2)
+    #
+    # def move_nd_filter_in(self):
+    #
+    #     self.nd_filter.setAbsPosition(self.nd_filter_abs_pos_in)
+    #     while self.nd_filter.isBusy():
+    #         sleep(0.2)
+    #
+    # def move_nd_filter_out(self):
+    #
+    #     self.nd_filter.setAbsPosition(self.nd_filter_abs_pos_out)
+    #     while self.nd_filter.isBusy():
+    #         sleep(0.2)
 
     def run_full_alignment(self):
         if self.isr:
@@ -427,8 +432,8 @@ class AlignmentPipeline:
             count2 = self.t3_t4_alignment.align()
             print(f"t3 - t4 aligned in {count2} steps")
 
-            self.move_nd_filter_in()
-            self.move_cam4_out()
+            # self.move_nd_filter_in()
+            # self.move_cam4_out()
 
             # Stage 2: t5 - t6 alignment
             count3 = self.t5_t6_alignment.align()
@@ -439,8 +444,14 @@ class AlignmentPipeline:
             count1 = self.t1_t2_alignment.align()
             print(f"t1 - t2 aligned in {count1} steps")
 
-            # Stage 2: t3 - t4 alignment
-            # self.t3_t4_alignment.align()
+            # # Stage 2: t3 - t4 alignment
+            # count2 = self.t3_t4_alignment.align()
+            # print(f"t3 - t4 aligned in {count2} steps")
+            #
+            # # self.move_nd_filter_in()
+            # # self.move_cam4_out()
+            #
+            # # Stage 3: t5 - t6 alignment
+            # count3 = self.t5_t6_alignment.align()
+            # print(f"t5 - t6 aligned in {count3} steps")
 
-            # Stage 3: t5 - t6 alignment
-            # self.t5_t6_alignment.align()
