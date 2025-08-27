@@ -49,7 +49,7 @@ M1Theta = Motor('LHC.BSRH.STEERING-V.B2', japc, 100)
 # FoldingY = Motor('LHC.BSRH.FOLDING-V.B2', japc,0)
 
 ##Cameras
-MonEA = Camera('LHC.BSRH.MON.EA.B2', japc, motorX=TargetEA, returnTarget=False) # camera 1
+MonEA = Camera('LHC.BSRH.MON.EA.B2', japc) # camera 1
 # MonM3 = Camera('LHC.BSRH.MON.TGTM3.B2', japc, TargetM3) #Add target in case you want to look further than TGTM3 in Position M2
 MonM3 = Camera('LHC.BSRH.MON.TGTM3.B2', japc) # camera 2
 # MonCM = Camera('LHC.BSRH.CAM.CM.B2', japc, TargetCMx, TargetCMy)
@@ -58,7 +58,7 @@ MonM3 = Camera('LHC.BSRH.MON.TGTM3.B2', japc) # camera 2
 #cam = Camera('LHC.BSRH.BTVDC-CAM.MAIN', japc)
 
 # t1 t2 lhc
-MOTOR_REFERENCES = {"x":7880, "phi": 219374, "theta": 236211}
+MOTOR_REFERENCES = {"x":6680, "phi": 220254, "theta": 236231}
 
 def get_steps():
   """
@@ -95,7 +95,9 @@ def measure_c1():
   Measure camera 1 data.
   """
   cam1X, cam1Y = MonEA.getBeamPosition()
+  err = 0
   if cam1X == -1 or cam1Y == -1:
+    err = 1
     print('Did not find beam, sending to references')  ## This does not account for summing up the backlash...
     sleep(2)
     M1x.setAbsPosition(ref_x)
@@ -105,14 +107,17 @@ def measure_c1():
     cam1X, cam1Y = MonEA.getBeamPosition()
     if cam1X == -1 or cam1Y == -1:
       print('Cannot find beam at reference location, stopping now')
-  return cam1X, cam1Y
+      err = 2
+  return cam1X, cam1Y, err
 
 def measure_c2():
   """
   Measure camera 2 data.
   """
-  cam2X, cam2Y = MonM3.getBeamPosition()
-  if cam2X == -1 or cam2Y == -1: # not sure I can do this for cam2
+  cam2X, cam2Y = MonM3.getBeamPosition(True)
+  err = 0
+  if cam2X == -1 or cam2Y == -1:
+    err = 1# not sure I can do this for cam2
     print('Did not find beam, sending to references')  ## This does not account for summing up the backlash...
     sleep(2)
     M1x.setAbsPosition(ref_x)
@@ -122,15 +127,16 @@ def measure_c2():
     cam2X, cam2Y = MonM3.getBeamPosition()
     if cam2X == -1 or cam2Y == -1:
       print('Cannot find beam at reference location, stopping now')
-  return cam2X, cam2Y
+      err = 2
+  return cam2X, cam2Y, err
 
 
 # How many steps the motor can make from reference to keep the image on the camera
-motor_range_x_t1 = 6000 # in steps (15mm)
+motor_range_x_t1 = 1320 # in steps (15mm)
 motor_range_phi_t1 = 43000 # in steps
 motor_range_theta_t1 = 27241 # in steps
 
-motor_range_x_t2 = 6000# in steps (15mm)
+motor_range_x_t2 = 1320# in steps (15mm)
 motor_range_phi_t2 = 5000 # in steps
 motor_range_theta_t2 = 3000 # in steps
 
@@ -143,9 +149,11 @@ ref_phi = M1Phi.getPosition()
 ref_theta = M1Theta.getPosition()
 
 # open a csv file that we will use to save the training data:
-file_name = 'Data/lhc_t1_t2_data_v3.csv'
+file_name = 'Data/lhc_t1_t2_data_v4.csv'
 header = ["cam1X", "cam1Y", "cam2X", "cam2Y", "mX", "mPhi", "mTheta", "t1X", "t1Y", "t2X", "t2Y", "stepsX", "stepsPhi", "stepsTheta"]
 file_exists = os.path.isfile(file_name)
+
+error_counter = 0
 
 with open(file_name, 'a') as file:
   file_writer = csv.writer(file)
@@ -155,35 +163,68 @@ with open(file_name, 'a') as file:
 
   iterations = 2000
 
-  # make sure target 1 is IN
-  if TargetEA.getPosition() == 0: # 0 is OUT and 1 is IN
-    TargetEA.changePosition()
-    sleep(3)
+  # # make sure target 1 is IN
+  # if TargetEA.getPosition() == 0: # 0 is OUT and 1 is IN
+  #   TargetEA.changePosition()
+  #   sleep(3)
 
-  for i in range(iterations):
+  TargetEA.moveIn()
+
+  cam1X, cam1Y, _ = measure_c1()
+
+  mX = M1x.getPosition()
+  mPhi = M1Phi.getPosition()
+  mTheta = M1Theta.getPosition()
+
+  # print("Identifikator 1: ", MonEA.motorX.isIn())
+  TargetEA.moveOut()
+  sleep(2)
+
+  cam2X, cam2Y, _ = measure_c2()
+
+
+  for i in range(iterations): #target in, cam1, cam2 musim mit zmerene...
     print("Starting iteration " + str(i+1))
-    cam1X, cam1Y = measure_c1()
-
-    mX = M1x.getPosition()
-    mPhi = M1Phi.getPosition()
-    mTheta = M1Theta.getPosition()
-
-    # print("Identifikator 1: ", MonEA.motorX.isIn())
-    MonEA.motorX.changePosition()
-    sleep(2)
-    cam2X, cam2Y = measure_c2()
 
     stepsX, stepsPhi, stepsTheta = get_steps()
     move_motors(stepsX, stepsPhi, stepsTheta)
 
-    t2X, t2Y = MonM3.getBeamPosition()
+    t2X, t2Y, err2 = measure_c2()
 
-    t1X, t1Y = MonEA.getBeamPosition()
+    TargetEA.moveIn()
+    t1X, t1Y, err1 = measure_c1()
 
-    if not math.isclose(t1X, -1.0, rel_tol=1e-9) or not math.isclose(t1Y, -1.0, rel_tol=1e-9) or not math.isclose(t2X, -1.0, rel_tol=1e-9) or not math.isclose(t2Y, -1.0, rel_tol=1e-9):
+    if err1 < 1 and err2 < 1:
       row = [cam1X, cam1Y, cam2X, cam2Y, mX, mPhi, mTheta, t1X, t1Y, t2X, t2Y, stepsX, stepsPhi, stepsTheta]
       file_writer.writerow(row)
       file.flush()
+      error_counter = 0
+
+    elif err1 == 2 or err2 == 2:
+      break
+
+    cam1X, cam1Y = t1X, t1Y
+    cam2X, cam2Y = t2X, t2Y
+
+    stepsX, stepsPhi, stepsTheta = get_steps()
+    move_motors(stepsX, stepsPhi, stepsTheta)
+
+    t1X, t1Y, err1 = measure_c1()
+    TargetEA.moveOut()
+    t2X, t2Y, err2 = measure_c2()
+
+    if err1 < 1 and err2 < 1:
+      row = [cam1X, cam1Y, cam2X, cam2Y, mX, mPhi, mTheta, t1X, t1Y, t2X, t2Y, stepsX, stepsPhi, stepsTheta]
+      file_writer.writerow(row)
+      file.flush()
+      error_counter = 0
+
+    elif err1 == 2 or err2 == 2:
+      break
+
+    cam1X, cam1Y = t1X, t1Y
+    cam2X, cam2Y = t2X, t2Y
+
 
     print('Done {} movements. '.format(i), end='\r')
 

@@ -1,7 +1,6 @@
 from devices_lib import Motor, Pneumatics, FWheel
 from time import sleep
 
-
 class CoronagraphDevices:
     def __init__(self, japc):
         self.japc = japc
@@ -28,14 +27,14 @@ class CoronagraphDevices:
     def measureT1(self): # These are now blocking...
         self.lsTgt.moveIn()  ## SAFETY
         self.eaTgt.moveIn()
-        sleep(1)
+        sleep(5)
 
     def measureT2(self):
         self.lsTgt.moveIn()  ## SAFETY
         self.eaTgt.moveOut()
         self.m2Tgt.setAbsPosition(42650)
 
-        # sleep(1)
+        sleep(1.5)
         while self.m2Tgt.isBusy():
             sleep(0.5)
 
