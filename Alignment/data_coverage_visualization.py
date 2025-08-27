@@ -103,6 +103,33 @@ def visualize_target_coverage_t5_t6(df, cam_bounds):
     # plt.grid(True)
     plt.show()
 
+def visualize_target_coverage_t3_scaled(df, cam1_bounds):
+    fig, ax = plt.subplots(figsize=(6, 6))
+
+    # Draw rectangle for cam1
+    width1 = cam1_bounds["x_max"] - cam1_bounds["x_min"]
+    height1 = cam1_bounds["y_max"] - cam1_bounds["y_min"]
+    rect_start1 = (cam1_bounds["x_min"], cam1_bounds["y_min"])
+    rectangle1 = patches.Rectangle(rect_start1, width1, height1,
+                                  linewidth=1, edgecolor='blue', facecolor='none')
+
+    ax.add_patch(rectangle1)
+
+    # Scatter points from DataFrame
+    ax.scatter(df['cam1X'], df['cam1Y'], color='pink', alpha=0.5, label='Cam1', s=5)
+
+    ax.scatter(df['t1X'], df['t1Y'], color='green', alpha=0.5, label='Cam1', s=5)
+
+
+    # Formatting
+    ax.set_xlabel("cam_x")
+    ax.set_ylabel("cam_y")
+    ax.legend()
+    ax.set_title("Beam Position Coverage")
+
+    # plt.grid(True)
+    plt.show()
+
 def main():
     cam1_bounds_t1_t2 = {"x_min": 0, "x_max": 0, "y_min": 0, "y_max": 0} # don't know
     cam2_bounds_t1_t2 = {"x_min": 0, "x_max": 0, "y_min": 0, "y_max": 0} # don't know
@@ -110,14 +137,19 @@ def main():
     cam1_bounds_t3_t4 = {"x_min": 659, "x_max": 844, "y_min": 51, "y_max": 237}
     cam2_bounds_t3_t4 = {"x_min": 0, "x_max": 960, "y_min": 0, "y_max": 640}
 
+    cam1_bounds_t5_t6 = {"x_min": 0, "x_max": 960, "y_min": 0, "y_max": 640} # don't know
+    cam2_bounds_t6_t5 = {"x_min": 0, "x_max": 960, "y_min": 0, "y_max": 640} # don't know
 
-    df = pd.read_csv("Data/lhc_t1_t2_data_v3_clipped_and_recalculated.csv")
+
+    df = pd.read_csv("Data/isr_t5_t6_data_v3.csv")
 
     print(f"There are {df.shape[0]} rows.")
 
-    visualize_target_coverage_t1_t2(df, cam1_bounds_t1_t2, cam2_bounds_t1_t2)
+    # visualize_target_coverage_t1_t2(df, cam1_bounds_t1_t2, cam2_bounds_t1_t2)
     # visualize_target_coverage_t3_t4(df, cam1_bounds_t3_t4, cam2_bounds_t3_t4)
-    # visualize_target_coverage_t5_t6(df, cam2_bounds)
+    visualize_target_coverage_t5_t6(df, cam2_bounds_t6_t5)
+
+    # visualize_target_coverage_t3_scaled(df, cam1_bounds_t3_t4)
 
 
 if __name__ == "__main__":
