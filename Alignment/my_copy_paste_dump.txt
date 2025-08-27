@@ -1,17 +1,55 @@
-df = pd.read_csv("your_file.csv")
-df["time"] = pd.to_datetime(df["time"])
+import pandas as pd
+import numpy as np
 
-# Convert to numeric for coloring
-time_numeric = df["time"].map(mdates.date2num)
+def synthesize_outside_data(df, canvas_x=(659, 844), canvas_y=(51, 237), k_list=[1.25, 1.5, 2.0, 3.0]):
+    """
+    Expand dataset by generating synthetic cam positions outside the bounding box.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Must contain columns ["cam1X","cam1Y","t1X","t1Y","stepsPhi","stepsTheta"]
+    canvas_x : (min, max)
+        Allowed X range for camera
+    canvas_y : (min, max)
+        Allowed Y range for camera
+    k_list : list of float
+        Scaling factors > 1 to push camera further away
+    
+    Returns
+    -------
+    pd.DataFrame
+        Augmented dataset with synthetic rows
+    """
+    rows = []
+    for idx, row in df.iterrows():
+        dx = row["cam1X"] - row["t1X"]
+        dy = row["cam1Y"] - row["t1Y"]
 
-plt.figure(figsize=(8,6))
-scatter = plt.scatter(df["x"], df["y"], c=time_numeric, cmap="viridis", s=10)
-plt.xlabel("x coordinate")
-plt.ylabel("y coordinate")
-plt.title("Trajectory colored by Time")
+        for k in k_list:
+            # push camera further away from target
+            new_camX = row["t1X"] + k * dx
+            new_camY = row["t1Y"] + k * dy
 
-# Colorbar with proper datetime labels
-cbar = plt.colorbar(scatter)
-cbar.ax.yaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
-cbar.set_label("Time")
-plt.show()
+            # clip to stay within canvas
+            new_camX = np.clip(new_camX, *canvas_x)
+            new_camY = np.clip(new_camY, *canvas_y)
+
+            new_row = {
+                "cam1X": new_camX,
+                "cam1Y": new_camY,
+                "t1X": row["t1X"],
+                "t1Y": row["t1Y"],
+                "stepsPhi": k * row["stepsPhi"],
+                "stepsTheta": k * row["stepsTheta"],
+                "orig_index": idx,
+                "scale_factor": k
+            }
+            rows.append(new_row)
+
+    return pd.DataFrame(rows)
+
+# Example usage
+# df = pd.read_csv("your_data.csv")
+# df_aug = synthesize_outside_data(df)
+# print(df_aug.head())
