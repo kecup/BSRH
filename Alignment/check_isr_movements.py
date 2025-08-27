@@ -14,7 +14,7 @@ import pyrbac
 from devices_lib import Camera
 
 def collect_data(cam):
-    file_name = 'Data/isr_motor_movements.csv'
+    file_name = 'Data/isr_motor_movements_2.csv'
     header = ["camX", "camY", "time"]
     file_exists = os.path.isfile(file_name)
 
@@ -33,7 +33,9 @@ def collect_data(cam):
             sleep(10)
 
 def visualize_data():
-    df = pd.read_csv('Data/isr_motor_movements.csv')
+    df = pd.read_csv('Data/isr_motor_movements_2.csv')
+
+    print(f"There are {df.shape[0]} rows")
 
     df["time"] = pd.to_datetime(df["time"])
 
