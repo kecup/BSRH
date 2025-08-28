@@ -70,7 +70,7 @@ class T1T2AlignmentNN(AlignmentNN): # TODO: the whole thing not tested
         self.motor_theta = Motor('LHC.BSRH.STEERING-V.B2', japc, 100)
 
         #LHC target
-        self.target_ea = Pneumatics('LHC.BSRH.IN-OUT.B2', japc, 1)  # target1
+        # self.target_ea = Pneumatics('LHC.BSRH.IN-OUT.B2', japc, 1)  # target1
 
         # LHC Cameras
         self.cam1 = Camera('LHC.BSRH.MON.EA.B2', japc)
@@ -78,9 +78,8 @@ class T1T2AlignmentNN(AlignmentNN): # TODO: the whole thing not tested
 
         self.motor_references = {"x":7880, "phi": 219374, "theta": 236211}
 
-        self.cam1_target = [480, 320] # cam1 target center
-        self.cam2_target = [480, 320]  # cam2 target center
-        # TODO: check if targets valid - probably not
+        self.cam1_target = [421, 215] # cam1 target center # TODO: y axis has to scale accoringly on both targets..
+        self.cam2_target = [310, 205]  # cam2 target center
 
 
     def predict(self, cams_pos):
@@ -115,6 +114,9 @@ class T1T2AlignmentNN(AlignmentNN): # TODO: the whole thing not tested
 
         while (np.abs(cam2_pos[0] - self.cam2_target[0]) > self.dist_tolerance or
                np.abs(cam2_pos[1] - self.cam2_target[1]) > self.dist_tolerance):
+
+            print('Moving, distance to target 2= ', np.sqrt((cam2_pos[0] - self.cam2_target[0]) ** 2 + (cam2_pos[1] - self.cam2_target[1]) ** 2))
+            print('Moving, distance to target 1= ', np.sqrt((cam1_pos[0] - self.cam1_target[0]) ** 2 + (cam1_pos[1] - self.cam1_target[1]) ** 2))
             if count > 15:
                 print("Not getting closer reasonably fast.")
                 break

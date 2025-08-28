@@ -138,7 +138,7 @@ class Motor:
             #    sleep(0.5)
 
         else:
-            print('Cannot comply, motor is busy!')
+            print(f'Cannot comply, {self.name} is busy!')
 
     def setRelPosition(self, relPosition):  # Motion in relative steps!
         relPosition = int(relPosition)
@@ -220,9 +220,11 @@ class Camera:
     def __init__(self, name, japc):  ## Provide motors as Class and positions in steps...
         self.name = name
         self.japc = japc
+        self.exposure = self.japc.getParam(self.name + '/Setting#ExposureTime')
         self.updated = dt.datetime.now()
         self.image = []
         self.bgImage = []
+        self.exposure = self.japc.getParam(self.name+'/Acquisition#ExposureTime')
         try:
             self.subscription = self.japc.subscribeParam(self.name + '/Acquisition#image1', self.updateImage)
         except:
@@ -231,6 +233,7 @@ class Camera:
 
     def changeExpTime(self, exposure):
         if 40 < exposure < 1e5:
+            self.exposure = exposure
             self.japc.setParam(self.name+'/Setting#ExposureTime', exposure)
         else:
             print('Exposure not valid')
