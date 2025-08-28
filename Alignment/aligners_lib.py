@@ -167,6 +167,44 @@ class T1T2AlignmentNN(AlignmentNN): # TODO: the whole thing not tested
             sleep(0.2)
 
 
+class T3AlignmentNN(AlignmentNN):
+    """
+    Encompasses the logic of hitting a specific range on t3 to see t4.
+    """
+
+    def __init__(self, model_file_name=None, input_size=None, output_size=None, feedback_nn=None,
+                 X_scaler_name=None, y_scaler_name=None, japc=None, dist_tolerance=15, config=None, isr=True):
+        super().__init__(model_file_name=model_file_name, input_size=input_size, output_size=output_size,
+                         feedback_nn=feedback_nn, X_scaler_name=X_scaler_name, y_scaler_name=y_scaler_name,
+                         japc=japc, dist_tolerance=dist_tolerance, config=config) # parent init
+
+        self.name = "HitT3Model"
+        self.isr = isr # whether aligning on ISR or LHC
+
+        if self.isr:
+            # ISR Motors
+            self.motor_phi = Motor('TST.cfv-375-bsrdev.mot.3-4', self.japc, 168)
+            self.motor_theta = Motor('TST.cfv-375-bsrdev.mot.3-5', self.japc, 125)
+
+            self.motor_references = {"x": 40385, "y": 41740, "phi": 140381, "theta": 163301}
+
+            # ISR Cameras
+            self.cam1 = Camera("TST.BSRH.MON.M2", self.japc)
+            self.cam2 = Camera("TST.BSRH.CAM.CM", self.japc)
+        else:
+            pass
+            # LHC Motors
+            # TODO
+
+            # LHC Cameras
+            # TODO
+
+        self.target_box = {"x_min": 725, "x_max": 762, "y_min": 112, "y_max": 169}
+        self.cam1_target = [743, 140]  # cam1 target center
+        # TODO: check if targets valid also for LHC
+
+    #TODO: ...................
+
 class T3T4AlignmentNN(AlignmentNN):
     """
     Encompasses the logic of alignment for target 3 and target 4. (second optical line)
