@@ -169,7 +169,7 @@ class FeedbackNN5(nn.Module):  # do not touch this, t1 t2 uses this
     def forward(self, x):
         return self.model(x)
 
-class FeedbackNN6(nn.Module):  # do not touch this, t3 t4 v4 uses this
+class FeedbackNN6(nn.Module):  # do not touch this, t3 t4 v4 + hit t3 v1 uses this
     def __init__(self, input_size=8, output_size=2, seed=42):
         super(FeedbackNN6, self).__init__()
         torch.manual_seed(seed)
@@ -233,7 +233,7 @@ class FeedbackNN7(nn.Module):  # do not touch this, t1 t2 uses this
     def forward(self, x):
         return self.model(x)
 
-class FeedbackNN8(nn.Module):  # do not touch this, hit t3 uses this
+class FeedbackNN8(nn.Module):
     def __init__(self, input_size=4, output_size=3, seed=42):
         super(FeedbackNN8, self).__init__()
         torch.manual_seed(seed)
@@ -246,8 +246,8 @@ class FeedbackNN8(nn.Module):  # do not touch this, hit t3 uses this
             nn.ReLU(),
             # nn.Dropout(0.1),
 
-            nn.Linear(64, 64),
-            nn.ReLU(),
+            # nn.Linear(64, 64),
+            # nn.ReLU(),
             # nn.Dropout(0.1),
 
             nn.Linear(64, 64),
@@ -295,9 +295,9 @@ def train_nn(model, X, y, file_name: str, X_scaler_name: str, y_scaler_name:str,
     # model = FeedbackNN(input_size=X_train.shape[1], output_size=y_train.shape[1]).to(device)
 
     criterion = nn.HuberLoss(delta=1.0)
-    optimizer = optim.Adam(model.parameters(), lr=0.00009, weight_decay= 1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=0.0001, weight_decay= 1e-4)
 
-    num_epochs = 500
+    num_epochs = 200
     best_val_loss = float('inf')
     best_metrics = {}
 
@@ -444,14 +444,16 @@ if __name__ == "__main__":
     data_file_name = "Data/isr_t3_t4_data_v4_filtered_scaled.csv"
 
     df = pd.read_csv(data_file_name)
+    df = df.sample(frac=1).reset_index(drop=True)
+    df = df.head(15000)
     print(f"There are {df.shape[0]} rows")
 
     # model 1
     # cams, targets -> steps
     X1 = df[["cam1X", "cam1Y", "t1X", "t1Y"]].values
     y1 = df[['stepsPhi', 'stepsTheta']].values
-    file_name1 = "Models/isr_hit_t3_model1_cam_target-steps.pth"
-    X_scaler_name1 = "Models/isr_hit_t3_model1_cam_target-steps_X_scaler.pkl"
-    y_scaler_name1 = "Models/isr_hit_t3_model1_cam_target-steps_y_scaler.pkl"
+    file_name1 = "Models/isr_hit_t3_v1_model1_cam_target-steps.pth"
+    X_scaler_name1 = "Models/isr_hit_t3_v1_model1_cam_target-steps_X_scaler.pkl"
+    y_scaler_name1 = "Models/isr_hit_t3_v1_model1_cam_target-steps_y_scaler.pkl"
     model1 = FeedbackNN6(X1.shape[1], y1.shape[1])
-    scaled_loss1, rmse1 = train_nn(model1, X1, y1, file_name1, X_scaler_name1, y_scaler_name1, save_model=False)
+    scaled_loss1, rmse1 = train_nn(model1, X1, y1, file_name1, X_scaler_name1, y_scaler_name1, save_model=True)
