@@ -7,16 +7,21 @@ import matplotlib.pyplot as plt
 import numpy as np
 import csv
 import matplotlib.dates as mdates
-from datetime import datetime
+from datetime import datetime, timedelta
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, parent_dir)
 import pyrbac
 from devices_lib import Camera
 
 def collect_data(cam):
-    file_name = 'Data/isr_motor_movements_2.csv'
+    file_name = 'Data/isr_motor_movements_m2.csv'
     header = ["camX", "camY", "time"]
     file_exists = os.path.isfile(file_name)
+
+    now = datetime.now()
+    # Target time = tomorrow 10:00 AM
+    tomorrow = now.date() + timedelta(days=1)
+    target_time = datetime.combine(tomorrow, datetime.strptime("10:00", "%H:%M").time())
 
     with open(file_name, 'a') as file:
         file_writer = csv.writer(file)
@@ -27,13 +32,18 @@ def collect_data(cam):
         while True:
             cam_pos = cam.getBeamPosition()
             time = datetime.now()
+            if now > target_time:
+                print("It's later than tomorrow 10:00. Stopping script.")
+                file.flush()
+                sys.exit()
+
             row = [cam_pos[0], cam_pos[1], time]
             file_writer.writerow(row)
             file.flush()
             sleep(10)
 
 def visualize_data():
-    df = pd.read_csv('Data/isr_motor_movements_2.csv')
+    df = pd.read_csv('Data/isr_motor_movements_m2.csv')
 
     print(f"There are {df.shape[0]} rows")
 
@@ -61,13 +71,15 @@ def main():
     token = client.login_kerberos()
     japc.rbacLogin(token=token)
 
-    cam = Camera("TST.BSRH.CAM.CM", japc)
+    # cam = Camera("TST.BSRH.CAM.CM", japc) # core mask
+    cam = Camera("TST.BSRH.MON.M2", japc) # t3
+    # cam = Camera("TST.BSRH.CAM.MAIN", japc) # Main camera
 
     japc.startSubscriptions()
     sleep(2)
 
-    # collect_data(cam)
-    visualize_data()
+    collect_data(cam)
+    # visualize_data()
 
     japc.stopSubscriptions()
 
