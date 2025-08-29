@@ -13,8 +13,8 @@ sys.path.insert(0, parent_dir)
 import pyrbac
 from devices_lib import Camera
 
-def collect_data(cam):
-    file_name = 'Data/isr_motor_movements_m2.csv'
+def collect_data(cam, file_name):
+    file_name = file_name
     header = ["camX", "camY", "time"]
     file_exists = os.path.isfile(file_name)
 
@@ -42,8 +42,8 @@ def collect_data(cam):
             file.flush()
             sleep(10)
 
-def visualize_data():
-    df = pd.read_csv('Data/isr_motor_movements_m2.csv')
+def visualize_data(file_name):
+    df = pd.read_csv(file_name)
 
     print(f"There are {df.shape[0]} rows")
 
@@ -71,15 +71,21 @@ def main():
     token = client.login_kerberos()
     japc.rbacLogin(token=token)
 
+    # ISR
     # cam = Camera("TST.BSRH.CAM.CM", japc) # core mask
-    cam = Camera("TST.BSRH.MON.M2", japc) # t3
+    # cam = Camera("TST.BSRH.MON.M2", japc) # t3
     # cam = Camera("TST.BSRH.CAM.MAIN", japc) # Main camera
+
+    # LHC
+    cam = Camera("?", japc)
+
+    file_name = 'Data/lhc_motor_movements_cm.csv'
 
     japc.startSubscriptions()
     sleep(2)
 
-    collect_data(cam)
-    # visualize_data()
+    collect_data(cam, file_name)
+    # visualize_data(file_name)
 
     japc.stopSubscriptions()
 
