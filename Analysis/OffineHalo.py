@@ -153,7 +153,8 @@ def align_zero(ax1, ax2):
     ax2.set_ylim(ymin - dy, ymax - dy)
 
 # Basic setup
-directory = '/user/jpucek/BSRH/Data/2025/06/19/'
+# directory = '/user/jpucek/BSRH/Data/2025/06/19/'  This is MD1 of 2025
+directory = '/user/jpucek/BSRH/Data/2025/08/04/'  # This is EoF scraping
 files = os.listdir(directory)
 files = sorted(files)
 
@@ -197,7 +198,8 @@ residualH = []
 imArray = []
 
 
-numbers = range(230, 264) #RUN13
+#numbers = range(230, 264) #RUN13
+numbers = range(len(files))
 
 for j in numbers:
     f = open(directory + files[j], 'rb')

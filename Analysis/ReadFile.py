@@ -46,7 +46,7 @@ LS = []
 CollGap_H =[]
 CollGap_V = []
 
-for nFile in range(250, len(files)):
+for nFile in range(0, len(files)): # Start 250
     # if 'run_18' in files[nFile]:
     #     print(nFile)
 

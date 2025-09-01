@@ -15,12 +15,12 @@ from devices_lib import Camera
 
 def collect_data(cam, file_name):
     file_name = file_name
-    header = ["camX", "camY", "time"]
+    header = ["gaussX", "gaussY", "comX", "comY", "time"]
     file_exists = os.path.isfile(file_name)
 
     now = datetime.now()
     # Target time = tomorrow 10:00 AM
-    tomorrow = now.date() + timedelta(days=1)
+    tomorrow = now.date() + timedelta(days=2)
     target_time = datetime.combine(tomorrow, datetime.strptime("10:00", "%H:%M").time())
 
     with open(file_name, 'a') as file:
@@ -31,13 +31,14 @@ def collect_data(cam, file_name):
 
         while True:
             cam_pos = cam.getBeamPosition()
+            com_pos = cam.getBeamPosition(True)
             time = datetime.now()
             if now > target_time:
                 print("It's later than tomorrow 10:00. Stopping script.")
                 file.flush()
                 sys.exit()
 
-            row = [cam_pos[0], cam_pos[1], time]
+            row = [cam_pos[0], cam_pos[1], com_pos[0], com_pos[1], time]
             file_writer.writerow(row)
             file.flush()
             sleep(10)
@@ -53,7 +54,7 @@ def visualize_data(file_name):
     time_numeric = df["time"].map(mdates.date2num)
 
     plt.figure(figsize=(8, 6))
-    scatter = plt.scatter(df["camX"], df["camY"], c=time_numeric, cmap="viridis", s=10)
+    scatter = plt.scatter(df["gaussX"], df["gaussY"], c=time_numeric, cmap="viridis", s=10)
     plt.xlabel("x coordinate")
     plt.ylabel("y coordinate")
     plt.title("Trajectory colored by Time")
@@ -77,15 +78,15 @@ def main():
     # cam = Camera("TST.BSRH.CAM.MAIN", japc) # Main camera
 
     # LHC
-    cam = Camera("?", japc)
+    cam = Camera("LHC.BSRH.CAM.CM.B2", japc)
 
     file_name = 'Data/lhc_motor_movements_cm.csv'
 
     japc.startSubscriptions()
     sleep(2)
 
-    collect_data(cam, file_name)
-    # visualize_data(file_name)
+    # collect_data(cam, file_name)
+    visualize_data(file_name)
 
     japc.stopSubscriptions()
 
