@@ -2,7 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
-def visualize_target_coverage_t1_t2(df, cam1_bounds, cam2_bounds):
+def visualize_target_coverage_t1_t2(df, cam1_bounds, cam2_bounds, show_targets=False):
 
     fig, ax = plt.subplots(figsize=(6, 6))
 
@@ -11,7 +11,7 @@ def visualize_target_coverage_t1_t2(df, cam1_bounds, cam2_bounds):
     height1 = cam1_bounds["y_max"] - cam1_bounds["y_min"]
     rect_start1 = (cam1_bounds["x_min"], cam1_bounds["y_min"])
     rectangle1 = patches.Rectangle(rect_start1, width1, height1,
-                                  linewidth=1, edgecolor='blue', facecolor='none')
+                                  linewidth=1, edgecolor='darkblue', facecolor='none')
 
     # Draw rectangle for cam2
     width2 = cam2_bounds["x_max"] - cam2_bounds["x_min"]
@@ -23,24 +23,28 @@ def visualize_target_coverage_t1_t2(df, cam1_bounds, cam2_bounds):
     ax.add_patch(rectangle1)
     ax.add_patch(rectangle2)
 
-    # Scatter points from DataFrame
-    ax.scatter(df['cam1X'], df['cam1Y'], color='green', alpha=0.5, label='Cam1', s=5)
-    ax.scatter(df['cam2X'], df['cam2Y'], color='orange', alpha=0.5, label='Cam2', s=5)
-
-    # ax.scatter(df['t1X'], df['t1Y'], color='green', alpha=0.5, label='Cam1', s=5)
-    # ax.scatter(df['t2X'], df['t2Y'], color='orange', alpha=0.5, label='Cam2', s=5)
+    if not show_targets:
+        # Scatter points from DataFrame
+        ax.scatter(df['cam1X'], df['cam1Y'], color='blue', alpha=0.5, label='Camera 1', s=10)
+        ax.scatter(df['cam2X'], df['cam2Y'], color='orange', alpha=0.5, label='Camera 2', s=10)
+    else:
+        ax.scatter(df['t1X'], df['t1Y'], color='green', alpha=0.5, label='Camera 1', s=10)
+        ax.scatter(df['t2X'], df['t2Y'], color='purple', alpha=0.5, label='Camera 2', s=10)
 
     # Formatting
-    ax.set_xlabel("cam_x")
-    ax.set_ylabel("cam_y")
-    ax.legend()
-    ax.set_title("Beam Position Coverage")
-
+    ax.set_xlabel("beam x position", fontsize=14)
+    ax.set_ylabel("beam y position", fontsize=14)
+    ax.tick_params(labelsize=12)
+    ax.legend(fontsize=14, loc="upper left")
+    if not show_targets:
+        ax.set_title("Prior Beam Position Coverage", fontsize=17)
+    else:
+        ax.set_title("Posterior Beam Position Coverage", fontsize=17)
     # plt.grid(True)
     plt.show()
 
 
-def visualize_target_coverage_t3_t4(df, cam1_bounds, cam2_bounds):
+def visualize_target_coverage_t3_t4(df, cam1_bounds, cam2_bounds, show_targets=False):
 
     fig, ax = plt.subplots(figsize=(6, 6))
 
@@ -49,7 +53,7 @@ def visualize_target_coverage_t3_t4(df, cam1_bounds, cam2_bounds):
     height1 = cam1_bounds["y_max"] - cam1_bounds["y_min"]
     rect_start1 = (cam1_bounds["x_min"], cam1_bounds["y_min"])
     rectangle1 = patches.Rectangle(rect_start1, width1, height1,
-                                  linewidth=1, edgecolor='blue', facecolor='none')
+                                  linewidth=1, edgecolor='darkblue', facecolor='none')
 
     # Draw rectangle for cam2
     width2 = cam2_bounds["x_max"] - cam2_bounds["x_min"]
@@ -58,26 +62,33 @@ def visualize_target_coverage_t3_t4(df, cam1_bounds, cam2_bounds):
     rectangle2 = patches.Rectangle(rect_start2, width2, height2,
                                   linewidth=1, edgecolor='red', facecolor='none')
 
-    ax.add_patch(rectangle1)
+
     ax.add_patch(rectangle2)
 
-    # Scatter points from DataFrame
-    ax.scatter(df['cam1X'], df['cam1Y'], color='green', alpha=0.5, label='Cam1', s=5)
-    ax.scatter(df['cam2X'], df['cam2Y'], color='orange', alpha=0.5, label='Cam2', s=5)
+    if not show_targets:
+        # Scatter points from DataFrame
+        ax.scatter(df['cam2X'], df['cam2Y'], color='orange', alpha=0.5, label='Camera 2', s=7)
+        ax.scatter(df['cam1X'], df['cam1Y'], color='blue', alpha=0.5, label='Camera 1', s=7)
 
-    # ax.scatter(df['t1X'], df['t1Y'], color='green', alpha=0.5, label='Cam1', s=5)
-    # ax.scatter(df['t2X'], df['t2Y'], color='orange', alpha=0.5, label='Cam2', s=5)
+    else:
+        ax.scatter(df['t2X'], df['t2Y'], color='purple', alpha=0.5, label='Camera 2', s=7)
+        ax.scatter(df['t1X'], df['t1Y'], color='green', alpha=0.5, label='Camera 1', s=7)
+
+    ax.add_patch(rectangle1)
 
     # Formatting
-    ax.set_xlabel("cam_x")
-    ax.set_ylabel("cam_y")
-    ax.legend()
-    ax.set_title("Beam Position Coverage")
-
+    ax.set_xlabel("beam x position", fontsize=14)
+    ax.set_ylabel("beam y position", fontsize=14)
+    ax.tick_params(labelsize=12)
+    ax.legend(fontsize=14, loc="upper left")
+    if not show_targets:
+        ax.set_title("Prior Beam Position Coverage", fontsize=17)
+    else:
+        ax.set_title("Posterior Beam Position Coverage", fontsize=17)
     # plt.grid(True)
     plt.show()
 
-def visualize_target_coverage_t5_t6(df, cam_bounds):
+def visualize_target_coverage_t5_t6(df, cam_bounds, show_targets=False):
     fig, ax = plt.subplots(figsize=(6, 6))
 
     # Draw rectangle for cam
@@ -85,21 +96,25 @@ def visualize_target_coverage_t5_t6(df, cam_bounds):
     height = cam_bounds["y_max"] - cam_bounds["y_min"]
     rect_start = (cam_bounds["x_min"], cam_bounds["y_min"])
     rectangle = patches.Rectangle(rect_start, width, height,
-                                  linewidth=1, edgecolor='blue', facecolor='none')
+                                  linewidth=1, edgecolor='red', facecolor='none')
 
     ax.add_patch(rectangle)
 
-    # Scatter points from DataFrame
-    ax.scatter(df['cam2X'], df['cam2Y'], color='orange', alpha=0.5, label='Cam2', s=5)
-
-    # ax.scatter(df['t2X'], df['t2Y'], color='blue', alpha=0.5, label='Cam2', s=5)
+    if not show_targets:
+        # Scatter points from DataFrame
+        ax.scatter(df['cam2X'], df['cam2Y'], color='orange', alpha=0.5, label='Main Camera', s=7)
+    else:
+        ax.scatter(df['t2X'], df['t2Y'], color='purple', alpha=0.5, label='Main Camera', s=7)
 
     # Formatting
-    ax.set_xlabel("cam_x")
-    ax.set_ylabel("cam_y")
-    ax.legend()
-    ax.set_title("Beam Position Coverage")
-
+    ax.set_xlabel("beam x position", fontsize=14)
+    ax.set_ylabel("beam y position", fontsize=14)
+    ax.tick_params(labelsize=12)
+    ax.legend(fontsize=14, loc="upper left")
+    if not show_targets:
+        ax.set_title("Prior Beam Position Coverage", fontsize=17)
+    else:
+        ax.set_title("Posterior Beam Position Coverage", fontsize=17)
     # plt.grid(True)
     plt.show()
 
@@ -159,18 +174,18 @@ def main():
     cam2_bounds_t3_t4 = {"x_min": 0, "x_max": 960, "y_min": 0, "y_max": 640}
 
     cam1_bounds_t5_t6 = {"x_min": 0, "x_max": 960, "y_min": 0, "y_max": 640} # don't know
-    cam2_bounds_t6_t5 = {"x_min": 0, "x_max": 960, "y_min": 0, "y_max": 640} # don't know
+    cam2_bounds_t6_t5 = {"x_min": 0, "x_max": 960, "y_min": 25, "y_max": 615} # don't know
 
 
-    df = pd.read_csv("Data/lhc_t3_t4_data_v4_filtered_scaled2.csv")
+    df = pd.read_csv("Data/isr_t5_t6_data_v3.csv")
 
     print(f"There are {df.shape[0]} rows.")
 
-    # visualize_target_coverage_t1_t2(df, cam1_bounds_t1_t2, cam2_bounds_t1_t2)
-    # visualize_target_coverage_t3_t4(df, cam1_bounds_t3_t4, cam2_bounds_t3_t4)
-    # visualize_target_coverage_t5_t6(df, cam2_bounds_t6_t5)
+    # visualize_target_coverage_t1_t2(df, cam1_bounds_t1_t2, cam2_bounds_t1_t2, show_targets=True)
+    # visualize_target_coverage_t3_t4(df, cam1_bounds_t3_t4, cam2_bounds_t3_t4, show_targets=True)
+    visualize_target_coverage_t5_t6(df, cam2_bounds_t6_t5, show_targets=True)
 
-    visualize_target_coverage_t3_scaled(df, cam_isr_bounds_t3, cam_isr_inner_bounds, cam_lhc_bounds_t3)
+    # visualize_target_coverage_t3_scaled(df, cam_isr_bounds_t3, cam_isr_inner_bounds, cam_lhc_bounds_t3)
 
 
 if __name__ == "__main__":

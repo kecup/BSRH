@@ -56,6 +56,21 @@ def filter_outliers(df, cam2_bounds, cam1_bounds=None):
 
     return df_filtered2
 
+def filter_target_outliers(df, cam2_bounds, cam1_bounds=None):
+
+    df_filtered2 = df[
+        (df['t2X'] >= cam2_bounds['x_min']) & (df['t2X'] <= cam2_bounds['x_max']) &
+        (df['t2Y'] >= cam2_bounds['y_min']) & (df['t2Y'] <= cam2_bounds['y_max'])]
+
+    if cam1_bounds != None:
+        df_filtered1 = df[
+            (df_filtered2['t1X'] >= cam1_bounds['x_min']) & (df_filtered2['t1X'] <= cam1_bounds['x_max']) &
+            (df_filtered2['t1Y'] >= cam1_bounds['y_min']) & (df_filtered2['t1Y'] <= cam1_bounds['y_max'])]
+
+        return df_filtered1
+
+    return df_filtered2
+
 def filter_center_targets(df, bounds):
     filtered_df = df[
         (df["t2X"].between(bounds["x_min"], bounds["x_max"])) &
@@ -94,19 +109,21 @@ def main():
     motor_references_t3_t4_v4 = {"x": 40385, "y": 41740, "phi": 140381, "theta": 163301}
     motor_references_t5_t6 = {"phi": 13444, "theta": 13360} # isr t5 t6 data collection v1
 
-    df = pd.read_csv('Data/lhc_t1_t2_data_v3.csv')
+    df = pd.read_csv('Data/isr_t3_t4_data_v4_filtered.csv')
 
-    # filtered_df = filter_outliers(df, cam2_bounds)
+    filtered_df = filter_outliers(df, cam2_bounds)
+    filtered_df = filter_target_outliers(filtered_df, cam2_bounds)
+
     # filtered_df = filter_references(df, motor_references_t3_t4_v4)
     # filtered_df = filter_center_targets(filtered_df, cam2_central)
     # filtered_df = filter_minus_ones(df)
     # filtered_df = pd.concat([df1, df2], ignore_index=True)
     # filtered_df = filter_t1t2_limit_motor_x_values(df)
-    filtered_df = clip_and_recalculate_mx_steps(df)
+    # filtered_df = clip_and_recalculate_mx_steps(df)
 
     print(f"Original size: {df.shape[0]}, Filtered size: {filtered_df.shape[0]}")
 
-    output_file = "Data/lhc_t1_t2_data_v3_clipped_and_recalculated.csv"
+    output_file = "Data/isr_t3_t4_data_v4_filtered2.csv"
 
     filtered_df.to_csv(output_file, index=False)
     print(f"Filtered dataset saved to {output_file}")
