@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 
 
-def synthesize_outside_data(df, canvas_x=(659, 844), canvas_y=(51, 237), k_list=[1.25, 2.0, 3.0, 3.5]):
+def synthesize_outside_data(df, isr, k_list=[1.25, 2.0, 3.0, 3.5, 4.0, 5.0, 6.0, 6.5, 7.0]):
     """
     Expand dataset by generating synthetic cam positions outside the bounding box.
 
@@ -22,6 +22,13 @@ def synthesize_outside_data(df, canvas_x=(659, 844), canvas_y=(51, 237), k_list=
     pd.DataFrame
         Augmented dataset with synthetic rows
     """
+    if isr:
+        canvas_x=(659, 844)
+        canvas_y=(51, 237)
+    else:
+        canvas_x = (505, 904)
+        canvas_y = (40, 435)
+
     rows = []
     for idx, row in df.iterrows():
         dx = row["cam1X"] - row["t1X"]
@@ -54,10 +61,12 @@ def synthesize_outside_data(df, canvas_x=(659, 844), canvas_y=(51, 237), k_list=
     return pd.DataFrame(rows)
 
 def main():
+    # for isr: canvas_x=(659, 844), canvas_y=(51, 237)
+    # for lhc: canvas_x=(505, 904), canvas_y=(40, 435)
     df = pd.read_csv("Data/isr_t3_t4_data_v4_filtered.csv")
-    df_aug = synthesize_outside_data(df)
+    df_aug = synthesize_outside_data(df, isr=False)
 
-    output_file = "Data/isr_t3_t4_data_v4_filtered_scaled.csv"
+    output_file = "Data/lhc_t3_t4_data_v4_filtered_scaled2.csv"
 
     df_aug.to_csv(output_file, index=False)
     print(f"Filtered dataset saved to {output_file}")

@@ -105,13 +105,14 @@ def move_to_target(model, targets_cam1, X_scaler, y_scaler):
 
 def main():
 
-    targets = [[740, 140]]
+    # targets = [[740, 140]] # ISR
+    targets = [[725, 168]] # LHC
 
     # model 1
     # cams, targets -> steps
-    file_name1 = "Models/isr_hit_t3_v1_model1_cam_target-steps.pth"
-    X_scaler_name1 = "Models/isr_hit_t3_v1_model1_cam_target-steps_X_scaler.pkl"
-    y_scaler_name1 = "Models/isr_hit_t3_v1_model1_cam_target-steps_y_scaler.pkl"
+    file_name1 = "Models/lhc_hit_t3_v1_model1_cam_target-steps.pth"
+    X_scaler_name1 = "Models/lhc_hit_t3_v1_model1_cam_target-steps_X_scaler.pkl"
+    y_scaler_name1 = "Models/lhc_hit_t3_v1_model1_cam_target-steps_y_scaler.pkl"
     X_scaler1 = joblib.load(X_scaler_name1)
     y_scaler1 = joblib.load(y_scaler_name1)
     model1 = FeedbackNN6(4, 2)
