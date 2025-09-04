@@ -441,19 +441,19 @@ if __name__ == "__main__":
     # uncomment for training
     # change FeedbackNN number for different nn architecture
 
-    data_file_name = "Data/isr_t3_t4_data_v4_filtered_scaled.csv"
+    data_file_name = "Data/lhc_t3_t4_data_v4_filtered_scaled2.csv"
 
     df = pd.read_csv(data_file_name)
     df = df.sample(frac=1).reset_index(drop=True)
-    df = df.head(15000)
+    df = df.head(20000)
     print(f"There are {df.shape[0]} rows")
 
     # model 1
     # cams, targets -> steps
     X1 = df[["cam1X", "cam1Y", "t1X", "t1Y"]].values
     y1 = df[['stepsPhi', 'stepsTheta']].values
-    file_name1 = "Models/isr_hit_t3_v1_model1_cam_target-steps.pth"
-    X_scaler_name1 = "Models/isr_hit_t3_v1_model1_cam_target-steps_X_scaler.pkl"
-    y_scaler_name1 = "Models/isr_hit_t3_v1_model1_cam_target-steps_y_scaler.pkl"
+    file_name1 = "Models/lhc_hit_t3_v1_model1_cam_target-steps.pth"
+    X_scaler_name1 = "Models/lhc_hit_t3_v1_model1_cam_target-steps_X_scaler.pkl"
+    y_scaler_name1 = "Models/lhc_hit_t3_v1_model1_cam_target-steps_y_scaler.pkl"
     model1 = FeedbackNN6(X1.shape[1], y1.shape[1])
     scaled_loss1, rmse1 = train_nn(model1, X1, y1, file_name1, X_scaler_name1, y_scaler_name1, save_model=True)
