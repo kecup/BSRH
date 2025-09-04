@@ -252,7 +252,7 @@ class AcquisitionGUI(QWidget):
             #self.bunchSlots.append(i)
             item = QTreeWidgetItem([str(i), ""])
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-            item.setCheckState(1, Qt.Checked)
+            item.setCheckState(1, Qt.Unchecked)
             self.bunch_tree.addTopLevelItem(item)
             
             

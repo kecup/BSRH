@@ -3,9 +3,24 @@ import numpy as np
 from scipy.optimize import curve_fit
 from scipy.ndimage import center_of_mass
 from time import sleep
+from scipy.signal import find_peaks
+from bi_pyutils import rda
 
 def gaussian(x, amp, cen, wid, const):
     return amp * np.exp(-(x - cen) ** 2 / (2 * wid ** 2)) + const
+
+def lowLength(array):
+    #Identify maxima from a moving average, to smear the hot pixels
+    maxima = find_peaks(array, height = 1000, distance = 10, width = 5) # might be empty...
+
+    # We want the highest two of the array:
+    try:
+        values = np.array(array)[maxima]
+        indices = maxima[np.argsort(values)[-2:][::-1]]
+    except:
+        indices = [0,0]
+
+    return indices[1]-indices[0]
 
 class Pneumatics:
     def __init__(self, name, japc, slot):
@@ -217,7 +232,7 @@ class FWheel(Motor): # This is a motor with specific positions/values
             print('Cannot comply, motor is busy!')
 
 class Camera:
-    def __init__(self, name, japc):  ## Provide motors as Class and positions in steps...
+    def __init__(self, name, japc, remDevAcc = True):  ## Provide motors as Class and positions in steps...
         self.name = name
         self.japc = japc
         self.exposure = self.japc.getParam(self.name + '/Setting#ExposureTime')
@@ -225,16 +240,34 @@ class Camera:
         self.image = []
         self.bgImage = []
         self.exposure = self.japc.getParam(self.name+'/Acquisition#ExposureTime')
+        self.remDevAcc = remDevAcc
+        if self.remDevAcc:
+            self.rda = rda.RDA()
+            self.rda.init(kerberos = True)
+
         try:
             self.subscription = self.japc.subscribeParam(self.name + '/Acquisition#image1', self.updateImage)
         except:
             self.subscription = self.japc.subscribeParam(self.name + '/LastImage#image2D', self.updateImage)
 
 
+
+
     def changeExpTime(self, exposure):
+        exposure = int(np.round(exposure))
         if 40 < exposure < 1e5:
             self.exposure = exposure
-            self.japc.setParam(self.name+'/Setting#ExposureTime', exposure)
+            print('Setting', self.name, ' exposure to: ', exposure)
+
+            if self.remDevAcc:
+                try:
+                    self.rda.set(self.name,'Setting',[{"field": 'ExposureTime', "type": rda.RDA_INT, "data": exposure}])
+
+                except:
+                    print('Setting exposure failed')
+            else:
+                self.japc.setParam(self.name+'/CameraSetting#cameraExposureTimeUs', exposure)
+
         else:
             print('Exposure not valid')
 
@@ -262,7 +295,7 @@ class Camera:
             self.bgImage = outImage
         return outImage
 
-    def getBeamPosition(self, com = False): #com = Center of Mass, different way of center determination for images that cannot be represented by a Gaussian...
+    def getBeamPosition(self, com = False, occulter = None): #com = Center of Mass, different way of center determination for images that cannot be represented by a Gaussian..., occulter provides list of x,y that is the supposed center of the occulter
         ##Get an image that we will analyse:
         if len(self.bgImage) != 0:
             image = np.asarray(self.captureImage()) - self.bgImage # Well, here we should be careful that the exposure time did not change
@@ -270,6 +303,30 @@ class Camera:
             image = np.asarray(self.captureImage())
         outX = -1
         outY = -1
+
+        xTemp = len(image)
+        yTemp = len(image[0])
+
+        if occulter != None:
+            lengthX = []
+            lengthY = []
+
+            # Refine the location
+            pass
+            for offset in range(-5,6): #Well, this might be problematic in case the occulter is not there, yet we perform this...
+                crosscutX = image[occulter[0]+offset,:]
+                crosscutY = np.transpose(image[:,occulter[1]+offset])
+                lengthX.append(lowLength(crosscutX))
+                lengthY.append(lowLength(crosscutY))
+
+            # Here we use the one with the longest low, should be the same in both axis..:
+            Radius = (np.max(lengthX) + np.max(lengthY))/2 + 5
+
+            OCX = occulter[0] + lengthX.index(np.max(lengthX))
+            OCY = occulter[1] + lengthY.index(np.max(lengthY))
+
+            xTemp = list(range(0, OCX-Radius))+list(range(OCX+Radius, len(image)))
+            yTemp = list(range(0, OCY-Radius))+list(range(OCY+Radius, len(image[0])))
 
 
         if com == True:
@@ -290,7 +347,7 @@ class Camera:
 
             try:
                 # resX = [np.max(projection_x), np.argmax(projection_x)]
-                resX, _ = curve_fit(gaussian, range(len(projection_x)), projection_x,
+                resX, _ = curve_fit(gaussian, xTemp, projection_x[xTemp],
                                     (6e4, np.argmax(projection_x), 10.0, 300.0), bounds=gBounds)
                 if resX[0] < 2e3:
                     resX[1] = -1
@@ -300,7 +357,7 @@ class Camera:
 
             try:
                 # resY = [np.max(projection_y), np.argmax(projection_y)]
-                resY, _ = curve_fit(gaussian, range(len(projection_y)), projection_y,
+                resY, _ = curve_fit(gaussian, yTemp, projection_y[yTemp],
                                     (6e4, np.argmax(projection_y), 10.0, 300.0), bounds=gBounds)
                 if resY[0] < 2e3:
                     resY[1] = -1

@@ -48,9 +48,10 @@ class CoronagraphDevices:
             sleep(0.5)
 
     def measureT4(self):
+        self.filterCM.setAbsPosition(0)  # Protect camera before removing the T3
+        sleep(1)
         self.lsTgt.moveIn()  ## SAFETY
         self.eaTgt.moveOut()
-        self.filterCM.setAbsPosition(0) # Protect camera before removing the T3
         self.m2Tgt.setAbsPosition(0)
         self.motXCM.setAbsPosition(60113)
         self.motYCM.setAbsPosition(11940)
@@ -72,9 +73,8 @@ class CoronagraphDevices:
             sleep(0.5)
         self.filterCM.setAbsPosition(4)  # Protect camera before it is out
 
-        # sleep(1)
-        while self.m2Tgt.isBusy() or self.filterCM.isBusy():
-            sleep(0.5)
+        sleep(2) # This is the wait for the filter wheel...
+
 
     def measureT6(self): # This is tricky, I will get back to this later
         self.eaTgt.moveOut()
