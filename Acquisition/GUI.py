@@ -4,12 +4,13 @@
 import pyjapc
 import pyrbac
 import time
+from datetime import datetime as dt
 import sys
 import os
 import threading
 import dill as pickle
 import zstandard as zstd
-from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, QSpinBox, QLabel, QHBoxLayout, QTreeWidget, QTreeWidgetItem, QMessageBox, QLineEdit)
+from PyQt5.QtWidgets import (QApplication, QWidget, QPlainTextEdit, QVBoxLayout, QPushButton, QCheckBox, QSpinBox, QLabel, QHBoxLayout, QTreeWidget, QTreeWidgetItem, QMessageBox, QLineEdit)
 from PyQt5.QtGui import QIntValidator
 from PyQt5.QtCore import Qt
 from queue import Queue
@@ -141,9 +142,11 @@ class AcquisitionGUI(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Simple Acquisition GUI")
-        self.setFixedSize(350, 300)
-        self.main_layout = QVBoxLayout()
-        
+        self.setFixedSize(500, 300)
+        self.main_layout = QHBoxLayout()
+        self.left_column = QVBoxLayout()
+        self.right_column = QVBoxLayout()
+
         # Controls layout
         controls_layout = QHBoxLayout()
         self.freq_label = QLabel("Freq(Hz):")
@@ -158,19 +161,18 @@ class AcquisitionGUI(QWidget):
         self.acq_btn.clicked.connect(self.toggle_acquisition)
         controls_layout.addWidget(self.acq_btn)
 
-        self.main_layout.addLayout(controls_layout)
-        self.setLayout(self.main_layout)
-        
+        # self.main_layout.addLayout(controls_layout)
+        self.left_column.addLayout(controls_layout)
 
         # getBunches button
         self.get_bunches_btn = QPushButton("Get Bunches")
         self.get_bunches_btn.clicked.connect(self.get_bunches)
-        self.main_layout.addWidget(self.get_bunches_btn)
+        self.left_column.addWidget(self.get_bunches_btn)
 
         # Tree for bunch selection
         self.bunch_tree = QTreeWidget()
         self.bunch_tree.setHeaderLabels(["Bunch ID", "Scan"])
-        self.main_layout.addWidget(self.bunch_tree)
+        self.left_column.addWidget(self.bunch_tree)
 
         self.new_bunch_input = QLineEdit()
         self.new_bunch_input.setPlaceholderText("Enter bunch ID (0-3550)")
@@ -181,12 +183,53 @@ class AcquisitionGUI(QWidget):
         h_manual = QHBoxLayout()
         h_manual.addWidget(self.new_bunch_input)
         h_manual.addWidget(self.add_bunch_btn)
-        self.main_layout.addLayout(h_manual)
+        self.left_column.addLayout(h_manual)
         
         self.scan_bunches_btn = QPushButton("Scan bunches")
         self.scan_bunches_btn.clicked.connect(self.scan_bunches)
-        self.main_layout.addWidget(self.scan_bunches_btn)
-        
+        self.left_column.addWidget(self.scan_bunches_btn)
+
+
+        self.take_ref_btn = QPushButton("Take References")
+        self.right_column.addWidget(self.take_ref_btn)
+
+        self.full_align_btn = QPushButton("Full Alignment")
+        self.right_column.addWidget(self.full_align_btn)
+
+        self.cam_align_btn = QPushButton("Main Cam Alignment")
+        self.right_column.addWidget(self.cam_align_btn)
+
+        # Row for Full Autonomy + checkbox
+        autonomy_row = QHBoxLayout()
+        self.full_auto_btn = QPushButton("Full Autonomy")
+        font = self.full_auto_btn.font()
+        font.setBold(True)
+        self.full_auto_btn.setFont(font)
+        autonomy_row.addWidget(self.full_auto_btn)
+
+        self.save_full_checkbox = QCheckBox("save full images")
+        self.save_full_checkbox.setToolTip(
+            "Switch between saving full images (storage intensive) and saving profiles"
+        )
+        autonomy_row.addWidget(self.save_full_checkbox)
+
+        self.log_box = QPlainTextEdit()
+        self.log_box.setReadOnly(True)
+        self.log_box.setPlaceholderText("Logs will appear here...")
+        self.right_column.addWidget(QLabel("Log messages:"))
+        self.right_column.addWidget(self.log_box)
+
+        self.right_column.addLayout(autonomy_row)
+        self.right_column.addStretch()
+
+        # Add right column to root layout
+        # self.main_layout.addLayout(self.right_column)
+
+        self.main_layout.addLayout(self.left_column)
+        self.main_layout.addLayout(self.right_column)
+
+        self.setLayout(self.main_layout)
+
         self.acquiring = False
         self.setting = False
         self.saver_thread = None
@@ -194,17 +237,20 @@ class AcquisitionGUI(QWidget):
         
         self.bunchSlots = []
         self.bunchIndex = 0
-        
-        self.japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
+
+        # This is taking care of acquisition
+        self.acq_japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
         self.clientRBAC = pyrbac.AuthenticationClient()
         self.token = self.clientRBAC.login_kerberos()
-        self.japc.rbacLogin(token = self.token)
+        self.acq_japc.rbacLogin(token = self.token)
         # Subscribe to all device parameters
         for alias, path in DEVICE_LIST.items():
-            self.japc.subscribeParam(path, lambda name, value, a=alias: self.generic_callback(a, value))
+            self.acq_japc.subscribeParam(path, lambda name, value, a=alias: self.generic_callback(a, value))
         # Subscribe to camera with header
-        self.japc.subscribeParam(CAMERA_DEVICE, self.camera_callback, getHeader=True)
-        self.japc.subscribeParam(INTENSIFIER_DEVICE, self.intensifier_callback, getHeader = False)
+        self.acq_japc.subscribeParam(CAMERA_DEVICE, self.camera_callback, getHeader=True)
+        self.acq_japc.subscribeParam(INTENSIFIER_DEVICE, self.intensifier_callback, getHeader = False)
+
+        # This is taking care of alignment
         
         
    # Subscription callbacks
@@ -236,7 +282,7 @@ class AcquisitionGUI(QWidget):
             self.bunchIndex = self.bunchIndex + 1
           else:
             self.bunchIndex = 0
-          self.japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting1#delaySlots', self.bunchSlots[self.bunchIndex])
+          self.acq_japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting1#delaySlots', self.bunchSlots[self.bunchIndex])
         #camera_arrived.set()
         timestamp = header.get('acqStamp', time.time())
         ev = AllData(timestamp, image, snapshot)
@@ -246,7 +292,7 @@ class AcquisitionGUI(QWidget):
     def get_bunches(self):
         # Populate tree with dummy bunches and checkboxes
         self.bunch_tree.clear()
-        bunchIntensities = self.japc.getParam('LHC.BCTFR.A6R4.B2/Acquisition#averageBunchIntensities')
+        bunchIntensities = self.acq_japc.getParam('LHC.BCTFR.A6R4.B2/Acquisition#averageBunchIntensities')
         for i in range(len(bunchIntensities)):
           if bunchIntensities[i] > 0:
             #self.bunchSlots.append(i)
@@ -280,14 +326,14 @@ class AcquisitionGUI(QWidget):
       return checked
     def on_frequency_change(self, value):
         triggerDecimation = int(11245/value)
-        self.japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting2#triggerDecimation', triggerDecimation)
+        self.acq_japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting2#triggerDecimation', triggerDecimation)
 
     def scan_bunches(self):
         global scanning
         if not scanning:
           self.get_checked_bunches()
           if self.bunchSlots == []:
-            print('Bunches are empty!')
+            self.log_message('Bunches are empty!')
             return
           
           #Setter and saver must be running for the bunch scan to work - maybe we could use the subscriptions without saving the data...
@@ -308,6 +354,11 @@ class AcquisitionGUI(QWidget):
           self.freq_input.setReadOnly(False)
           self.acq_btn.setEnabled(True)
           self.scan_bunches_btn.setText("Scan bunches")
+
+    def log_message(self, msg: str):
+        """Append a timestamped log message to the log_box."""
+        timestamp = dt.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.log_box.append(f"[{timestamp}] {msg}")
         
     def toggle_acquisition(self):
         global saver_running, run_number, firstCallback
@@ -315,7 +366,7 @@ class AcquisitionGUI(QWidget):
             try:
                 # Start subscriptions and saver thread
                 run_number = get_last_run_number() + 1
-                self.japc.startSubscriptions()
+                self.acq_japc.startSubscriptions()
                 saver_running.set()
                 self.saver_thread = threading.Thread(target=saver_worker, daemon=True)
                 self.saver_thread.start()
@@ -326,7 +377,7 @@ class AcquisitionGUI(QWidget):
         else:
             try:
                 # Stop subscriptions and saver thread
-                self.japc.stopSubscriptions()
+                self.acq_japc.stopSubscriptions()
                 firstCallback = True
                 saver_running.clear()
                 if self.saver_thread:
@@ -345,7 +396,7 @@ class AcquisitionGUI(QWidget):
                 setter_value = 2
                 self.setter_thread = threading.Thread(
                     target=setter_worker,
-                    args=(self.japc, setter_path, setter_value),
+                    args=(self.acq_japc, setter_path, setter_value),
                     daemon=True
                 )
                 self.setter_thread.start()
@@ -366,7 +417,7 @@ class AcquisitionGUI(QWidget):
         # Stop acquisition if running
         if self.acquiring:
             try:
-                self.japc.stopSubscriptions()
+                self.acq_japc.stopSubscriptions()
                 saver_running.clear()
                 if self.saver_thread:
                     self.saver_thread.join(timeout=5)

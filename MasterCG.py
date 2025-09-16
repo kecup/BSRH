@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 
 # import acquisition_lib
 # import ??
+def energy_callback(name, value):
+
 
 # Start with putting all in, then check the position on each camera and align only the piece that is necessary...
 
@@ -22,6 +24,9 @@ token = client.login_kerberos()
 
 japcTg = pyjapc.PyJapc(selector = '', incaAcceleratorName = '')
 japcTg.rbacLogin(token=token)
+
+
+# 'LHC.BCCM.B2.A/SummaryAcquisition#beamEnergy' # Variable of the LHC's energy - 5.5TeV to start...
 
 #japcAcq = pyjapc.PyJapc(selector = '', incaAcceleratorName = '')
 #japcAcq.rbacLogin(token = token)
