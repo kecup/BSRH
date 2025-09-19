@@ -13,10 +13,34 @@ class CoronagraphDevices:
         self.motYCM = Motor('LHC.BSRH.CMASK-Y-TSZ100.B2', self.japc) # IN = 11940, OUT = 12240
         self.filterCM = FWheel('LHC.BSRH.CM-FWL.B2', self.japc) # 0- ND4, 1- ND3, 2- ND2, 3- ND1, 4 = HOLE
 
+        # PLUS we need the LS top and EA top, left, right
+        self.lsTop = Motor('LHC.BSRH.LYOT-V-UP.B2', self.japc) # We will need to make a creative way of determining how to close it to a proper height
+        self.eaTop = Motor('LHC.BSRH.EMASK-V-UP.B2', self.japc)
+        self.eaLeft = Motor('LHC.BSRH.EMASK-H-LEFT.B2', self.japc)
+        self.eaRight = Motor('LHC.BSRH.EMASK-H-RIGHT.B2', self.japc)
+
+        self.ref_ls = -1
+        self.ref_eat = -1
+        self.ref_eal = -1
+        self.ref_ear = -1
+
 
     def allIn(self):  # Not perfect, but this puts EA, LS and m2Tgt into position
         self.lsTgt.moveIn()  ## SAFETY
         self.eaTgt.moveIn()
+
+        # Get references for the apertures
+        self.ref_ls = self.lsTop.getPosition()
+        self.ref_eat = self.eaTop.getPosition()
+        self.ref_eal = self.eaLeft.getPosition()
+        self.ref_ear = self.eaRight.getPosition()
+
+        #Open LS and EA
+        self.lsTop.setAbsPosition(0)
+        self.eaTop.setAbsPosition(0)
+        self.eaLeft.setAbsPosition(0)
+        self.eaRight.setAbsPosition(0)
+
         self.m2Tgt.setAbsPosition(42650)
         self.motXCM.setAbsPosition(60113)
         self.motYCM.setAbsPosition(11940)
@@ -89,3 +113,13 @@ class CoronagraphDevices:
         self.filterCM.setAbsPosition(0)
         self.lsTgt.moveOut()  ## SAFETY
         #This puts an ND4 filter at the CM to block also the main camera, one has to then remove the filters accordingly...
+
+    def apertures_to_references(self):
+        if self.ref_ls != -1:
+            self.lsTop.setAbsPosition(self.ref_ls)
+        if self.ref_eat != -1:
+            self.eaTop.setAbsPosition(self.ref_eat)
+        if self.ref_eal != -1:
+            self.eaLeft.setAbsPosition(self.ref_eal)
+        if self.ref_ear != -1:
+            self.eaRight.setAbsPosition(self.ref_eal)

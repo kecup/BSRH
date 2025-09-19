@@ -13,8 +13,6 @@ import matplotlib.pyplot as plt
 
 # import acquisition_lib
 # import ??
-def energy_callback(name, value):
-
 
 # Start with putting all in, then check the position on each camera and align only the piece that is necessary...
 

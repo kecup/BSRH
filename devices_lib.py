@@ -235,7 +235,7 @@ class Camera:
     def __init__(self, name, japc, remDevAcc = True):  ## Provide motors as Class and positions in steps...
         self.name = name
         self.japc = japc
-        self.exposure = self.japc.getParam(self.name + '/Setting#ExposureTime')
+        # self.exposure = self.japc.getParam(self.name + '/Setting#ExposureTime')
         self.updated = dt.datetime.now()
         self.image = []
         self.bgImage = []
@@ -287,7 +287,7 @@ class Camera:
 
         if cycle >= 10:
             print('Getting image timed-out.')
-            outImage = []
+            outImage = np.asarray([])
         else:
             outImage = self.image
 
