@@ -9,7 +9,7 @@ from time import sleep
 
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, parent_dir)
-from devices_lib import Camera, Motor, Pneumatics
+from devices_lib import Camera, Motor
 
 # this is just the overall structure
 
@@ -198,14 +198,19 @@ class T3T4AlignmentNN(AlignmentNN):
         else:
             pass
             # LHC Motors
-            # TODO
+            self.motor_x = Motor('LHC.BSRH.M3-X-TSZ100.B2', self.japc, 5)  # not used
+            self.motor_y = Motor('LHC.BSRH.M3-Y-TSZ100.B2', self.japc, 5)  # not used
+            self.motor_phi = Motor('LHC.BSRH.M3-PHI.B2', self.japc, 65)
+            self.motor_theta = Motor('LHC.BSRH.M3-THETA.B2', self.japc, 50)
+
+            self.motor_references = {"x": 31333, "y": 29373, "phi": 82660, "theta": 71515}
 
             # LHC Cameras
-            # TODO
+            self.cam1 = Camera("LHC.BSRH.MON.TGTM3.B2", self.japc)
+            self.cam2 = Camera("LHC.BSRH.CAM.CM.B2", self.japc)
 
         # self.cam1_target = [751, 144]  # cam1 target center
-        self.cam2_target = [480, 320]  # cam2 target center
-        # TODO: check if targets valid also for LHC
+        self.cam2_target = [484, 304]  # cam2 target center
 
 
     def predict(self, cams_pos):
@@ -231,6 +236,7 @@ class T3T4AlignmentNN(AlignmentNN):
         Align to target in a loop until close enough.
         """
         self.config.measureT4()
+        sleep(1)
         cam2_pos = np.array(self.cam2.getBeamPosition())
         count = 0
 

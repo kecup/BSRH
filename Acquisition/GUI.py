@@ -20,8 +20,9 @@ from PyQt5.QtGui import QIntValidator
 from PyQt5.QtCore import Qt, pyqtSignal
 from queue import Queue
 from config import CoronagraphDevices
-from devices_lib import Camera
+from devices_lib import Camera, Motor, Pneumatics
 from aligners_lib import T1T2AlignmentNN, T3T4AlignmentNN, T5T6AlignmentNN
+from TrainNN import FeedbackNN6, FeedbackNN7
 
 
 # Configuration
@@ -85,6 +86,7 @@ class AllData:
         self.cam_data = cam_data
         self.device_data = device_data
 # Background saver thread: takes events from queue and writes them in chunks
+
 
 def saver_worker():
     buffer = []
@@ -305,6 +307,7 @@ class AcquisitionGUI(QWidget):
         self.right_column.addWidget(self.take_ref_btn)
 
         self.full_align_btn = QPushButton("Full Alignment")
+        self.full_align_btn.clicked.connect(self.toggle_full_alignment_clicked)
         self.right_column.addWidget(self.full_align_btn)
 
         self.cam_align_btn = QPushButton("Main Cam Alignment")
@@ -317,6 +320,12 @@ class AcquisitionGUI(QWidget):
         font.setBold(True)
         self.full_auto_btn.setFont(font)
         autonomy_row.addWidget(self.full_auto_btn)
+
+        info_row = QHBoxLayout()
+        self.energyLHC_label = QLabel('LHC energy = -1')
+        self.totalIntensityB2_label = QLabel('LHC intensity B2 = -1')
+        info_row.addWidget(self.energyLHC_label)
+        info_row.addWidget(self.totalIntensityB2_label)
 
         self.save_full_checkbox = QCheckBox("save full images")
         self.save_full_checkbox.setToolTip(
@@ -331,6 +340,7 @@ class AcquisitionGUI(QWidget):
         self.right_column.addWidget(self.log_box)
 
         self.right_column.addLayout(autonomy_row)
+        self.right_column.addLayout(info_row)
         self.right_column.addStretch()
 
         # Add right column to root layout
@@ -384,8 +394,12 @@ class AcquisitionGUI(QWidget):
         self.main_japc.rbacLogin(token = self.token)
 
         # Motor LS; x,y occulter; gate, main camera, intensifier; 2 motors for final alignment - depending whether main alignment needs the individual motors or not...
-        self.main_japc.subscribeParam('LHC.BCTFR.A6R4.B2/Acquisition#wholeBeamIntensity', self.example_callback) # This is the total intensity in B2
-        self.main_japc.subscribeParam('LHC.BCCM.B2.A/SummaryAcquisition#beamEnergy', self.example_callback) # TODO: change example callback to a real one...
+        self.main_japc.subscribeParam('LHC.BCTFR.A6R4.B2/Acquisition#wholeBeamIntensity', self.intensity_callback) # This is the total intensity in B2
+        self.main_japc.subscribeParam('LHC.BCCM.B2.A/SummaryAcquisition#beamEnergy', self.energy_callback) # TODO: change example callback to a real one...
+
+        self.M3X = Motor('LHC.BSRH.FOLDING-H.B2', self.main_japc, 45)  # LHC
+        self.M3Y = Motor('LHC.BSRH.FOLDING-V.B2', self.main_japc, 0)  # LHC
+        self.LS = Pneumatics('LHC.BSRH.IN-OUT.B2', self.main_japc, 2)
 
 
         self.bgT2 = np.asarray([-1])
@@ -405,6 +419,12 @@ class AcquisitionGUI(QWidget):
           camera_arrived.set()
         with cache_lock:
             data_cache['GATE-INT'] = value
+
+    def energy_callback(self, name, value):
+        self.energyLHC = value
+
+    def intensity_callback(self, name, value):
+        self.totalIntensityB2 = value
 
     def camera_callback(self, name, image, header):
         global firstCallback, scanning
@@ -586,13 +606,14 @@ class AcquisitionGUI(QWidget):
 
         self.Cam1.changeExpTime(timingFactor * 150)
         self.Cam2.changeExpTime(timingFactor * 50)
-        self.Cam4.changeExpTime(timingFactor * 500)  # With ND4 in...
+        self.Cam4.changeExpTime(timingFactor * 500)  # With ND3 in and EA open...
         self.Cam5.changeExpTime(timingFactor * 300)
 
         time.sleep(5)
 
     def toggle_references_task(self):
         self.take_ref_btn.setEnabled(False)
+        self.full_align_btn.setEnabled(False)
 
         self.prepare_cameras()
         self.align_japc.startSubscriptions() # This to get the system alive
@@ -619,7 +640,7 @@ class AcquisitionGUI(QWidget):
         cam4_file = os.path.join(path, cam4_tstamp)
         cam5_file = os.path.join(path, cam5_tstamp)
 
-        time.sleep(5) # Due to the fact that Targets.allIn() is non blocking...
+        time.sleep(10) # Due to the fact that Targets.allIn() is non blocking...
 
         self.log_message('Measuring cam 1')
         cam1_image = self.Cam1.captureImage()
@@ -665,10 +686,47 @@ class AcquisitionGUI(QWidget):
         self.Targets.apertures_to_references()
         self.align_japc.stopSubscriptions() # This stops the cameras and targets
         self.take_ref_btn.setEnabled(True)
+        self.full_align_btn.setEnabled(True)
 
     def toggle_references_clicked(self):
         self.align_thread = threading.Thread(target=self.toggle_references_task, daemon=True)
         self.align_thread.start()
+
+    def toggle_full_alignment_task(self):
+        self.take_ref_btn.setEnabled(False)
+        self.full_align_btn.setEnabled(False)
+
+
+        #self.toggle_references_task() #First get references...
+
+        file_name2 = "/user/jpucek/GitLab/bsrh-scripts/Alignment/Models/isr_t3_t4_v4_filtered_model3_only_cam2_target2-steps.pth"
+        X_scaler_name2 = "/user/jpucek/GitLab/bsrh-scripts/Alignment/Models/isr_t3_t4_v4_filtered_model3_only_cam2_target2-steps_X_scaler.pkl"
+        y_scaler_name2 = "/user/jpucek/GitLab/bsrh-scripts/Alignment/Models/isr_t3_t4_v4_filtered_model3_only_cam2_target2-steps_y_scaler.pkl"
+
+        # only cam2 model
+        t3_t4_alignment = T3T4AlignmentNN(model_file_name=file_name2, input_size=4, output_size=2, feedback_nn=FeedbackNN6,
+                                          X_scaler_name=X_scaler_name2, y_scaler_name=y_scaler_name2, japc=self.align_japc, dist_tolerance=10, config=self.Targets, isr=False)
+
+        self.align_japc.startSubscriptions() # Only after all object were initialized...
+
+        self.log_message('Starting alignment on T4')
+        t3_t4_alignment.align()
+        self.log_message('T4 alignment done')
+        self.align_japc.stopSubscriptions()
+
+        self.take_ref_btn.setEnabled(True)
+        self.full_align_btn.setEnabled(True)
+
+    def toggle_full_alignment_clicked(self):
+        if self.align_thread ==  None:
+            self.align_thread = threading.Thread(target=self.toggle_full_alignment_task, daemon=True)
+            self.align_thread.start()
+            self.log_message('Alignment thread started')
+        else:
+            self.align_thread.join()
+            self.align_thread = threading.Thread(target=self.toggle_full_alignment_task, daemon=True)
+            self.align_thread.start()
+
 
     def toggle_automatic_task(self):
         pass

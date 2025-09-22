@@ -72,7 +72,7 @@ class CoronagraphDevices:
             sleep(0.5)
 
     def measureT4(self):
-        self.filterCM.setAbsPosition(0)  # Protect camera before removing the T3
+        self.filterCM.setAbsPosition(1)  # Protect camera before removing the T3
         sleep(1)
         self.lsTgt.moveIn()  ## SAFETY
         self.eaTgt.moveOut()

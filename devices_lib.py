@@ -304,8 +304,8 @@ class Camera:
         outX = -1
         outY = -1
 
-        xTemp = len(image)
-        yTemp = len(image[0])
+        xTemp = range(len(image[0]))
+        yTemp = range(len(image))
 
         if occulter != None:
             lengthX = []
@@ -325,8 +325,8 @@ class Camera:
             OCX = occulter[0] + lengthX.index(np.max(lengthX))
             OCY = occulter[1] + lengthY.index(np.max(lengthY))
 
-            xTemp = list(range(0, OCX-Radius))+list(range(OCX+Radius, len(image)))
-            yTemp = list(range(0, OCY-Radius))+list(range(OCY+Radius, len(image[0])))
+            xTemp = list(range(0, OCX-Radius))+list(range(OCX+Radius, len(image[0])-1))
+            yTemp = list(range(0, OCY-Radius))+list(range(OCY+Radius, len(image)-1))
 
 
         if com == True:
@@ -343,7 +343,7 @@ class Camera:
                 projection_y = []
 
             ##Prepare bounds for fits:
-            gBounds = ([1e2, 0, 1, 10], [1e7, 960, 100, 2e4])
+            gBounds = ([1e2, 0, 3, 10], [1e7, 960, 100, 2e4])
 
             try:
                 # resX = [np.max(projection_x), np.argmax(projection_x)]
