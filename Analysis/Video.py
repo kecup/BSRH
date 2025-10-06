@@ -11,17 +11,18 @@ from scipy.interpolate import interp1d
 import pandas as pd
 
 # ---------------- CONFIG ----------------
-directory = '/user/jpucek/BSRH/Data/2025/06/19/'
+directory = '/user/jpucek/BSRH/Data/2025/09/26/'
 files = sorted(os.listdir(directory))
 dctx = zstd.ZstdDecompressor()
 japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
 
-bunch = 160
-file_range = range(110, 112)
+bunch = 55
+# file_range = range(110, 112)
+file_range = range(2)
 
-maskX, maskY, maskR = 448, 277, 55  # Excluded signal region
-x1, x2 = 284, 734
-y1, y2 = 124, 424
+maskX, maskY, maskR = 110, 110, 50  # Excluded signal region wrt. x1, x2,
+x1, x2 = 390, 690#284, 734
+y1, y2 = 100, 400#124, 424
 # -----------------------------------------
 
 # Frame map: global_frame_index -> (file_idx, local_idx)
@@ -36,9 +37,9 @@ for local_file_idx, file_idx in enumerate(file_range):
                 local_valid_idx = 0
                 for frame in a:
                     gate = frame.device_data["GATE-INT"]
-                    if gate["delaySlots"] == bunch and gate["pulseLength"] >= 400:
-                        frame_map.append((file_idx, local_valid_idx))
-                        local_valid_idx += 1
+                    # if gate["delaySlots"] == bunch and gate["pulseLength"] >= 400:
+                    frame_map.append((file_idx, local_valid_idx))
+                    local_valid_idx += 1
             except Exception as e:
                 print(f"Error reading {files[file_idx]}: {e}")
 
@@ -47,6 +48,9 @@ print(f"Total valid frames: {len(frame_map)}")
 # ---- Utility: projection & smoothing ----
 def gaussian(x, amp, cen, wid):
     return amp * np.exp(-(x - cen)**2 / (2 * wid**2))
+
+def gconst(x, amp, cen, wid, const):
+    return amp * np.exp(-(x - cen)**2 / (2 * wid**2)) + const
 
 def process_projection(proj):
     proj = gaussian_filter1d(proj, sigma=2)
@@ -106,17 +110,19 @@ def load_and_cache_file(file_idx):
             a = pickle.load(reader)
             for frame in a:
                 gate = frame.device_data["GATE-INT"]
-                if gate["delaySlots"] == bunch and gate["pulseLength"] >= 400:
-                    image = frame.cam_data["image2D"]
-                    image = image - np.mean(image[:100, :100])
+                #if gate["delaySlots"] == bunch and gate["pulseLength"] >= 400:
+                image = frame.cam_data["image2D"]
+                #image = image - np.mean(image[:100, :100])
 
-                    proj_x = np.sum(image[y1:y2, :], axis=0)
-                    proj_y = np.sum(image[:, x1:x2], axis=1)
-                    proj_x = process_projection(proj_x)
-                    proj_y = process_projection(proj_y)
+                proj_x = np.sum(image[y1:y2, :], axis=0)
+                proj_y = np.sum(image[:, x1:x2], axis=1)
+                proj_x = process_projection(proj_x)
+                proj_y = process_projection(proj_y)
 
-                    cached_images.append((image, proj_x, proj_y))
+                cached_images.append((image, proj_x, proj_y))
     cached_file_idx = file_idx
+
+print(len(cached_images))
 
 def gaussian_fit_center(projection, mask_pos, mask_rad, axis_len):
     x = np.arange(axis_len)
@@ -136,17 +142,17 @@ def gaussian_fit_center(projection, mask_pos, mask_rad, axis_len):
 
 # ---- Animation ----
 fig, (ax_img, ax_px, ax_py) = plt.subplots(1, 3, figsize=(15, 5))
-tst = ax_img.imshow(np.zeros((y2-y1, x2-x1)), cmap="jet", vmin=1, vmax=3000, norm="log")
+tst = ax_img.imshow(np.zeros((y2-y1, x2-x1)), cmap="jet", vmin=800, vmax=2000) #, norm="log")
 plt.colorbar(tst, ax=ax_img)
 
 line_px, = ax_px.plot([], [], label="Projection X")
 line_py, = ax_py.plot([], [], label="Projection Y")
 
-exclude_x1 = ax_px.axvline(maskX - maskR - x1, color="red", linestyle="--")
-exclude_x2 = ax_px.axvline(maskX + maskR - x1, color="red", linestyle="--")
+#exclude_x1 = ax_px.axvline(maskX - maskR - x1, color="red", linestyle="--")
+#exclude_x2 = ax_px.axvline(maskX + maskR - x1, color="red", linestyle="--")
 
-exclude_y1 = ax_py.axvline(maskY - maskR - y1, color="red", linestyle="--")
-exclude_y2 = ax_py.axvline(maskY + maskR - y1, color="red", linestyle="--")
+#exclude_y1 = ax_py.axvline(maskY - maskR - y1, color="red", linestyle="--")
+#exclude_y2 = ax_py.axvline(maskY + maskR - y1, color="red", linestyle="--")
 ax_px.legend()
 ax_py.legend()
 
@@ -195,31 +201,34 @@ def update(frame_number):
     ax_py.relim(); ax_py.autoscale_view()
 
     # --- Gaussian fit centers ---
-    proj_x = np.sum(cropped, axis=0)
-    proj_y = np.sum(cropped, axis=1)
+    proj_x = np.sum(cropped, axis=0)[100:200]
+    proj_y = np.sum(cropped, axis=1)[100:200]
 
-    cx_gauss = gaussian_fit_center(proj_x, maskX, maskR, proj_x.shape[0])
-    cy_gauss = gaussian_fit_center(proj_y, maskY, maskR, proj_y.shape[0])
+    popt, _ = curve_fit(gconst, range(len(proj_x)), proj_x, p0=[-200000, 50, 50, 400000])
+    print('popt = ', popt)
+    cx_gauss = popt[1] #np.argmin(proj_x[100:200])#gaussian_fit_center(proj_x, maskX, maskR, proj_x.shape[0])
+
+    popt, _ = curve_fit(gconst, range(len(proj_y)), proj_y, p0=[-200000, 50, 50, 400000])
+    cy_gauss = popt[1] #np.argmin(proj_y[100:200])#gaussian_fit_center(proj_y, maskY, maskR, proj_y.shape[0])
 
     # Save shifts for comparison
     shifts_data.append([frame_number, shift_x, shift_y, cx_gauss, cy_gauss])
 
     return (tst, line_px, line_py)
 
-ani = animation.FuncAnimation(
-    fig=fig, func=update, frames=len(frame_map), interval=100, repeat=False
-)
+# ani = animation.FuncAnimation(fig=fig, func=update, frames=len(frame_map), interval=100, repeat=False)
+ani = animation.FuncAnimation(fig=fig, func=update, frames=160, interval=100, repeat=False)
 
 writer = animation.PillowWriter(fps=20, metadata=dict(artist="Me"))
-ani.save(f"Video_centered_{bunch}.gif", writer=writer)
+ani.save(f"Video_occulterOnly_{bunch}.gif", writer=writer)
 
 df = pd.DataFrame(shifts_data, columns=["frame", "chi2_dx", "chi2_dy", "gauss_cx", "gauss_cy"])
 plt.figure()
-plt.plot(df["frame"], df["chi2_dx"], label="Chi2 dx", color="blue")
+# plt.plot(df["frame"], df["chi2_dx"], label="Chi2 dx", color="blue")
 plt.plot(df["frame"], df["gauss_cx"]-df['gauss_cx'][0], label="Gaussian cx", color="orange", linestyle="--")
 
 plt.figure()
-plt.plot(df["frame"], df["chi2_dy"], label="Chi2 dy", color="green")
+# plt.plot(df["frame"], df["chi2_dy"], label="Chi2 dy", color="green")
 plt.plot(df["frame"], df["gauss_cy"]-df['gauss_cy'][0], label="Gaussian cy", color="red", linestyle="--")
 
 plt.show()

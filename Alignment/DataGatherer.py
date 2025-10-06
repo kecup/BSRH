@@ -23,13 +23,13 @@ japc.rbacLogin(token=token)
 
 ##We should have most components ready, let's get data for training:
 ##BackLash
-FoldingX = Motor('LHC.BSRH.FOLDING-H.B2', japc, 45) # todo
-FoldingY = Motor('LHC.BSRH.FOLDING-V.B2', japc,0)
+FoldingX = Motor('LHC.BSRH.M3-PHI.B2', japc, 65) # todo
+FoldingY = Motor('LHC.BSRH.M3-THETA.B2', japc, 50)
 
 cam = Camera('LHC.BSRH.BTVDC-CAM.MAIN', japc)
 
-MotorRangeX = 50#How many steps the motor can make from reference to keep the image on the camera
-MotorRangeY = 50
+MotorRangeX = 500#How many steps the motor can make from reference to keep the image on the camera
+MotorRangeY = 450
 
 
 japc.startSubscriptions()
@@ -43,14 +43,15 @@ PosX, PosY = cam.getBeamPosition()
 
 
 ##Open a csv file that we will use to save the training data:
-TrainingFile = open('MainCamData.csv', 'a')
+TrainingFile = open('Data/MainCamData_m3.csv', 'a')
 writeTraining = csv.writer(TrainingFile)
 header = ["camX", "camY", "mX", "mY", "tX", "tY", "stepsX", "stepsY"]
 writeTraining.writerow(header)
 
 camX, camY = cam.getBeamPosition()
 ##Now let's generate training data:
-for i in range(5000):
+for i in range(500):
+  print(i)
   if camX == -1 or camY == -1:
     print('Did not find beam, sending to references') ## This does not account for summing up the backlash...
 
@@ -65,15 +66,15 @@ for i in range(5000):
   mX = FoldingX.getPosition() #This might take long as it waits for motor to stop...
   mY = FoldingY.getPosition() #This might take long as it waits for motor to stop...
   
-  stepsX = random.randint(-int(2*camX/968.0*MotorRangeX), int(2*(968.0-camX)*MotorRangeX/968.0), )
-  stepsY = random.randint(-int(2*(608.0-camY)/608.0*MotorRangeY),int(2*camY/608.0*MotorRangeY))
+  stepsX = random.randint(refX-MotorRangeX, refX+MotorRangeX) - mX
+  stepsY = random.randint(refY-MotorRangeY, refY+MotorRangeY) - mY
   
   FoldingX.setRelPosition(stepsX)
   FoldingY.setRelPosition(stepsY)
   
   while FoldingX.isBusy() or FoldingY.isBusy():
     sleep(0.2)
-  sleep(1)
+  sleep(2)
   tX, tY = cam.getBeamPosition()
   
   if tX != -1 and tY != -1:

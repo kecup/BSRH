@@ -104,7 +104,7 @@ def visualize_target_coverage_t5_t6(df, cam_bounds, show_targets=False):
         # Scatter points from DataFrame
         ax.scatter(df['cam2X'], df['cam2Y'], color='orange', alpha=0.5, label='Main Camera', s=7)
     else:
-        ax.scatter(df['t2X'], df['t2Y'], color='purple', alpha=0.5, label='Main Camera', s=7)
+        ax.scatter(df['tX'], df['tY'], color='purple', alpha=0.5, label='Main Camera', s=7) # ax.scatter(df['t2X'], df['t2Y'], color='purple', alpha=0.5, label='Main Camera', s=7)
 
     # Formatting
     ax.set_xlabel("beam x position", fontsize=14)
@@ -177,7 +177,8 @@ def main():
     cam2_bounds_t6_t5 = {"x_min": 0, "x_max": 960, "y_min": 25, "y_max": 615} # don't know
 
 
-    df = pd.read_csv("Data/isr_t5_t6_data_v3.csv")
+    #df = pd.read_csv("Data/isr_t5_t6_data_v3.csv")
+    df = pd.read_csv("Data/MainCamData_m3.csv")
 
     print(f"There are {df.shape[0]} rows.")
 

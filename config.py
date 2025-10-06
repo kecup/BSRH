@@ -29,7 +29,7 @@ class CoronagraphDevices:
         self.lsTgt.moveIn()  ## SAFETY
         self.eaTgt.moveIn()
 
-        # Get references for the apertures
+        # Get references for the apertures, TODO: using this will over-write the references in case they are not called back before next call of this function...
         self.ref_ls = self.lsTop.getPosition()
         self.ref_eat = self.eaTop.getPosition()
         self.ref_eal = self.eaLeft.getPosition()
@@ -55,6 +55,7 @@ class CoronagraphDevices:
 
     def measureT2(self):
         self.lsTgt.moveIn()  ## SAFETY
+        sleep(2)
         self.eaTgt.moveOut()
         self.m2Tgt.setAbsPosition(42650)
 
@@ -72,7 +73,7 @@ class CoronagraphDevices:
             sleep(0.5)
 
     def measureT4(self):
-        self.filterCM.setAbsPosition(1)  # Protect camera before removing the T3
+        self.filterCM.setAbsPosition(0)  # Protect camera before removing the T3
         sleep(1)
         self.lsTgt.moveIn()  ## SAFETY
         self.eaTgt.moveOut()
@@ -97,10 +98,12 @@ class CoronagraphDevices:
             sleep(0.5)
         self.filterCM.setAbsPosition(4)  # Protect camera before it is out
 
-        sleep(2) # This is the wait for the filter wheel...
+        sleep(3) # This is the wait for the filter wheel...
 
 
     def measureT6(self): # This is tricky, I will get back to this later
+        self.filterCM.setAbsPosition(0)
+        self.lsTgt.moveIn()
         self.eaTgt.moveOut()
 
         self.motXCM.setAbsPosition(40333)
@@ -110,7 +113,7 @@ class CoronagraphDevices:
         while self.m2Tgt.isBusy() or self.motXCM.isBusy() or self.motYCM.isBusy():
             sleep(0.5)
 
-        self.filterCM.setAbsPosition(0)
+        sleep(2)
         self.lsTgt.moveOut()  ## SAFETY
         #This puts an ND4 filter at the CM to block also the main camera, one has to then remove the filters accordingly...
 

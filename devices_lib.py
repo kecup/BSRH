@@ -235,21 +235,18 @@ class Camera:
     def __init__(self, name, japc, remDevAcc = True):  ## Provide motors as Class and positions in steps...
         self.name = name
         self.japc = japc
-        # self.exposure = self.japc.getParam(self.name + '/Setting#ExposureTime')
         self.updated = dt.datetime.now()
         self.image = []
         self.bgImage = []
-        self.exposure = self.japc.getParam(self.name+'/Acquisition#ExposureTime')
         self.remDevAcc = remDevAcc
         if self.remDevAcc:
             self.rda = rda.RDA()
             self.rda.init(kerberos = True)
-
-        try:
+            self.exposure = self.japc.getParam(self.name + '/Acquisition#ExposureTime')
             self.subscription = self.japc.subscribeParam(self.name + '/Acquisition#image1', self.updateImage)
-        except:
+        else:
+            self.exposure = self.japc.getParam(self.name + '/CameraSetting#cameraExposureTimeUs')
             self.subscription = self.japc.subscribeParam(self.name + '/LastImage#image2D', self.updateImage)
-
 
 
 
@@ -262,7 +259,6 @@ class Camera:
             if self.remDevAcc:
                 try:
                     self.rda.set(self.name,'Setting',[{"field": 'ExposureTime', "type": rda.RDA_INT, "data": exposure}])
-
                 except:
                     print('Setting exposure failed')
             else:

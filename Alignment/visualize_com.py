@@ -27,7 +27,8 @@ def show_coord_comparison(df):
     plt.show()
 
 def main():
-    df = pd.read_csv("Data/test_center_of_mass.csv")
+    #df = pd.read_csv("Data/test_center_of_mass.csv")3
+    df = pd.read_csv("Data/MainCamData.csv")
     print(f"There are {df.shape[0]} rows.")
 
     # show_error(df)

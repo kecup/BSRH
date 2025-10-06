@@ -203,14 +203,14 @@ class T3T4AlignmentNN(AlignmentNN):
             self.motor_phi = Motor('LHC.BSRH.M3-PHI.B2', self.japc, 65)
             self.motor_theta = Motor('LHC.BSRH.M3-THETA.B2', self.japc, 50)
 
-            self.motor_references = {"x": 31333, "y": 29373, "phi": 82660, "theta": 71515}
+            self.motor_references = {"x": 31333, "y": 29373, "phi": 82285, "theta": 70097}
 
             # LHC Cameras
-            self.cam1 = Camera("LHC.BSRH.MON.TGTM3.B2", self.japc)
-            self.cam2 = Camera("LHC.BSRH.CAM.CM.B2", self.japc)
+            self.cam1 = Camera("LHC.BSRH.MON.TGTM3.B2", self.japc, True)
+            self.cam2 = Camera("LHC.BSRH.CAM.CM.B2", self.japc, True)
 
         # self.cam1_target = [751, 144]  # cam1 target center
-        self.cam2_target = [484, 304]  # cam2 target center
+        self.cam2_target = [698, 94]  # cam2 target center
 
 
     def predict(self, cams_pos):
@@ -252,8 +252,6 @@ class T3T4AlignmentNN(AlignmentNN):
 
             motor_prediction = self.predict([cam2_pos])
             self.move_motors(motor_prediction)
-
-            self.config.measureT4()
             cam2_pos = np.array(self.cam2.getBeamPosition())
             count += 1
         return count
@@ -308,13 +306,17 @@ class T5T6AlignmentNN(AlignmentNN): # TODO: adapt for t5 t6, its only copied now
         else:
             pass
             # LHC Motors
-            # TODO
+            self.motor_phi = Motor('LHC.BSRH.M3-PHI.B2', self.japc, 65)
+            self.motor_theta = Motor('LHC.BSRH.M3-THETA.B2', self.japc, 50)
+            #self.motor_phi = Motor('LHC.BSRH.FOLDING-H.B2', japc, 45)
+             #self.motor_theta = Motor('LHC.BSRH.FOLDING-V.B2', japc, 0)
 
             # LHC Cameras
-            # TODO
+            self.cam2 = Camera('LHC.BSRH.BTVDC-CAM.MAIN', self.japc, False)
 
-        self.cam1_target = [480, 320] # cam1 target center
-        self.cam2_target = [480, 320]  # cam2 target center
+            self.motor_references = {"phi": 82285, "theta": 70097}
+
+        self.cam2_target = [484, 304]  # cam2 target center
         # TODO: check if targets valid (both ISR and LHC)
 
 
@@ -355,12 +357,12 @@ class T5T6AlignmentNN(AlignmentNN): # TODO: adapt for t5 t6, its only copied now
             if cam2_pos[0] == -1 or cam2_pos[1] == -1:
                 print("Beam lost, sending to references.")
                 self.send_to_references()
-                break
+                sleep(1)
+                #break
 
             motor_prediction = self.predict([cam2_pos])
             self.move_motors(motor_prediction)
 
-            self.config.measureT6()
             cam2_pos = np.array(self.cam2.getBeamPosition())
             count += 1
 

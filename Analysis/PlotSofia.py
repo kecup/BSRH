@@ -103,7 +103,7 @@ h = open('AvgHalo5.pkl','rb')
 CH = pickle.load(h)
 h.close()
 
-bws = open('BWSCharge_v4.pkl', 'rb')
+bws = open('BWSCharge_v3.pkl', 'rb')
 BWS = pickle.load(bws)
 
 
