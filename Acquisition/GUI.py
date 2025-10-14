@@ -1,7 +1,7 @@
 # Data acquisition via master camera and parameter subscriptions
 # Now subscribe to all devices, cache their latest values, and use camera callback to assemble full events.
-
 import pyjapc
+from accwidgets import rbac
 import pyrbac
 import time
 from datetime import datetime as dt
@@ -10,10 +10,13 @@ import sys
 import math
 import os
 import threading
+from multiprocessing import Process, Event
+import multiprocessing as mp
 import numpy as np
 import dill as pickle
 import zstandard as zstd
 from matplotlib import pyplot as plt
+from mpmath import log10
 from scipy.ndimage import center_of_mass
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
@@ -21,23 +24,33 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QPlainTextEdit, QVBoxLayout,
 from PyQt5.QtGui import QIntValidator
 from PyQt5.QtCore import Qt, pyqtSignal, QObject
 from queue import Queue
+
 from config import CoronagraphDevices
-from devices_lib import Camera, Motor, Pneumatics
+from devices_lib import Camera, FWheel
 from aligners_lib import T1T2AlignmentNN, T3T4AlignmentNN, T5T6AlignmentNN
 from TrainNN import FeedbackNN6, FeedbackNN7
 
-
 # Configuration
+
+#Taken out for uselessness:
+# 'L4': 'LHC.BSRH.L4-Z-TS50.B2/Acquisition#position',
+# 'L5z': 'LHC.BSRH.L5-Z-TS25.B2/Acquisition#position',
+# 'L5x':'LHC.BSRH.L5-X-TS25.B2/Acquisition#position',
+# 'Folding-V':'LHC.BSRH.FOLDING-V.B2/Acquisition#position',
+# 'Folding-H':'LHC.BSRH.FOLDING-H.B2/Acquisition#position',
+
+# 'LYOT-HL': 'LHC.BSRH.LYOT-H-LEFT.B2/Acquisition#position',
+# 'LYOT-HR': 'LHC.BSRH.LYOT-H-RIGHT.B2/Acquisition#position',
+# 'LYOT-VD': 'LHC.BSRH.LYOT-V-DOWN.B2/Acquisition#position',
+# 'FILTERS.B2': 'LHC.BSRH.FILTERS.B2/Acquisition'
+# 'FBCT2': 'LHC.BCTFR.B6R4.B2/Acquisition',
+
 DEVICE_LIST = {
-    'L4': 'LHC.BSRH.L4-Z-TS50.B2/Acquisition#position',
-    'L5z': 'LHC.BSRH.L5-Z-TS25.B2/Acquisition#position',
-    'L5x':'LHC.BSRH.L5-X-TS25.B2/Acquisition#position',
-    'Folding-V':'LHC.BSRH.FOLDING-V.B2/Acquisition#position',
-    'Folding-H':'LHC.BSRH.FOLDING-H.B2/Acquisition#position',
+
     'Collimator-V':'TCP.D6R7.B2/MeasuredCornerPositions',
     'Collimator-H':'TCP.C6R7.B2/MeasuredCornerPositions',
     'FBCT1':'LHC.BCTFR.A6R4.B2/Acquisition',
-    'FBCT2':'LHC.BCTFR.B6R4.B2/Acquisition',
+
     'CM-FWL':'LHC.BSRH.CM-FWL.B2/Acquisition#position', 
     'CMASK-X':'LHC.BSRH.CMASK-X-TSZ100.B2/Acquisition#position',
     'CMASK-Y':'LHC.BSRH.CMASK-Y-TSZ100.B2/Acquisition#position',
@@ -46,10 +59,9 @@ DEVICE_LIST = {
     'EMASK-VD':'LHC.BSRH.EMASK-V-DOWN.B2/Acquisition#position',
     'EMASK-VU':'LHC.BSRH.EMASK-V-UP.B2/Acquisition#position',
     'FW-COLOR':'LHC.BSRH.FW-COLOR.B2/Acquisition#position',
-    'LYOT-HL':'LHC.BSRH.LYOT-H-LEFT.B2/Acquisition#position',
-    'LYOT-HR':'LHC.BSRH.LYOT-H-RIGHT.B2/Acquisition#position',
+
     'LYOT-VU':'LHC.BSRH.LYOT-V-UP.B2/Acquisition#position',
-    'LYOT-VD':'LHC.BSRH.LYOT-V-DOWN.B2/Acquisition#position',
+
     'M1-X':'LHC.BSRH.M1-X-TS50.B2/Acquisition#position',
     'M3-PHI':'LHC.BSRH.M3-PHI.B2/Acquisition#position',
     'M3-THETA':'LHC.BSRH.M3-THETA.B2/Acquisition#position',
@@ -60,7 +72,7 @@ DEVICE_LIST = {
     'STEERING-V':'LHC.BSRH.STEERING-V.B2/Acquisition#position',
     'INTENSIFIER':'LHC.BSRH.IMGINT.5L4.B2/Acquisition',
     'GATE-CAM':'LHC.BSRH.GATE-GEN.5L4.B2/Setting2',
-    'FILTERS.B2':'LHC.BSRH.FILTERS.B2/Acquisition'
+
 }
 CAMERA_DEVICE = 'LHC.BSRH.BTVDC-CAM.MAIN/LastImage'
 INTENSIFIER_DEVICE = 'LHC.BSRH.GATE-GEN.5L4.B2/Setting1'
@@ -69,6 +81,7 @@ REFERENCES_PATH_ROOT = '/user/jpucek/BSRH/Data/References'
 FILE_SIZE = 100
 
 CAM_TARGETS = {'cam1': [416,222], 'cam2': [316,237], 'cam3': [713,226], 'cam4': [709, 45], 'cam5': [438, 259], 'cam6': [484, 302]}
+
 
 # Globals
 cctx = zstd.ZstdCompressor(level=5)
@@ -82,7 +95,6 @@ camera_arrived = threading.Event()
 firstCallback = True
 scanning = False
 run_number = 0
-
 
 def distance(p1, p2):
     """
@@ -106,8 +118,13 @@ def distance(p1, p2):
         return -1
 
 def autoExposure(image, pulses):
-    maximum = np.max(image)
-    newPulses = np.round(3800/maximum)*pulses
+    maximum = np.max(image) # This is STUPID!!... Rather perform an averaging filter and then look for maximum...
+    print(maximum)
+    newPulses = 10
+    if maximum > 800:
+        newPulses = np.round(3000/maximum, 2)*pulses
+    else: # some kind of problem, so we should be careful...
+        newPulses = 1000
     return int(newPulses)
 
 class AllData:
@@ -128,6 +145,90 @@ class EmittingStream(QObject):
     def flush(self):
         pass  # no-op for compatibility
 
+def align_main_cam(run, bg = None):
+    # So we need japc, hardware and the alignment done on moving average positions...
+    file_name3 = "/user/jpucek/GitLab/bsrh-scripts/Alignment/Models/lhc_t6_v1_model1_camMain_target2-steps.pth"  # Folding will stay static, so actuating the same M3...
+    X_scaler_name3 = "/user/jpucek/GitLab/bsrh-scripts/Alignment/Models/lhc_t6_v1_model1_camMain_target2-steps_X_scaler.pkl"
+    y_scaler_name3 = "/user/jpucek/GitLab/bsrh-scripts/Alignment/Models/lhc_t6_v1_model1_camMain_target2-steps_y_scaler.pkl"
+
+    occulter = [484, 302, 45] # TODO: check this...
+    target = [484, 302]
+    averagePosition = []
+    invalidPosition = 0
+
+    clientRBAC = pyrbac.AuthenticationClient()
+    token = clientRBAC.login_kerberos()
+    another_japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
+    another_japc.rbacLogin(token = token)
+
+    time.sleep(0.5)
+    # TODO: decide if we add targets and offload some tasks concerning the main camera here...
+    filterCM = FWheel('LHC.BSRH.CM-FWL.B2', another_japc)  # 0- ND4, 1 - ND3, 2 - ND2, 3 - ND1, 4 = HOLE
+    MainCam = Camera('LHC.BSRH.BTVDC-CAM.MAIN', another_japc, False)  # We will take care of the images, we will then use the framework to get the prediction and move motors - does not need targets...
+
+    if bg is not None and np.size(bg) > 0:
+        MainCam.setBg(bg)
+    t5_t6_alignment = T5T6AlignmentNN(model_file_name=file_name3, input_size=4, output_size=2, feedback_nn=FeedbackNN6, X_scaler_name=X_scaler_name3, y_scaler_name=y_scaler_name3, japc=another_japc, dist_tolerance=5, config=None, isr=False)
+
+    another_japc.startSubscriptions()
+    time.sleep(1)
+
+    # Now we need the while loop to perform our alignment.... Moving average over last 5
+    while run.is_set():
+        positionX, positionY = MainCam.getBeamPosition(occulter=occulter)
+        image = MainCam.captureImage()
+
+        # Making the system safe...
+        if is_saturated(image, 4094, 0.015):  # 2% of image is above 4094 we put in additional filter...
+            filterCM.setRelPosition(-1)
+
+        # In case there is beam, think if we could remove a filter - perform autoExposure!: - TODO: Think on the limits and optimise for low exposure time...
+        try:
+            if np.max(image) < 400 and positionX != -1 and positionY !=-1:
+                filterCM.setRelPosition(1)
+        except:
+            print('Problem with maximum of image...')
+
+        try: # Get beam position with occulter, if larger distance then something use NN to predict and move motors...
+             # Or we capture image and then check saturation, but needs self.Targets...
+            position = [positionX, positionY]
+            if positionX != -1 and positionY != -1:
+                invalidPosition = 0
+                if distance([positionX, positionY], target) > 50: # Align imediately on this position!!
+                    movement = t5_t6_alignment.predict([position])
+                    t5_t6_alignment.move_motors(movement)
+                    averagePosition = []
+
+                else:
+                    averagePosition.append(position)
+                    if len(averagePosition) > 10:
+                        averagePosition.pop(0)
+
+                    # Now calculate the average position
+                    averageX = sum(p[0] for p in averagePosition) / len(averagePosition)
+                    averageY = sum(p[1] for p in averagePosition) / len(averagePosition)
+                    position = [averageX, averageY]
+                    if distance(position, [484, 304]) > 7: # Think about the distance before we move, also think about the step sizes...
+                        movement = t5_t6_alignment.predict([position])
+                        t5_t6_alignment.move_motors(movement)
+                        averagePosition = []
+            else: # This is where we did not find position, should we make a counter to stop the alignment??
+                invalidPosition += 1
+                print('No beam detected for: ', invalidPosition)
+                if invalidPosition > 10:
+                    run.clear()
+        except:
+            print("Problem in the automatic alignment of the main camera...")
+            time.sleep(1)
+            #run.clear()
+
+
+    # exit cleanly...
+    another_japc.stopSubscriptions()
+    another_japc.clearSubscriptions()
+    another_japc.rbacLogout()
+    time.sleep(1)
+    print('Automatic alignment has been stopped!')
 
 def saver_worker():
     buffer = []
@@ -144,8 +245,7 @@ def saver_worker():
     if buffer:
         write_chunk(buffer)
     print("[Saver] Worker exiting.")
-    
-    
+
 def setter_worker(japc, path, value, automatic = False):
     print("[Setter] Worker started.")
     japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting2#triggerDecimation', '0') #Take SW trigger only, why does it not work??
@@ -162,7 +262,6 @@ def setter_worker(japc, path, value, automatic = False):
 
     japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting2#triggerDecimation', '11245') #Put back the 1Hz trigger
     print("[Setter] Worker exiting.")
-
 
 def write_chunk(events):
     global run_number
@@ -208,8 +307,71 @@ def lowLength(array):
 
     return indices[1]-indices[0]
 
+def longest_consecutive_sequence(values):
+    if not values:
+        return []
+
+    values = sorted(set(values))  # We should not need this...
+    longest = []
+    current = [values[0]]
+
+    for prev, curr in zip(values, values[1:]):
+        if curr == prev + 1:
+            current.append(curr)
+        else:
+            if len(current) > len(longest):
+                longest = current
+            current = [curr]
+
+    # final check in case the longest sequence ends at the last element
+    if len(current) > len(longest):
+        longest = current
+
+    return longest
+
 def gaussian(x, amp, cen, wid, const):
     return amp * np.exp(-(x - cen) ** 2 / (2 * wid ** 2)) + const
+
+def getBeamAmplitude(image): #com = Center of Mass, different way of center determination for images that cannot be represented by a Gaussian..., occulter provides list of x,y that is the supposed center of the occulter
+    ##Get an image that we will analyse:
+
+    xTemp = range(len(image[0]))
+    yTemp = range(len(image))
+
+    try:
+        projection_x = np.sum(image, axis=0)
+        projection_y = np.sum(image, axis=1)
+    except:
+        projection_x = []
+        projection_y = []
+
+    ##Prepare bounds for fits:
+    gBounds = ([1e2, 0, 1, 10], [1e7, 960, 100, 2e4])
+
+    try:
+        # resX = [np.max(projection_x), np.argmax(projection_x)]
+        resX, _ = curve_fit(gaussian, xTemp, projection_x[xTemp],(6e4, np.argmax(projection_x), 10.0, 300.0), bounds=gBounds)
+        if resX[0] < 2e3:
+            resX = [-1,-1,-1,-1]
+    except:
+        print("Did not fit in X.")
+        resX = [-1, -1, -1, -1]
+
+    try:
+        # resY = [np.max(projection_y), np.argmax(projection_y)]
+        resY, _ = curve_fit(gaussian, yTemp, projection_y[yTemp], (6e4, np.argmax(projection_y), 10.0, 300.0), bounds=gBounds)
+        if resY[0] < 2e3:
+            resY = [-1,-1,-1,-1]
+    except:
+        print("Did not fit in Y.")
+        resY = [-1, -1, -1,-1]
+
+    #Now we average:
+    out = -1
+    if resY[0] != -1 and resX[0] != -1:
+        out = np.mean(image[int(resX[1]-2):int(resX[1]+2),int(resY[1]-2):int(resY[1]+2)])
+
+    return out
 
 def getBeamPosition(image, com = False, occulter = None): #com = Center of Mass, different way of center determination for images that cannot be represented by a Gaussian..., occulter provides list of x,y that is the supposed center of the occulter
     ##Get an image that we will analyse:
@@ -316,11 +478,25 @@ class AcquisitionGUI(QWidget):
         super().__init__()
         self.log_signal.connect(self._append_log)
 
+        self.log_dir = "logs"
+        os.makedirs(self.log_dir, exist_ok=True)
+        self.log_file = os.path.join(self.log_dir, dt.now().strftime("%Y-%m-%d") + ".txt")
+
+        # Open file in append mode
+        self.log_fh = open(self.log_file, "a", buffering=1)
+
         self.setWindowTitle("Simple Acquisition GUI")
         self.setMinimumSize(500, 300)
         self.main_layout = QHBoxLayout()
         self.left_column = QVBoxLayout()
         self.right_column = QVBoxLayout()
+
+        cred_widget = rbac.RbaButton()
+        cred_widget.loginSucceeded.connect(self.on_login_succeed)
+        self.main_layout.addWidget(cred_widget)
+
+        # let's try to perform automatic kerberos login:
+        cred_widget.model.login_with_kerberos(False)
 
         # Controls layout
         controls_layout = QHBoxLayout()
@@ -374,6 +550,7 @@ class AcquisitionGUI(QWidget):
         self.right_column.addWidget(self.full_align_btn)
 
         self.cam_align_btn = QPushButton("Main Cam Alignment")
+        self.cam_align_btn.clicked.connect(self.toggle_main_cam_alignment_clicked)
         self.right_column.addWidget(self.cam_align_btn)
 
         # Row for Full Autonomy + checkbox
@@ -392,10 +569,18 @@ class AcquisitionGUI(QWidget):
         info_row.addWidget(self.totalIntensityB2_label)
 
         self.save_full_checkbox = QCheckBox("save full images")
+        self.save_full_checkbox.setChecked(True)
         self.save_full_checkbox.setToolTip(
             "Switch between saving full images (storage intensive) and saving profiles"
         )
         autonomy_row.addWidget(self.save_full_checkbox)
+
+        self.full_beam_scan_checkbox = QCheckBox("Full beam scan")
+        self.full_beam_scan_checkbox.setChecked(True)
+        self.full_beam_scan_checkbox.setToolTip(
+            "Switch between scanning full beam or one train (physics)"
+        )
+        autonomy_row.addWidget(self.full_beam_scan_checkbox)
 
         self.log_box = QPlainTextEdit()
         self.log_box.setReadOnly(True)
@@ -425,6 +610,8 @@ class AcquisitionGUI(QWidget):
         self.align_thread = None
         self.control_thread = None
         self.occulter = True
+        self.main_cam_process = None
+        self.main_cam_run = mp.Event()
         
         self.bunchSlots = []
         self.bunchIndex = 0
@@ -436,7 +623,7 @@ class AcquisitionGUI(QWidget):
         self.clientRBAC = pyrbac.AuthenticationClient()
         # tokenLife = datetime.timedelta(days = 7)
         # login_master_kerberos does not asign roles properly, so for now we try the kerberos app login...
-        self.token = self.clientRBAC.login_kerberos() # Ok this works well, let's renew the token after each fill, that way we'll be safe.... TODO: renew token and login to japcs before each fill...
+        self.token = self.clientRBAC.login_kerberos() # Ok this works well, let's renew the token after each fill, that way we'll be safe....
 
         # This is taking care of acquisition
         self.acq_japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
@@ -467,11 +654,6 @@ class AcquisitionGUI(QWidget):
         # Motor LS; x,y occulter; gate, main camera, intensifier; 2 motors for final alignment - depending whether main alignment needs the individual motors or not...
         self.main_japc.subscribeParam('LHC.BCTFR.A6R4.B2/Acquisition#wholeBeamIntensity', self.intensity_callback) # This is the total intensity in B2
         self.main_japc.subscribeParam('LHC.BCCM.B2.A/SummaryAcquisition#beamEnergy', self.energy_callback)
-
-        self.M3X = Motor('LHC.BSRH.FOLDING-H.B2', self.main_japc, 45)  # LHC
-        self.M3Y = Motor('LHC.BSRH.FOLDING-V.B2', self.main_japc, 0)  # LHC
-        # TODO: Add LS V-UP for closing,
-        self.LS = Pneumatics('LHC.BSRH.IN-OUT.B2', self.main_japc, 2) # This is in targets, no? So why is it here??
 
         self.bgT2 = np.asarray([-1])
         self.bgT4 = np.asarray([-1])
@@ -512,36 +694,48 @@ class AcquisitionGUI(QWidget):
 
         if scanning:
           # Deal with fast saturation (in case of issues..)
-          if is_saturated(image['image2D'], 4094, 0.01): # 5% of image is above 4094 we put in additional filter...
-            self.Targets.filterCM.setRelPosition(-1)
           if self.bunchIndex+1 < len(self.bunchSlots):
             self.bunchIndex = self.bunchIndex + 1
           else:
             self.bunchIndex = 0
-            if self.occulter == False:
-                self.Targets.motXCM.setAbsPosition(32567) # There is something wrong!!!
-                self.Targets.motXCM.setAbsPosition(10867)
-                self.Targets.filterCM.setAbsPosition(3)
+            if self.occulter == False: # TODO: put this into a different process, maybe...
+                self.Targets.motXCM.setAbsPosition(32594)
+                self.Targets.motYCM.setAbsPosition(10907)
+                self.Targets.filterCM.setRelPosition(1) # Remove one filter...
                 self.occulter = True
 
           self.acq_japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting1#delaySlots', self.bunchSlots[self.bunchIndex])
         # camera_arrived.set()
         timestamp = header.get('acqStamp', time.time())
+        if self.save_full_checkbox.isChecked() == False:
+            profX = np.sum(image['image2D'], axis=0)
+            profY = np.sum(image['image2D'], axis=1)
+            image = [profX, profY]
         ev = AllData(timestamp, image, snapshot)
         event_queue.put(ev)
         # print(f"Queued event at {timestamp}")
+
+    # Other functions
+    def on_login_succeed(self, token: pyrbac.Token):
+
+        if self.japc is None:
+            self.japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
+        self.japc.rbacLogin(token=token)
         
     def get_bunches(self):
         # Populate tree with dummy bunches and checkboxes
+        self.log_message('Getting bunches')
         self.bunch_tree.clear()
         bunchIntensities = self.acq_japc.getParam('LHC.BCTFR.A6R4.B2/Acquisition#averageBunchIntensities')
+        bunchCounter = 0
         for i in range(len(bunchIntensities)):
           if bunchIntensities[i] > 0:
-            #self.bunchSlots.append(i)
+            bunchCounter += 1
             item = QTreeWidgetItem([str(i), ""])
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
             item.setCheckState(1, Qt.Checked) # Change here...
             self.bunch_tree.addTopLevelItem(item)
+        self.log_message(f'Got {bunchCounter} bunches into the tree view.')
 
     def add_bunch(self):
         text = self.new_bunch_input.text().strip()
@@ -604,6 +798,11 @@ class AcquisitionGUI(QWidget):
     def _append_log(self, msg: str):
         ts = dt.now().strftime("%Y-%m-%d %H:%M:%S")
         self.log_box.appendPlainText(f"[{ts}] {msg}")
+        try:
+            self.log_fh.write(f"[{ts}] {msg} \n")
+        except Exception as e:
+            # In case of write error, still print to console
+            print(f"Log write error: {e}")
 
     def log_message(self, msg: str):
         self.log_signal.emit(msg)
@@ -682,44 +881,66 @@ class AcquisitionGUI(QWidget):
     # So here we make the automatic functions:
 
     def prepare_cameras(self):
-        #TODO: Check that the cameras are updating by checking individual image sums?
+
+        ## Calculates and sets exposure time on the camers and returns the needed filter adjustment on T4 and T6...
+
         chargeB2 = self.align_japc.getParam('LHC.BCTFR.A6R4.B2/Acquisition#wholeBeamIntensity')  # Normalizing by the full machine at 3.5e14
+        bunches = self.align_japc.getParam('LHC.BCTFR.A6R4.B2/Acquisition#averageBunchIntensities')
+        lastBunchN = -1
+        for i in range(len(bunches)):
+            if bunches[i]>0:
+                lastBunchN = i
+
+        if lastBunchN == -1 or lastBunchN > 3000:
+            lastBunchN = 12000
+
         try:
-            timingFactor = np.round(3.5e14 / chargeB2, 2)
+            timingFactor = np.round(5.2e14 / chargeB2, 2)
         except:
             timingFactor = 1
 
-        self.Cam1.changeExpTime(int(timingFactor * 150))
-        self.Cam2.changeExpTime(int(timingFactor * 50))
-        self.Cam4.changeExpTime(int(timingFactor * 500))  # With ND4 in and EA open...
-        self.Cam5.changeExpTime(int(timingFactor * 300))
+        # Cameras without ND filters
+        self.Cam1.changeExpTime(int(timingFactor * 100))
+        self.Cam2.changeExpTime(int(timingFactor * 40))
+        self.Cam5.changeExpTime(int(timingFactor * 200))
+
+        if timingFactor <= 5e4:
+            filter = int(log10(timingFactor)) # TODO: check the calibration of the filters...
+            timingFactor = timingFactor/pow(10, filter) # This is what stays after removing filters...
+        else:
+            self.log_message('Timing factor too high, intensity too low for the system to work properly, trying anyways')
+            filter = 4 # Max filter - This is something we need to pass to the main thread...
+            timingFactor = 5 # Max timing factor that can be accomodated...
+
+        self.Cam4.changeExpTime(int(timingFactor * 300))
+
 
         # Ugly setting of the main camera and the intensifier...
-        mainTime = timingFactor*60000
-        mainPulses = int(mainTime/89.2)
-        self.Cam6.changeExpTime(max(20000, min(mainTime, 1e5))) # Only 20 to 100ms
+        mainTime = int(max(20000, min(timingFactor*40000, 2e5)))
+        mainPulses = int(mainTime/89.2) # This should be ok now...
+        self.Cam6.changeExpTime(mainTime) # Only 20 to 100ms # TODO: Think about better ways to do this...
         self.main_japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting1#delaySlots', 0) # We want to start with the beginning...
-        self.main_japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting1#pulseLength', 12000) # We want 3000 bunches - TODO: understand why we cannot use all 3564 slots..
+        self.main_japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting1#pulseLength', lastBunchN) # Make the length as long as the last bunch*4 or 12000...
         self.main_japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting1#numberOfPulses', mainPulses)
 
         # Turn on the intensifier unless it is already on...
         powerArray = self.main_japc.getParam('LHC.BSR.POWER-12V-B.B2/Acquisition#channelState')
         IntensifierOn = powerArray[1]
-        if IntensifierOn == False: # We must turn it on
+        if not IntensifierOn: # We must turn it on
             powerArray[1] = 1
             self.main_japc.setParam('LHC.BSR.POWER-12V-B.B2/Setting#channelState', powerArray, checkDims = False)
             time.sleep(2)
 
-        IntensifierComs = self.main_japc.getParam('LHC.BSRH.IMGINT.5L4.B2/Acquisition#hw_com_ok') # TODO: Then all that rests is to make the proper alignment using M3 on the main camera, that way the occulter motion is simpler...
-        while IntensifierComs == False:
+        IntensifierComs = self.main_japc.getParam('LHC.BSRH.IMGINT.5L4.B2/Acquisition#hw_com_ok')
+        while not IntensifierComs:
             self.log_message('Did not connect to the intensifier, sleeping 5 seconds.')
             time.sleep(5)
             IntensifierComs = self.main_japc.getParam('LHC.BSRH.IMGINT.5L4.B2/Acquisition#hw_com_ok')
-            #WE need to initialize it:
-            #self.main_japc.setParam('LHC.BSRH.IMGINT.5L4.B2/ReopenTTY', True)
+
         #Now we just set the gain to 3.7:
         self.main_japc.setParam('LHC.BSRH.IMGINT.5L4.B2/Setting#gain', 3.7)
         time.sleep(2)
+        return filter
 
     def toggle_references_task(self, flags: int = 63):
         self.take_ref_btn.setEnabled(False)
@@ -729,7 +950,8 @@ class AcquisitionGUI(QWidget):
         self.acq_btn.setEnabled(False)
         self.scan_bunches_btn.setEnabled(False)
 
-        self.prepare_cameras()
+        filter = self.prepare_cameras()
+        self.Targets.set_filterChange(filter)
         self.align_japc.startSubscriptions() # This to get the system alive
         time.sleep(2)
         self.Targets.eaTgt.moveIn() # This is currenly enough
@@ -774,6 +996,7 @@ class AcquisitionGUI(QWidget):
 
         if (flags & 8) == 8:
             self.Targets.measureT4()
+            time.sleep(1)
             self.log_message('Measuring cam 4')
             cam_images['cam4'] = self.Cam4.captureImage()
             if cam_images['cam4'].shape == self.bgT4.shape:
@@ -789,9 +1012,10 @@ class AcquisitionGUI(QWidget):
             cam_centers['cam5'] = getBeamPosition(cam_images['cam5'])
 
         if (flags & 32) == 32:
-            if self.Cam6.exposure > 2e4:
+            if self.Cam6.exposure > 2e4: # TODO: ??
                 self.log_message('Measuring cam 6')
                 self.Targets.measureT6()
+                time.sleep(2)
                 cam_images['cam6'] = np.asarray(self.Cam6.captureImage())
                 if cam_images['cam6'].shape == self.bgT6.shape:
                     cam_images['cam6'] = cam_images['cam6'] - self.bgT6
@@ -803,7 +1027,8 @@ class AcquisitionGUI(QWidget):
             saveImage(cam_files[key], cam_images[key], list(cam_centers[key]))
         self.log_message('Images saved')
 
-        self.Targets.apertures_to_references() # TODO: check the implementation
+        self.Targets.apertures_to_references() # TODO: check that it works...
+        time.sleep(2)
         self.align_japc.stopSubscriptions() # This stops the cameras and targets
         self.take_ref_btn.setEnabled(True)
         self.full_align_btn.setEnabled(True)
@@ -818,7 +1043,7 @@ class AcquisitionGUI(QWidget):
         self.align_thread = threading.Thread(target=self.toggle_references_task, args=(True, True, True), daemon=True)
         self.align_thread.start()
 
-    def toggle_full_alignment_task(self, flags: int = 7):
+    def toggle_full_alignment_task(self, flags: int = 7): # This must return true or false as to the success of the alignment...
         self.take_ref_btn.setEnabled(False)
         self.full_align_btn.setEnabled(False)
         self.cam_align_btn.setEnabled(False)
@@ -826,7 +1051,8 @@ class AcquisitionGUI(QWidget):
         self.acq_btn.setEnabled(False)
         self.scan_bunches_btn.setEnabled(False)
 
-        self.prepare_cameras()
+        filter = self.prepare_cameras()
+        self.Targets.set_filterChange(filter)
 
         file_name1 = "/user/jpucek/GitLab/bsrh-scripts/Alignment/Models/lhc_t1_t2_v5_model1_cams_targets-steps.pth"
         X_scaler_name1 = "/user/jpucek/GitLab/bsrh-scripts/Alignment/Models/lhc_t1_t2_v5_model1_cams_targets-steps_X_scaler.pkl"
@@ -850,14 +1076,14 @@ class AcquisitionGUI(QWidget):
 
         self.align_japc.startSubscriptions() # Only after all object were initialized...
         time.sleep(2)
+
         if (flags & 1) == 1:
             self.log_message('Starting alignment on T1T2')
             # t1_t2_alignment.align() # TODO: make this functional (needs better data, or different model...)
 
-
         if (flags & 2) == 2:
             self.log_message('Starting alignment on T4')
-            t3_t4_alignment.align() # This is easy as the measurement is ready
+            t3_t4_alignment.align() # The implementation is not good, needs to be refined...
 
         if (flags & 4) == 4:
             self.log_message('Starting alignment on T6')
@@ -882,6 +1108,18 @@ class AcquisitionGUI(QWidget):
             self.align_thread = threading.Thread(target=self.toggle_full_alignment_task, daemon=True)
             self.align_thread.start()
 
+    def toggle_main_cam_alignment_clicked(self):
+        if self.main_cam_run.is_set() is False:
+            self.main_cam_run.set()
+            self.main_cam_process = Process(target=align_main_cam, args=(self.main_cam_run,))
+            self.main_cam_process.start()
+            self.cam_align_btn.setText('Aligning main cam')
+        else:
+            self.main_cam_run.clear()
+            time.sleep(1)
+            self.main_cam_process.join(timeout = 2)
+            self.cam_align_btn.setText('Main cam alignment')
+
     def toggle_automatic_task(self):
 
         self.log_message('Started fully automated bsrh control')
@@ -889,12 +1127,12 @@ class AcquisitionGUI(QWidget):
         time.sleep(1) # To make sure subscriptions start...
         refs = False
         aligned = False
-
+        positions = {}
 
         while full_auto_running.is_set(): # This must be set to True by the button and then it must be set to false by the same button to stop...
             # 1 take references, 2 full alignment (Main Cam not ready...), 3 main camera alignment start, 4 acquisition start
             #Let's get a new token in case ours will expire within 12 hours
-            if self.token.expiration_time < dt.now() + datetime.timedelta(hours = 1):
+            if self.token.expiration_time < dt.now() + datetime.timedelta(hours = 1): # TODO: check that this works...
                 self.token = self.clientRBAC.login_kerberos() # Here we get new token, that we can use to login to used japcs..
                 self.main_japc.rbacLogin(token = self.token)
                 self.align_japc.rbacLogin(token = self.token)
@@ -907,19 +1145,21 @@ class AcquisitionGUI(QWidget):
                 self.energyLHC_label.setText('LHC energy = ' + str(np.round(energy, 2)))
                 self.totalIntensityB2_label.setText(f'LHC b2 intensity = {intensity:.3e}')
 
-            if energy > 4500 and intensity > 1e9: # This means we are in business
+            if energy > 5500 and intensity > 1e9: # TODO: Rebooting cameras? Watchdog needed...
+                # We should also ramp up the frequency on the main camera...
+
                 if refs == False:
+                    start = time.time()
                     # Before anything happens, we must make the system safe...
                     self.Targets.allIn()
                     time.sleep(5)
                     self.log_message('Taking initial references')
-                    positions = self.toggle_references_task()
+                    positions = self.toggle_references_task() # Taking references on all screens
                     print(positions)
                     refs = True
 
                 if aligned == False and refs == True:
                     self.log_message('Performing alignment')
-                    self.log_message(positions)
                     if positions['cam6'][0] == -1 or positions['cam6'][1] == -1: # no beam on main cam, align on t4 as well
                         self.toggle_full_alignment_task(6)
                         self.log_message('Taking references after alignment')
@@ -927,13 +1167,18 @@ class AcquisitionGUI(QWidget):
                     else:
                         self.toggle_full_alignment_task(4) # This aligns only the main camera
                         self.log_message('Taking references after alignment')
-                        self.toggle_references_task(32)
+                        self.toggle_references_task(32) # T6 only...
                     aligned = True
 
                 ## Here we could start the main camera alignment thread, and the acquisition thread... (Don't forget that we want to move the occulter... and subtract the bg for the main cam and the occulter is always on )
                 if not scanning:
                     self.get_bunches() # This way all will be checked...
                     self.get_checked_bunches() # Important...
+                    #Here we have to check if full_beam_scan_checkbox is checked to then propagate only first train...
+                    if self.full_beam_scan_checkbox.isChecked() == False:
+                        tmp = longest_consecutive_sequence(self.bunchSlots)
+                        self.bunchSlots = tmp
+
                     self.bunchSlots.append(self.bunchSlots[-1]+1) # This is to grab the BG
                     self.main_japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting1#pulseLength', 4) # bunch-by-bunch measurement
                     self.Targets.filterCM.setAbsPosition(3) # This is for the beginning without occulter...
@@ -943,25 +1188,52 @@ class AcquisitionGUI(QWidget):
                     time.sleep(2)
                     self.main_japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting1#delaySlots', self.bunchSlots[0])
                     self.main_japc.setParam('LHC.BSRH.IMGINT.5L4.B2/Setting#gain', 3.9)
+                    time.sleep(2)
+
+                    tmpImage = self.Cam6.captureImage()
                     oldPulses = self.main_japc.getParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting1#numberOfPulses')
-                    newPulses = autoExposure(self.Cam6.captureImage(), oldPulses)
-                    self.main_japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting1#numberOfPulses', newPulses)
-                    newTime = int(oldPulses*89.2+100)
-                    self.Cam6.changeExpTime(max(20000, min(newTime, 1e5)))
+                    counter = 0 # So we would not block the whole GUI!!
+
+                    while getBeamAmplitude(tmpImage) > 3200 and counter < 10:
+                        counter += 1
+                        newPulses = int(autoExposure(tmpImage, oldPulses))
+                        oldPulses = newPulses
+                        self.log_message(f'New number of pulses: {newPulses}')
+                        if 200 < newPulses < 2000:
+                            self.main_japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting1#numberOfPulses', newPulses)# Does this go through?
+                            newTime = int(newPulses*89.2+100)
+                            self.Cam6.changeExpTime(max(20000, min(newTime, 2e5)))
+                        else:
+                            self.log_message('Cannot set correct pulses')
+                        time.sleep(1)
+                        tmpImage = self.Cam6.captureImage()
 
                     #Now get BG!!:
                     self.main_japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting1#delaySlots', self.bunchSlots[-1])
-                    self.Cam6.captureImage(True)
+                    time.sleep(1)
+                    self.bgT6 = self.Cam6.captureImage(True)
 
                     self.occulter = False # This is important for the setter that will move the occulter in after one full pass of full images...
                     self.align_japc.stopSubscriptions()
                     time.sleep(2)
+                    end = time.time()
 
+                    print(f"Time from alignment to scanning bunches is: {end-start:.1f} s")
                     self.scan_bunches(automatic = True) # In this scanning the speed of acq is really slow...
-                time.sleep(5) # This means the GUI will be responsive once in 5 seconds...
+
+                #Check the main alignment process:
+                if self.main_cam_run.is_set() is False:
+                    self.main_cam_run.set()
+                    self.main_cam_process = Process(target=align_main_cam, args=(self.main_cam_run, self.bgT6))
+                    self.main_cam_process.start()
+                time.sleep(1) # This means the GUI will be responsive once each 1 second...
             else:
                 if scanning:
-                    self.scan_bunches() # This stops setter, not saver - why??
+                    self.scan_bunches()
+
+                if self.main_cam_run.is_set():
+                    self.main_cam_run.clear() # apparently this will stop the process...
+
                 refs = False
                 aligned = False
                 if self.Targets.eaTgt.isIn() == False:
@@ -980,6 +1252,9 @@ class AcquisitionGUI(QWidget):
             self.scan_bunches()
         if self.Targets.eaTgt.isIn() == False:
             self.Targets.eaTgt.moveIn()  # Making the system safe...
+
+        if self.main_cam_run.is_set():
+            self.main_cam_run.clear()
 
         self.main_japc.stopSubscriptions()
         self.log_message('Stopped fully automated bsrh control')
@@ -1012,11 +1287,10 @@ class AcquisitionGUI(QWidget):
                 print('The control thread was not started!')
             self.full_auto_btn.setText('Stop running automatically')
 
-
 # Entry point
 if __name__ == "__main__":
+    mp.set_start_method('spawn')
     app = QApplication(sys.argv)
     gui = AcquisitionGUI()
     gui.show()
     sys.exit(app.exec_())
-

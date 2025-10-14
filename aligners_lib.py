@@ -236,7 +236,7 @@ class T3T4AlignmentNN(AlignmentNN):
         Align to target in a loop until close enough.
         """
         self.config.measureT4()
-        sleep(1)
+        sleep(2)
         cam2_pos = np.array(self.cam2.getBeamPosition())
         count = 0
 
@@ -276,7 +276,7 @@ class T3T4AlignmentNN(AlignmentNN):
         self.motor_theta.setRelPosition(prediction[1])
         while self.motor_phi.isBusy() or self.motor_theta.isBusy():
             sleep(0.2)
-        # sleep(1)
+        sleep(1)
 
 
 class T5T6AlignmentNN(AlignmentNN): # TODO: adapt for t5 t6, its only copied now
@@ -306,8 +306,8 @@ class T5T6AlignmentNN(AlignmentNN): # TODO: adapt for t5 t6, its only copied now
         else:
             pass
             # LHC Motors
-            self.motor_phi = Motor('LHC.BSRH.M3-PHI.B2', self.japc, 65)
-            self.motor_theta = Motor('LHC.BSRH.M3-THETA.B2', self.japc, 50)
+            self.motor_phi = Motor('LHC.BSRH.M3-PHI.B2', self.japc, 64)
+            self.motor_theta = Motor('LHC.BSRH.M3-THETA.B2', self.japc, 106)
             #self.motor_phi = Motor('LHC.BSRH.FOLDING-H.B2', japc, 45)
              #self.motor_theta = Motor('LHC.BSRH.FOLDING-V.B2', japc, 0)
 
@@ -315,12 +315,13 @@ class T5T6AlignmentNN(AlignmentNN): # TODO: adapt for t5 t6, its only copied now
             self.cam2 = Camera('LHC.BSRH.BTVDC-CAM.MAIN', self.japc, False)
 
             self.motor_references = {"phi": 82285, "theta": 70097}
+            self.occulterPosition = [484, 300, 45] # This is to call the corect get beam positionin infinite alignment...
 
         self.cam2_target = [484, 304]  # cam2 target center
         # TODO: check if targets valid (both ISR and LHC)
 
 
-    def predict(self, cams_pos):
+    def old_predict(self, cams_pos, target = None):
         """
         Use nn to predict next motor movement.
         """
@@ -329,7 +330,10 @@ class T5T6AlignmentNN(AlignmentNN): # TODO: adapt for t5 t6, its only copied now
 
         cam2_pos = cams_pos[0]
 
-        input_vector = np.concatenate((cam2_pos, self.cam2_target), axis=0)
+        if target == None:
+            input_vector = np.concatenate((cam2_pos, self.cam2_target), axis=0)
+        else:
+            input_vector = np.concatenate((cam2_pos, target), axis=0)
         input_vector_2d = input_vector.reshape(1, -1)
         scaled_input = self.X_scaler.transform(input_vector_2d)
         scaled_tensor = torch.from_numpy(scaled_input).float()
@@ -341,26 +345,68 @@ class T5T6AlignmentNN(AlignmentNN): # TODO: adapt for t5 t6, its only copied now
 
         return prediction_real[0]
 
-    def align(self):
+
+    def predict(self, cams_pos, target = None):
+        """
+        Use nn to predict next motor movement.
+        """
+        #TODO: the models trained so far are trained only on cam2 (main cam) - for predict() and align()
+        # - it's gonna be a problem if the model is different
+
+        cam2_pos = cams_pos[0]
+
+        if target == None:
+            input_vector = np.concatenate((cam2_pos, self.cam2_target), axis=0)
+        else:
+            input_vector = np.concatenate((cam2_pos, target), axis=0)
+
+        distX = input_vector[2]-input_vector[0]
+        distY = input_vector[3]-input_vector[1]
+
+        if distX < 10:
+            stepsX = distX*1.0
+        else:
+            stepsX = distX*1.8
+
+        if distY < 10:
+            stepsY = distY*-0.9
+        else:
+            stepsY = distY*-1.4
+
+        return [stepsX, stepsY]
+
+    def align(self, target = None, bg = None): # Just in case we would want to change the target...
         """
         Align to target in a loop until close enough.
         """
+        if bg != None:
+            self.cam2.setBg(bg)
+
         self.config.measureT6()
-        cam2_pos = np.array(self.cam2.getBeamPosition())
+        sleep(2)
         count = 0
 
-        while (np.abs(cam2_pos[0] - self.cam2_target[0]) > self.dist_tolerance or
-               np.abs(cam2_pos[1] - self.cam2_target[1]) > self.dist_tolerance):
+        # TODO: Think hard about how this should work!!!
+        cam2_pos = [-1, -1]
+        while cam2_pos[0] == -1 or cam2_pos[1] == -1 and count < 5:
+            cam2_pos = np.array(self.cam2.getBeamPosition()) # We check to make sure that this is not one of a kind issue, we should include BG though... that is in the main thread...
+            count += 1
+        if count == 5:
+            cam2_pos = np.array(self.cam2.getBeamPosition(com = True))
+
+        count = 0
+
+        while (np.abs(cam2_pos[0] - self.cam2_target[0]) > self.dist_tolerance or np.abs(cam2_pos[1] - self.cam2_target[1]) > self.dist_tolerance): # This is not what I asked for...
             if count > 15:
                 print("Not getting closer reasonably fast.")
                 break
             if cam2_pos[0] == -1 or cam2_pos[1] == -1:
-                print("Beam lost, sending to references.")
+                print("Beam lost, sending to references.") # This should be last resort...
                 self.send_to_references()
                 sleep(1)
                 #break
 
-            motor_prediction = self.predict([cam2_pos])
+            motor_prediction = self.predict([cam2_pos], target)
             self.move_motors(motor_prediction)
 
             cam2_pos = np.array(self.cam2.getBeamPosition())
@@ -385,6 +431,7 @@ class T5T6AlignmentNN(AlignmentNN): # TODO: adapt for t5 t6, its only copied now
         self.motor_theta.setRelPosition(prediction[1])
         while self.motor_phi.isBusy() or self.motor_theta.isBusy():
             sleep(0.2)
+        sleep(1) # Don't forget to sleep for some time to make sure that we get correct measurements!
 
 
 class AlignmentPipeline:

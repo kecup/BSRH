@@ -23,34 +23,40 @@ japc.rbacLogin(token=token)
 
 ##We should have most components ready, let's get data for training:
 ##BackLash
-FoldingX = Motor('LHC.BSRH.M3-PHI.B2', japc, 65) # todo
-FoldingY = Motor('LHC.BSRH.M3-THETA.B2', japc, 50)
+FoldingX = Motor('LHC.BSRH.M3-PHI.B2', japc, 64) # Measured by the backlash script...
+FoldingY = Motor('LHC.BSRH.M3-THETA.B2', japc, 106) #
 
-cam = Camera('LHC.BSRH.BTVDC-CAM.MAIN', japc)
+cam = Camera('LHC.BSRH.BTVDC-CAM.MAIN', japc, False)
 
-MotorRangeX = 500#How many steps the motor can make from reference to keep the image on the camera
-MotorRangeY = 450
+MotorRangeX = 100#How many steps the motor can make from reference to keep the image on the camera
+MotorRangeY = 0
 
 
 japc.startSubscriptions()
 sleep(2)
 ##Save references so we can go back in case we lose the beam
 
+
+#Eliminate backlash...
+FoldingX.setRelPosition(64)
+FoldingY.setRelPosition(112)
+
+sleep(1)
+
 refX = FoldingX.getPosition()
 refY = FoldingY.getPosition()
-
 PosX, PosY = cam.getBeamPosition()
 
 
 ##Open a csv file that we will use to save the training data:
-TrainingFile = open('Data/MainCamData_m3.csv', 'a')
+TrainingFile = open('Data/MainCamData_m3_v3.csv', 'a')
 writeTraining = csv.writer(TrainingFile)
 header = ["camX", "camY", "mX", "mY", "tX", "tY", "stepsX", "stepsY"]
 writeTraining.writerow(header)
 
 camX, camY = cam.getBeamPosition()
 ##Now let's generate training data:
-for i in range(500):
+for i in range(100):
   print(i)
   if camX == -1 or camY == -1:
     print('Did not find beam, sending to references') ## This does not account for summing up the backlash...
@@ -66,8 +72,10 @@ for i in range(500):
   mX = FoldingX.getPosition() #This might take long as it waits for motor to stop...
   mY = FoldingY.getPosition() #This might take long as it waits for motor to stop...
   
-  stepsX = random.randint(refX-MotorRangeX, refX+MotorRangeX) - mX
-  stepsY = random.randint(refY-MotorRangeY, refY+MotorRangeY) - mY
+  stepsX = random.randint(-MotorRangeX, MotorRangeX) # This is pretty stupid!!!
+  stepsY = random.randint(-MotorRangeY, MotorRangeY)
+
+  print('Steps: ', stepsX, stepsY)
   
   FoldingX.setRelPosition(stepsX)
   FoldingY.setRelPosition(stepsY)

@@ -422,7 +422,7 @@ if __name__ == "__main__":
     # change FeedbackNN number for different nn architecture
 
     #data_file_name = "Data/isr_t5_t6_data_v3.csv"
-    data_file_name = "Data/MainCamData_m3.csv"
+    data_file_name = "Data/MainCamData_m3_v3.csv"
 
     df = pd.read_csv(data_file_name)
     print(f"There are {df.shape[0]} rows")

@@ -28,9 +28,9 @@ haloV = [[]]
 haloH = [[]]
 
 #Touch this...
-maskX = 455 ##Change here the mask position
-maskY = 300
-maskR = 40
+maskX = 484 ##Change here the mask position
+maskY = 304
+maskR = 45
 sigma = 3.5 #From where you want to calculate the charge
 
 ##Maybe don't touch this unless you know what you are doing...

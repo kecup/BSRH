@@ -178,7 +178,7 @@ def main():
 
 
     #df = pd.read_csv("Data/isr_t5_t6_data_v3.csv")
-    df = pd.read_csv("Data/MainCamData_m3.csv")
+    df = pd.read_csv("Data/MainCamData_m3_v2.csv")
 
     print(f"There are {df.shape[0]} rows.")
 

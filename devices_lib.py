@@ -11,16 +11,20 @@ def gaussian(x, amp, cen, wid, const):
 
 def lowLength(array):
     #Identify maxima from a moving average, to smear the hot pixels
-    maxima = find_peaks(array, height = 1000, distance = 10, width = 5) # might be empty...
+    peaks, properties = find_peaks(array, height=300, distance=10, width=5)
 
-    # We want the highest two of the array:
-    try:
-        values = np.array(array)[maxima]
-        indices = maxima[np.argsort(values)[-2:][::-1]]
-    except:
-        indices = [0,0]
+    if len(peaks) < 2:
+        # Not enough peaks found — return 0
+        return 0
 
-    return indices[1]-indices[0]
+    # Get the corresponding peak values
+    values = np.array(array)[peaks]
+
+    # Find indices of the two highest peaks
+    top_two_indices = peaks[np.argsort(values)[-2:][::-1]]
+
+    # Return distance between them
+    return abs(top_two_indices[1] - top_two_indices[0])
 
 class Pneumatics:
     def __init__(self, name, japc, slot):
@@ -246,26 +250,28 @@ class Camera:
             self.subscription = self.japc.subscribeParam(self.name + '/Acquisition#image1', self.updateImage)
         else:
             self.exposure = self.japc.getParam(self.name + '/CameraSetting#cameraExposureTimeUs')
-            self.subscription = self.japc.subscribeParam(self.name + '/LastImage#image2D', self.updateImage)
-
-
+            self.subscription = self.japc.subscribeParam(self.name + '/LastImage#image2D', self.updateImage) # This is the fast subscription, should not run it unless necessary!!
 
     def changeExpTime(self, exposure):
         exposure = int(np.round(exposure))
-        if 40 < exposure < 1e5:
+        if 40 <= exposure <= 2e5:
             self.exposure = exposure
-            print('Setting', self.name, ' exposure to: ', exposure)
+            print(f'Setting {self.name} exposure to: {exposure}')
+        elif exposure < 40:
+            self.exposure = 40
+            print('Exposure not valid, setting min = 40us')
+        elif exposure > 2e5:
+            self.exposure = 2e5
+            print('Exposure not valid, setting max = 2e5us') # TODO: for cam4 and 6 there should be a way to lower the amount of filters
 
-            if self.remDevAcc:
-                try:
-                    self.rda.set(self.name,'Setting',[{"field": 'ExposureTime', "type": rda.RDA_INT, "data": exposure}])
-                except:
-                    print('Setting exposure failed')
-            else:
-                self.japc.setParam(self.name+'/CameraSetting#cameraExposureTimeUs', exposure)
 
+        if self.remDevAcc:
+            try:
+                self.rda.set(self.name,'Setting',[{"field": 'ExposureTime', "type": rda.RDA_INT, "data": self.exposure}])
+            except:
+                print('Setting exposure failed')
         else:
-            print('Exposure not valid')
+            self.japc.setParam(self.name+'/CameraSetting#cameraExposureTimeUs', self.exposure)
 
     def setBg(self, image): # We should make some fail-safes...
         self.bgImage = image
@@ -276,6 +282,7 @@ class Camera:
 
     def captureImage(self, bg = False):  ## Should think whether subscription is the way forward or not...
         lastUpdate = self.updated
+        oldImage = self.image
         cycle = 0
         while lastUpdate == self.updated and cycle < 10:
             sleep(0.2)
@@ -285,44 +292,60 @@ class Camera:
             print('Getting image timed-out.')
             outImage = np.asarray([])
         else:
-            outImage = self.image
+            if ((oldImage == self.image).all()):
+                print('The same old image!!!') # TODO: In this case we need to powercycle...
+                outImage = np.asarray([])
+            else:
+                outImage = self.image
 
-        if bg == True:
+        if bg:
             self.bgImage = outImage
         return outImage
 
     def getBeamPosition(self, com = False, occulter = None): #com = Center of Mass, different way of center determination for images that cannot be represented by a Gaussian..., occulter provides list of x,y that is the supposed center of the occulter
         ##Get an image that we will analyse:
-        if len(self.bgImage) != 0:
-            image = np.asarray(self.captureImage()) - self.bgImage # Well, here we should be careful that the exposure time did not change
-        else:
-            image = np.asarray(self.captureImage())
+        try:
+            if len(self.bgImage) != 0:
+                image = np.asarray(self.captureImage()) - self.bgImage # Well, here we should be careful that the exposure time did not change
+            else:
+                image = np.asarray(self.captureImage())
+
+        except:
+            print('Problem capturing image!')
+            return -1,-1
         outX = -1
         outY = -1
 
         xTemp = range(len(image[0]))
         yTemp = range(len(image))
 
-        if occulter != None:
+        if occulter != None: # What if we provide occulter but it is not there???
             lengthX = []
             lengthY = []
 
             # Refine the location
-            pass
-            for offset in range(-5,6): #Well, this might be problematic in case the occulter is not there, yet we perform this...
-                crosscutX = image[occulter[0]+offset,:]
-                crosscutY = np.transpose(image[:,occulter[1]+offset])
-                lengthX.append(lowLength(crosscutX))
-                lengthY.append(lowLength(crosscutY))
+            # for offset in range(-5,6): #Well, this might be problematic in case the occulter is not there, yet we perform this...
+            #     crosscutX = image[occulter[0]+offset,:]
+            #     crosscutY = np.transpose(image[:,occulter[1]+offset])
+            #     lengthX.append(lowLength(crosscutX))
+            #     lengthY.append(lowLength(crosscutY))
+            #
+            # # Here we use the one with the longest low, should be the same in both axis..:
+            # Radius = (np.max(lengthX) + np.max(lengthY))/2 + 5
+            # print(lengthX)
+            # print(lengthY)
+            #
+            # if Radius < 15:
+            #     print('No occulter detected')
+            # else:
+            #     OCX = occulter[0] + lengthX.index(np.max(lengthX))
+            #     OCY = occulter[1] + lengthY.index(np.max(lengthY))
+            #
+            #     xTemp = list(range(0, int(OCX-Radius)))+list(range(int(OCX+Radius), len(image[0])-1))
+            #     yTemp = list(range(0, int(OCY-Radius)))+list(range(int(OCY+Radius), len(image)-1))
 
-            # Here we use the one with the longest low, should be the same in both axis..:
-            Radius = (np.max(lengthX) + np.max(lengthY))/2 + 5
-
-            OCX = occulter[0] + lengthX.index(np.max(lengthX))
-            OCY = occulter[1] + lengthY.index(np.max(lengthY))
-
-            xTemp = list(range(0, OCX-Radius))+list(range(OCX+Radius, len(image[0])-1))
-            yTemp = list(range(0, OCY-Radius))+list(range(OCY+Radius, len(image)-1))
+            xTemp = list(range(0, int(occulter[0] - occulter[2]))) + list(range(int(occulter[0] + occulter[2]), len(image[0]) - 1))
+            yTemp = list(range(0, int(occulter[1] - occulter[2])))+list(range(int(occulter[1] + occulter[2]), len(image)-1))
 
 
         if com == True:
