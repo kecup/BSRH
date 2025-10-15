@@ -11,14 +11,15 @@ from scipy.interpolate import interp1d
 import pandas as pd
 
 # ---------------- CONFIG ----------------
-directory = '/user/jpucek/BSRH/Data/2025/09/26/'
+#directory = '/user/jpucek/BSRH/Data/2025/09/26/'
+directory = '/user/jpucek/BSRH/Data/2025/08/04/'
 files = sorted(os.listdir(directory))
 dctx = zstd.ZstdDecompressor()
 japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
 
-bunch = 55
+bunch = 0
 # file_range = range(110, 112)
-file_range = range(2)
+# file_range = range(2)
 
 maskX, maskY, maskR = 110, 110, 50  # Excluded signal region wrt. x1, x2,
 x1, x2 = 390, 690#284, 734

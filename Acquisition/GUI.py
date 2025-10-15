@@ -20,7 +20,7 @@ from mpmath import log10
 from scipy.ndimage import center_of_mass
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
-from PyQt5.QtWidgets import (QApplication, QWidget, QPlainTextEdit, QVBoxLayout, QPushButton, QCheckBox, QSpinBox, QLabel, QHBoxLayout, QTreeWidget, QTreeWidgetItem, QMessageBox, QLineEdit)
+from PyQt5.QtWidgets import (QApplication, QWidget, QPlainTextEdit, QVBoxLayout, QPushButton, QCheckBox, QSpinBox, QLabel, QHBoxLayout, QTreeWidget, QTreeWidgetItem, QMessageBox, QLineEdit, QToolBar)
 from PyQt5.QtGui import QIntValidator
 from PyQt5.QtCore import Qt, pyqtSignal, QObject
 from queue import Queue
@@ -151,7 +151,7 @@ def align_main_cam(run, bg = None):
     X_scaler_name3 = "/user/jpucek/GitLab/bsrh-scripts/Alignment/Models/lhc_t6_v1_model1_camMain_target2-steps_X_scaler.pkl"
     y_scaler_name3 = "/user/jpucek/GitLab/bsrh-scripts/Alignment/Models/lhc_t6_v1_model1_camMain_target2-steps_y_scaler.pkl"
 
-    occulter = [484, 302, 45] # TODO: check this...
+    occulter = [484, 302, 50] # TODO: check this...
     target = [484, 302]
     averagePosition = []
     invalidPosition = 0
@@ -175,17 +175,23 @@ def align_main_cam(run, bg = None):
 
     # Now we need the while loop to perform our alignment.... Moving average over last 5
     while run.is_set():
-        positionX, positionY = MainCam.getBeamPosition(occulter=occulter)
-        image = MainCam.captureImage()
+        image = MainCam.captureImage() # This can be only empty array in case of subscription problem...
+        positionX = -1
+        positionY = -1
+        if image is not None and np.size(image) > 0:
+            positionX, positionY = getBeamPosition(image, occulter = occulter)
 
         # Making the system safe...
-        if is_saturated(image, 4094, 0.015):  # 2% of image is above 4094 we put in additional filter...
+        if is_saturated(image, 4093, 0.01):  # 2% of image is above 4094 we put in additional filter...
             filterCM.setRelPosition(-1)
 
         # In case there is beam, think if we could remove a filter - perform autoExposure!: - TODO: Think on the limits and optimise for low exposure time...
         try:
             if np.max(image) < 400 and positionX != -1 and positionY !=-1:
                 filterCM.setRelPosition(1)
+
+            elif np.max(image) < 500: # TODO: make a better way to say whether or not the beam is there...
+                MainCam.setBg(image)
         except:
             print('Problem with maximum of image...')
 
@@ -194,24 +200,26 @@ def align_main_cam(run, bg = None):
             position = [positionX, positionY]
             if positionX != -1 and positionY != -1:
                 invalidPosition = 0
-                if distance([positionX, positionY], target) > 50: # Align imediately on this position!!
-                    movement = t5_t6_alignment.predict([position])
+                # if distance([positionX, positionY], target) > 50: # Align imediately on this position!!
+                #     movement = t5_t6_alignment.predict([position])
+                #     t5_t6_alignment.move_motors(movement)
+                #     averagePosition = []
+                #
+                # else:
+                #     averagePosition.append(position)
+                #     if len(averagePosition) > 10:
+                #         averagePosition.pop(0)
+                #
+                #     # Now calculate the average position
+                #     averageX = sum(p[0] for p in averagePosition) / len(averagePosition)
+                #     averageY = sum(p[1] for p in averagePosition) / len(averagePosition)
+                #     position = [averageX, averageY]
+                d = distance(position, [484, 304])
+                #print(f'Distance = {d}')
+                if d > 10: # Think about the distance before we move, also think about the step sizes...
+                    movement = t5_t6_alignment.predict([position]) # It seems that this still overshoots
                     t5_t6_alignment.move_motors(movement)
-                    averagePosition = []
-
-                else:
-                    averagePosition.append(position)
-                    if len(averagePosition) > 10:
-                        averagePosition.pop(0)
-
-                    # Now calculate the average position
-                    averageX = sum(p[0] for p in averagePosition) / len(averagePosition)
-                    averageY = sum(p[1] for p in averagePosition) / len(averagePosition)
-                    position = [averageX, averageY]
-                    if distance(position, [484, 304]) > 7: # Think about the distance before we move, also think about the step sizes...
-                        movement = t5_t6_alignment.predict([position])
-                        t5_t6_alignment.move_motors(movement)
-                        averagePosition = []
+                    # averagePosition = []
             else: # This is where we did not find position, should we make a counter to stop the alignment??
                 invalidPosition += 1
                 print('No beam detected for: ', invalidPosition)
@@ -346,25 +354,30 @@ def getBeamAmplitude(image): #com = Center of Mass, different way of center dete
         projection_y = []
 
     ##Prepare bounds for fits:
-    gBounds = ([1e2, 0, 1, 10], [1e7, 960, 100, 2e4])
+    gBounds = ([1e2, 0, 20, 10], [1e7, 960, 80, 5e4])
 
     try:
         # resX = [np.max(projection_x), np.argmax(projection_x)]
-        resX, _ = curve_fit(gaussian, xTemp, projection_x[xTemp],(6e4, np.argmax(projection_x), 10.0, 300.0), bounds=gBounds)
+        resX, _ = curve_fit(gaussian, xTemp, projection_x[xTemp], (2e5, np.argmax(projection_x), 45.0, 8000.0), bounds=gBounds)
+        # print(f'ResX = {resX}')
         if resX[0] < 2e3:
-            resX = [-1,-1,-1,-1]
+            resX[1] = -1
     except:
         print("Did not fit in X.")
-        resX = [-1, -1, -1, -1]
+        resX = [-1, -1, -1]
+
+    gBounds = ([1e2, 0, 20, 1e3], [1e7, 604, 65, 5e4])
 
     try:
+        resY = [-1, -1, -1]
         # resY = [np.max(projection_y), np.argmax(projection_y)]
-        resY, _ = curve_fit(gaussian, yTemp, projection_y[yTemp], (6e4, np.argmax(projection_y), 10.0, 300.0), bounds=gBounds)
+        resY, _ = curve_fit(gaussian, yTemp, projection_y[yTemp], (4e4, np.argmax(projection_y), 33.0, 8000.0), bounds=gBounds)
+        # print(f'ResY = {resY}')
         if resY[0] < 2e3:
-            resY = [-1,-1,-1,-1]
+            resY[1] = -1
     except:
         print("Did not fit in Y.")
-        resY = [-1, -1, -1,-1]
+        resY = [-1, -1, -1]
 
     #Now we average:
     out = -1
@@ -386,20 +399,21 @@ def getBeamPosition(image, com = False, occulter = None): #com = Center of Mass,
         lengthY = []
 
         # Refine the location
-        for offset in range(-5,6): #Well, this might be problematic in case the occulter is not there, yet we perform this...
-            crosscutX = image[occulter[0]+offset,:]
-            crosscutY = np.transpose(image[:,occulter[1]+offset])
-            lengthX.append(lowLength(crosscutX))
-            lengthY.append(lowLength(crosscutY))
+        # for offset in range(-5,6): #Well, this might be problematic in case the occulter is not there, yet we perform this...
+        #     crosscutX = image[occulter[0]+offset,:]
+        #     crosscutY = np.transpose(image[:,occulter[1]+offset])
+        #     lengthX.append(lowLength(crosscutX))
+        #     lengthY.append(lowLength(crosscutY))
+        #
+        # # Here we use the one with the longest low, should be the same in both axis:
+        # Radius = (np.max(lengthX) + np.max(lengthY))/2 + 5
+        #
+        OCX = occulter[0] #+ lengthX.index(np.max(lengthX))
+        OCY = occulter[1] #+ lengthY.index(np.max(lengthY))
+        Radius = occulter[2]
 
-        # Here we use the one with the longest low, should be the same in both axis:
-        Radius = (np.max(lengthX) + np.max(lengthY))/2 + 5
-
-        OCX = occulter[0] + lengthX.index(np.max(lengthX))
-        OCY = occulter[1] + lengthY.index(np.max(lengthY))
-
-        xTemp = list(range(0, OCX-Radius))+list(range(OCX+Radius, len(image)))
-        yTemp = list(range(0, OCY-Radius))+list(range(OCY+Radius, len(image[0])))
+        xTemp = list(range(0, int(OCX-Radius)))+list(range(int(OCX+Radius), len(image[0])-1))
+        yTemp = list(range(0, int(OCY-Radius)))+list(range(int(OCY+Radius), len(image)-1))
 
 
     if com == True:
@@ -416,24 +430,30 @@ def getBeamPosition(image, com = False, occulter = None): #com = Center of Mass,
             projection_y = []
 
         ##Prepare bounds for fits:
-        gBounds = ([1e2, 0, 1, 10], [1e7, 960, 100, 2e4])
+        gBounds = ([1e2, 0, 20, 10], [1e7, 960, 80, 5e4])
 
         try:
             # resX = [np.max(projection_x), np.argmax(projection_x)]
-            resX, _ = curve_fit(gaussian, xTemp, projection_x[xTemp],(6e4, np.argmax(projection_x), 10.0, 300.0), bounds=gBounds)
+            resX, _ = curve_fit(gaussian, xTemp, projection_x[xTemp],(2e5, np.argmax(projection_x), 45.0, 8000.0), bounds=gBounds)
+            # print(f'ResX = {resX}')
             if resX[0] < 2e3:
                 resX[1] = -1
         except:
             print("Did not fit in X.")
             resX = [-1, -1, -1]
 
+        gBounds = ([1e2, 0, 20, 1e3], [1e7, 604, 65, 5e4])
+
         try:
+            resY = [-1, -1, -1]
             # resY = [np.max(projection_y), np.argmax(projection_y)]
-            resY, _ = curve_fit(gaussian, yTemp, projection_y[yTemp], (6e4, np.argmax(projection_y), 10.0, 300.0), bounds=gBounds)
+            resY, _ = curve_fit(gaussian, yTemp, projection_y[yTemp], (4e4, np.argmax(projection_y), 33.0, 8000.0), bounds=gBounds)
+            # print(f'ResY = {resY}')
             if resY[0] < 2e3:
                 resY[1] = -1
         except:
             print("Did not fit in Y.")
+            print(resY)
             resY = [-1, -1, -1]
 
         outX = resX[1]
@@ -491,12 +511,10 @@ class AcquisitionGUI(QWidget):
         self.left_column = QVBoxLayout()
         self.right_column = QVBoxLayout()
 
-        cred_widget = rbac.RbaButton()
-        cred_widget.loginSucceeded.connect(self.on_login_succeed)
-        self.main_layout.addWidget(cred_widget)
-
         # let's try to perform automatic kerberos login:
-        cred_widget.model.login_with_kerberos(False)
+        self.acq_japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
+        self.align_japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
+        self.main_japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
 
         # Controls layout
         controls_layout = QHBoxLayout()
@@ -591,12 +609,18 @@ class AcquisitionGUI(QWidget):
         sys.stdout = EmittingStream()
         sys.stdout.textWritten.connect(self.log_message)  # This is here to catch all messages from print...
 
+        cred_widget = rbac.RbaButton()
+        cred_widget.loginSucceeded.connect(self.on_login_succeed)
+        toolbar = QToolBar()
+        toolbar.addWidget(cred_widget)
+        cred_widget.model.login_with_kerberos(False)  # Hopefully this logs in and creates the wanted japcs
+
         self.right_column.addLayout(autonomy_row)
         self.right_column.addLayout(info_row)
+        self.right_column.addWidget(toolbar)
         self.right_column.addStretch()
 
         # Add right column to root layout
-        # self.main_layout.addLayout(self.right_column)
 
         self.main_layout.addLayout(self.left_column)
         self.main_layout.addLayout(self.right_column)
@@ -610,6 +634,7 @@ class AcquisitionGUI(QWidget):
         self.align_thread = None
         self.control_thread = None
         self.occulter = True
+        self.fullScanCounter = 0
         self.main_cam_process = None
         self.main_cam_run = mp.Event()
         
@@ -619,15 +644,7 @@ class AcquisitionGUI(QWidget):
         self.energyLHC = -1 # The two fields will be used in the fully automated regime...
         self.totalIntensityB2 = -1
 
-        # Getting login token
-        self.clientRBAC = pyrbac.AuthenticationClient()
-        # tokenLife = datetime.timedelta(days = 7)
-        # login_master_kerberos does not asign roles properly, so for now we try the kerberos app login...
-        self.token = self.clientRBAC.login_kerberos() # Ok this works well, let's renew the token after each fill, that way we'll be safe....
 
-        # This is taking care of acquisition
-        self.acq_japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
-        self.acq_japc.rbacLogin(token = self.token)
         # Subscribe to all device parameters
         for alias, path in DEVICE_LIST.items():
             self.acq_japc.subscribeParam(path, lambda name, value, a=alias: self.generic_callback(a, value))
@@ -636,8 +653,6 @@ class AcquisitionGUI(QWidget):
         self.acq_japc.subscribeParam(INTENSIFIER_DEVICE, self.intensifier_callback, getHeader = False)
 
         # This is taking care of alignment
-        self.align_japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
-        self.align_japc.rbacLogin(token = self.token)
 
         self.Targets = CoronagraphDevices(self.align_japc)
 
@@ -648,8 +663,7 @@ class AcquisitionGUI(QWidget):
         self.Cam6 = Camera('LHC.BSRH.BTVDC-CAM.MAIN', self.align_japc, False)
 
         # This is taking care of the automated procedures - subscribes to all important stuff, even if the request is only to align the main camera...
-        self.main_japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
-        self.main_japc.rbacLogin(token = self.token)
+
 
         # Motor LS; x,y occulter; gate, main camera, intensifier; 2 motors for final alignment - depending whether main alignment needs the individual motors or not...
         self.main_japc.subscribeParam('LHC.BCTFR.A6R4.B2/Acquisition#wholeBeamIntensity', self.intensity_callback) # This is the total intensity in B2
@@ -698,11 +712,19 @@ class AcquisitionGUI(QWidget):
             self.bunchIndex = self.bunchIndex + 1
           else:
             self.bunchIndex = 0
-            if self.occulter == False: # TODO: put this into a different process, maybe...
+            self.fullScanCounter += 1
+            if self.occulter == False and self.fullScanCounter > 2: # TODO: put this into a different process, maybe...
                 self.Targets.motXCM.setAbsPosition(32594)
                 self.Targets.motYCM.setAbsPosition(10907)
                 self.Targets.filterCM.setRelPosition(1) # Remove one filter...
                 self.occulter = True
+                self.fullScanCounter = 0
+
+            if self.occulter == True and self.fullScanCounter > 200:
+                self.Targets.filterCM.setRelPosition(-1)  # Add one filter...
+                # Remove occulter
+                self.motXCM.setAbsPosition(36000)
+                self.motYCM.setAbsPosition(12240)
 
           self.acq_japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting1#delaySlots', self.bunchSlots[self.bunchIndex])
         # camera_arrived.set()
@@ -718,9 +740,16 @@ class AcquisitionGUI(QWidget):
     # Other functions
     def on_login_succeed(self, token: pyrbac.Token):
 
-        if self.japc is None:
-            self.japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
-        self.japc.rbacLogin(token=token)
+        if self.align_japc is None:
+            self.align_japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
+        if self.acq_japc is None:
+            self.acq_japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
+        if self.main_japc is None:
+            self.main_japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
+
+        self.align_japc.rbacLogin(token=token) # Test that this works...
+        self.acq_japc.rbacLogin(token=token)
+        self.main_japc.rbacLogin(token=token)
         
     def get_bunches(self):
         # Populate tree with dummy bunches and checkboxes
@@ -1131,12 +1160,6 @@ class AcquisitionGUI(QWidget):
 
         while full_auto_running.is_set(): # This must be set to True by the button and then it must be set to false by the same button to stop...
             # 1 take references, 2 full alignment (Main Cam not ready...), 3 main camera alignment start, 4 acquisition start
-            #Let's get a new token in case ours will expire within 12 hours
-            if self.token.expiration_time < dt.now() + datetime.timedelta(hours = 1): # TODO: check that this works...
-                self.token = self.clientRBAC.login_kerberos() # Here we get new token, that we can use to login to used japcs..
-                self.main_japc.rbacLogin(token = self.token)
-                self.align_japc.rbacLogin(token = self.token)
-                self.acq_japc.rbacLogin(token = self.token)
 
             with cache_lock:
                 energy = self.energyLHC
@@ -1180,6 +1203,8 @@ class AcquisitionGUI(QWidget):
                         self.bunchSlots = tmp
 
                     self.bunchSlots.append(self.bunchSlots[-1]+1) # This is to grab the BG
+                    self.log_message(f"Bunch scan will scan the following bucnhes {self.bunchSlots}")
+
                     self.main_japc.setParam('LHC.BSRH.GATE-GEN.5L4.B2/Setting1#pulseLength', 4) # bunch-by-bunch measurement
                     self.Targets.filterCM.setAbsPosition(3) # This is for the beginning without occulter...
 

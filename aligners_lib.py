@@ -306,8 +306,8 @@ class T5T6AlignmentNN(AlignmentNN): # TODO: adapt for t5 t6, its only copied now
         else:
             pass
             # LHC Motors
-            self.motor_phi = Motor('LHC.BSRH.M3-PHI.B2', self.japc, 64)
-            self.motor_theta = Motor('LHC.BSRH.M3-THETA.B2', self.japc, 106)
+            self.motor_phi = Motor('LHC.BSRH.M3-PHI.B2', self.japc, 50) # Standard measurement is 64 steps, lowering to 50 to evit overshooting when aligning continuously
+            self.motor_theta = Motor('LHC.BSRH.M3-THETA.B2', self.japc, 90) # Standard measurement is 106 steps, lowering to 90 to evit overshooting when alinging continuously
             #self.motor_phi = Motor('LHC.BSRH.FOLDING-H.B2', japc, 45)
              #self.motor_theta = Motor('LHC.BSRH.FOLDING-V.B2', japc, 0)
 
@@ -363,15 +363,15 @@ class T5T6AlignmentNN(AlignmentNN): # TODO: adapt for t5 t6, its only copied now
         distX = input_vector[2]-input_vector[0]
         distY = input_vector[3]-input_vector[1]
 
-        if distX < 10:
+        if distX < 20:
             stepsX = distX*1.0
         else:
-            stepsX = distX*1.8
+            stepsX = distX*1.6
 
-        if distY < 10:
+        if distY < 20:
             stepsY = distY*-0.9
         else:
-            stepsY = distY*-1.4
+            stepsY = distY*-1.6
 
         return [stepsX, stepsY]
 
