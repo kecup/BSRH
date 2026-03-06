@@ -16,16 +16,12 @@ File_V = 60
 File_BSRH = 91
 
 def chi2(a, b):
-    p = len(a)
-    tmp = -1
-    if p != len(b):
+    a = np.asarray(a)
+    b = np.asarray(b)
+    if len(a) != len(b):
         print('Cannot calculate chi2 as the lengths of arrays are not the same')
-    else:
-        tmp = 0
-        for i in range(p):
-            tmp += ((a[i] - b[i]) ** 2)  #/np.abs(b[i])
-            # tmp += (np.abs(a[i]-b[i]))
-    return tmp
+        return -1
+    return np.sum((a - b) ** 2)
 
 
 def gaussian(x, amp, cen, wid):  # , const):
