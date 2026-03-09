@@ -571,6 +571,7 @@ class AnalysisGUI(QWidget):
         if end_idx == self.end_slider.maximum():
             end_idx = float('inf')
         self.worker.update_bounds(start_idx, end_idx)
+
         self.worker.progress_signal.connect(self.update_progress)
         self.worker.status_signal.connect(self.update_status)
         self.worker.update_plot_signal.connect(self.update_plot)
@@ -633,6 +634,10 @@ class AnalysisGUI(QWidget):
             if was_end_max:
                 self.end_slider.setValue(max_idx)
                 self.end_lbl.setText("End File: Last")
+
+                # Push the "inf" bound down to the worker thread so it keeps consuming seamlessly
+                if self.worker and self.worker.isRunning():
+                    self.worker.update_bounds(self.start_slider.value(), float('inf'))
 
             self.start_slider.blockSignals(False)
             self.end_slider.blockSignals(False)
