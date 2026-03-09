@@ -57,6 +57,7 @@ class AnalysisThread(QThread):
         self.bws_data_v = []
         self.bsrh_grouped_data = {}
         self.total_bsrh_files = 0
+        self.previous_motor_pos = None
 
         self.dctx = zstd.ZstdDecompressor()
 
@@ -198,6 +199,11 @@ class AnalysisThread(QThread):
 
                     if motor_pos is None:
                         continue # Skip if motor position not found
+
+                    # Filter out transient motor positions (rubbish data while moving)
+                    if self.previous_motor_pos is None or motor_pos != self.previous_motor_pos:
+                        self.previous_motor_pos = motor_pos
+                        continue # Discard this event as it represents movement
 
                     bunch_slot = event.device_data.get('GATE-INT', {}).get('delaySlots', None)
                     if bunch_slot is None:
@@ -695,6 +701,13 @@ class AnalysisGUI(QWidget):
                 dialog.exec_()
 
 if __name__ == "__main__":
+    # Required to initialize the Java VM so that pickle can load JAPC objects
+    try:
+        import pyjapc
+        japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
+    except Exception as e:
+        print(f"Warning: Could not initialize pyjapc. Data loading might fail. ({e})")
+
     app = QApplication(sys.argv)
     gui = AnalysisGUI()
     gui.show()
