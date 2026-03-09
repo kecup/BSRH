@@ -59,7 +59,17 @@ class AnalysisThread(QThread):
         self.total_bsrh_files = 0
         self.previous_motor_pos = None
 
+        self.start_limit = 0
+        self.end_limit = float('inf')
+
+        # Buffer to wait 2 seconds to ensure motor isn't moving
+        self.event_buffer = []
+
         self.dctx = zstd.ZstdDecompressor()
+
+    def update_bounds(self, start_idx, end_idx):
+        self.start_limit = start_idx
+        self.end_limit = end_idx
 
     def stop(self):
         self.running = False
@@ -188,8 +198,14 @@ class AnalysisThread(QThread):
 
         for i, filename in enumerate(files):
             if not self.running: break
+
+            # The list 'files' is sorted; its index 'i' maps to the chronological file index.
+            # Only process files within the user's defined slider range.
+            if i < self.start_limit or i > self.end_limit:
+                continue
+
             self.status_signal.emit(f"Processing new BSRH file: {filename}")
-            current_file_idx = self.total_bsrh_files
+            current_file_idx = i
 
             filepath = os.path.join(directory, filename)
 
@@ -211,10 +227,7 @@ class AnalysisThread(QThread):
 
             try:
                 for event in bsrh_events:
-                    # Extract timestamp, motor position, and delay slots
                     timestamp = event.timestamp.replace(tzinfo=None)
-
-                    # Get motor position from device_data
                     motor_pos = None
                     if self.motor_name in event.device_data:
                         motor_data = event.device_data[self.motor_name]
@@ -502,6 +515,22 @@ class AnalysisGUI(QWidget):
             self.bsrh_path = dir_path
             self.bsrh_lbl.setText(dir_path)
 
+            # Immediately scan directory to configure sliders
+            files = sorted([f for f in os.listdir(dir_path) if f.endswith('.pkl.zst')])
+            self.total_files = len(files)
+            if self.total_files > 0:
+                max_idx = self.total_files - 1
+                self.start_slider.setMaximum(max_idx)
+                self.start_slider.setValue(0)
+                self.start_slider.setEnabled(True)
+
+                self.end_slider.setMaximum(max_idx)
+                self.end_slider.setValue(max_idx)
+                self.end_slider.setEnabled(True)
+
+                self.start_lbl.setText("Start File: 0")
+                self.end_lbl.setText("End File: Last")
+
     def select_bws_h_dir(self):
         dir_path = QFileDialog.getExistingDirectory(self, "Select BWS Horizontal Directory")
         if dir_path:
@@ -525,19 +554,8 @@ class AnalysisGUI(QWidget):
         self.motor_input.setEnabled(False)
 
         self.grouped_data.clear()
-        self.total_files = 0
 
-        self.start_slider.setMinimum(0)
-        self.start_slider.setMaximum(0)
-        self.start_slider.setValue(0)
-        self.start_slider.setEnabled(True)
-        self.start_lbl.setText("Start File: 0")
-
-        self.end_slider.setMinimum(0)
-        self.end_slider.setMaximum(0)
-        self.end_slider.setValue(0)
-        self.end_slider.setEnabled(True)
-        self.end_lbl.setText("End File: Last")
+        # We don't clear total_files or sliders here because they are initialized during directory selection
 
         self.ax.clear()
         self.ax.set_xlabel(f"Motor Position ({motor_name})")
@@ -546,6 +564,13 @@ class AnalysisGUI(QWidget):
         self.canvas.draw()
 
         self.worker = AnalysisThread(self.bsrh_path, self.bws_h_path, self.bws_v_path, motor_name)
+
+        # Pass the initial slider constraints down to the worker thread
+        start_idx = self.start_slider.value()
+        end_idx = self.end_slider.value()
+        if end_idx == self.end_slider.maximum():
+            end_idx = float('inf')
+        self.worker.update_bounds(start_idx, end_idx)
         self.worker.progress_signal.connect(self.update_progress)
         self.worker.status_signal.connect(self.update_status)
         self.worker.update_plot_signal.connect(self.update_plot)
@@ -573,8 +598,14 @@ class AnalysisGUI(QWidget):
         end_val = self.end_slider.value()
         if end_val >= self.total_files - 1 and self.total_files > 0:
             self.end_lbl.setText("End File: Last")
+            worker_end_val = float('inf')
         else:
             self.end_lbl.setText(f"End File: {end_val}")
+            worker_end_val = end_val
+
+        # Send dynamic limits to worker thread if it exists
+        if self.worker and self.worker.isRunning():
+            self.worker.update_bounds(start_val, worker_end_val)
 
         # Re-trigger plot with current data
         if self.grouped_data:
