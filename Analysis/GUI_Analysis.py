@@ -100,11 +100,24 @@ class AnalysisThread(QThread):
             self.status_signal.emit(f"Processing new BWS {plane} file: {filename}")
 
             filepath = os.path.join(directory, filename)
-            try:
-                with open(filepath, 'rb') as f:
-                    with self.dctx.stream_reader(f) as reader:
-                        data = pickle.load(reader)
 
+            data = None
+            for attempt in range(5):
+                try:
+                    with open(filepath, 'rb') as f:
+                        with self.dctx.stream_reader(f) as reader:
+                            data = pickle.load(reader)
+                    break # Success
+                except Exception as e:
+                    if attempt < 4:
+                        time.sleep(0.5) # Wait for file to be fully written
+                    else:
+                        print(f"Error reading BWS file {filename} after 5 attempts: {e}")
+
+            if data is None:
+                continue # Skip processing this file and try again next loop
+
+            try:
                 timestamp = dt.datetime.fromtimestamp(data.value['gmtTimestampAcquireIn_ns'] / 1e9)
 
                 proj_in = data.value['projDataSet2']
@@ -179,11 +192,24 @@ class AnalysisThread(QThread):
             current_file_idx = self.total_bsrh_files
 
             filepath = os.path.join(directory, filename)
-            try:
-                with open(filepath, 'rb') as f:
-                    with self.dctx.stream_reader(f) as reader:
-                        bsrh_events = pickle.load(reader)
 
+            bsrh_events = None
+            for attempt in range(5):
+                try:
+                    with open(filepath, 'rb') as f:
+                        with self.dctx.stream_reader(f) as reader:
+                            bsrh_events = pickle.load(reader)
+                    break # Success
+                except Exception as e:
+                    if attempt < 4:
+                        time.sleep(0.5) # Wait for file to be fully written
+                    else:
+                        print(f"Error reading BSRH file {filename} after 5 attempts: {e}")
+
+            if bsrh_events is None:
+                continue # Skip processing this file and try again next loop
+
+            try:
                 for event in bsrh_events:
                     # Extract timestamp, motor position, and delay slots
                     timestamp = event.timestamp.replace(tzinfo=None)
