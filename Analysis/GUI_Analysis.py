@@ -7,11 +7,12 @@ import zstandard as zstd
 import dill as pickle
 import numpy as np
 import datetime as dt
+import copy
 from scipy.optimize import curve_fit
 
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLabel, QLineEdit, QFileDialog, QProgressBar, QMessageBox, QDialog
+    QLabel, QLineEdit, QFileDialog, QProgressBar, QMessageBox, QDialog, QSlider
 )
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
 
@@ -34,7 +35,7 @@ def fit_gaussian(x, y, p0):
 class AnalysisThread(QThread):
     # Signals for updating GUI
     progress_signal = pyqtSignal(int, int) # Current file, total files
-    update_plot_signal = pyqtSignal(dict) # Emits the grouped data
+    update_plot_signal = pyqtSignal(dict, int) # Emits the grouped data and total BSRH files
     status_signal = pyqtSignal(str)
     finished_signal = pyqtSignal()
 
@@ -55,6 +56,7 @@ class AnalysisThread(QThread):
         self.bws_data_h = []
         self.bws_data_v = []
         self.bsrh_grouped_data = {}
+        self.total_bsrh_files = 0
 
         self.dctx = zstd.ZstdDecompressor()
 
@@ -74,7 +76,7 @@ class AnalysisThread(QThread):
             bsrh_updated = self.process_new_bsrh(self.bsrh_path)
 
             if bws_h_updated or bws_v_updated or bsrh_updated:
-                self.update_plot_signal.emit(self.bsrh_grouped_data)
+                self.update_plot_signal.emit(copy.deepcopy(self.bsrh_grouped_data), self.total_bsrh_files)
 
             time.sleep(1.0) # Poll every 1 second
 
@@ -173,6 +175,7 @@ class AnalysisThread(QThread):
         for i, filename in enumerate(files):
             if not self.running: break
             self.status_signal.emit(f"Processing new BSRH file: {filename}")
+            current_file_idx = self.total_bsrh_files
 
             filepath = os.path.join(directory, filename)
             try:
@@ -228,20 +231,20 @@ class AnalysisThread(QThread):
                         self.bsrh_grouped_data[motor_pos] = {
                             'bsrh_sizes_h': [], 'bws_sizes_h': [],
                             'bsrh_sizes_v': [], 'bws_sizes_v': [],
-                            'bunches': []
+                            'bunches': [], 'file_indices': []
                         }
 
-                    if bsrh_size_h is not None:
-                        self.bsrh_grouped_data[motor_pos]['bsrh_sizes_h'].append(bsrh_size_h)
-                        self.bsrh_grouped_data[motor_pos]['bws_sizes_h'].append(closest_bws_h)
+                    self.bsrh_grouped_data[motor_pos]['bsrh_sizes_h'].append(bsrh_size_h)
+                    self.bsrh_grouped_data[motor_pos]['bws_sizes_h'].append(closest_bws_h)
 
-                    if bsrh_size_v is not None:
-                        self.bsrh_grouped_data[motor_pos]['bsrh_sizes_v'].append(bsrh_size_v)
-                        self.bsrh_grouped_data[motor_pos]['bws_sizes_v'].append(closest_bws_v)
+                    self.bsrh_grouped_data[motor_pos]['bsrh_sizes_v'].append(bsrh_size_v)
+                    self.bsrh_grouped_data[motor_pos]['bws_sizes_v'].append(closest_bws_v)
 
                     self.bsrh_grouped_data[motor_pos]['bunches'].append(bunch_slot)
+                    self.bsrh_grouped_data[motor_pos]['file_indices'].append(current_file_idx)
 
                 self.processed_bsrh.add(filename)
+                self.total_bsrh_files += 1
                 updated = True
 
             except Exception as e:
@@ -283,12 +286,12 @@ class SecondaryPlotDialog(QDialog):
         ax.clear()
 
         if is_horizontal:
-            # Filter out None values
-            valid_idx = [i for i, bws in enumerate(data['bws_sizes_h']) if bws is not None]
+            # Filter out None values from both BSRH and BWS
+            valid_idx = [i for i, bws in enumerate(data['bws_sizes_h']) if bws is not None and data['bsrh_sizes_h'][i] is not None]
             bws_sizes = [data['bws_sizes_h'][i] for i in valid_idx]
             bsrh_sizes = [data['bsrh_sizes_h'][i] for i in valid_idx]
         elif is_vertical:
-            valid_idx = [i for i, bws in enumerate(data['bws_sizes_v']) if bws is not None]
+            valid_idx = [i for i, bws in enumerate(data['bws_sizes_v']) if bws is not None and data['bsrh_sizes_v'][i] is not None]
             bws_sizes = [data['bws_sizes_v'][i] for i in valid_idx]
             bsrh_sizes = [data['bsrh_sizes_v'][i] for i in valid_idx]
         else:
@@ -409,6 +412,35 @@ class AnalysisGUI(QWidget):
 
         self.layout.addLayout(control_layout)
 
+        # Slider Layout
+        slider_layout = QVBoxLayout()
+
+        start_slider_row = QHBoxLayout()
+        self.start_lbl = QLabel("Start File: 0")
+        self.start_lbl.setMinimumWidth(100)
+        self.start_slider = QSlider(Qt.Horizontal)
+        self.start_slider.setMinimum(0)
+        self.start_slider.setMaximum(0)
+        self.start_slider.setEnabled(False)
+        self.start_slider.valueChanged.connect(self.on_sliders_changed)
+        start_slider_row.addWidget(self.start_lbl)
+        start_slider_row.addWidget(self.start_slider)
+
+        end_slider_row = QHBoxLayout()
+        self.end_lbl = QLabel("End File: Last")
+        self.end_lbl.setMinimumWidth(100)
+        self.end_slider = QSlider(Qt.Horizontal)
+        self.end_slider.setMinimum(0)
+        self.end_slider.setMaximum(0)
+        self.end_slider.setEnabled(False)
+        self.end_slider.valueChanged.connect(self.on_sliders_changed)
+        end_slider_row.addWidget(self.end_lbl)
+        end_slider_row.addWidget(self.end_slider)
+
+        slider_layout.addLayout(start_slider_row)
+        slider_layout.addLayout(end_slider_row)
+        self.layout.addLayout(slider_layout)
+
         # Main Plot Canvas
         self.figure = Figure()
         self.canvas = FigureCanvas(self.figure)
@@ -428,6 +460,7 @@ class AnalysisGUI(QWidget):
         self.bws_v_path = ""
         self.worker = None
         self.grouped_data = {}
+        self.total_files = 0
         self.scatter_plot_h = None
         self.scatter_plot_v = None
 
@@ -460,6 +493,20 @@ class AnalysisGUI(QWidget):
         self.motor_input.setEnabled(False)
 
         self.grouped_data.clear()
+        self.total_files = 0
+
+        self.start_slider.setMinimum(0)
+        self.start_slider.setMaximum(0)
+        self.start_slider.setValue(0)
+        self.start_slider.setEnabled(True)
+        self.start_lbl.setText("Start File: 0")
+
+        self.end_slider.setMinimum(0)
+        self.end_slider.setMaximum(0)
+        self.end_slider.setValue(0)
+        self.end_slider.setEnabled(True)
+        self.end_lbl.setText("End File: Last")
+
         self.ax.clear()
         self.ax.set_xlabel(f"Motor Position ({motor_name})")
         self.ax.set_ylabel("Average BSRH Beam Size (px)")
@@ -486,23 +533,81 @@ class AnalysisGUI(QWidget):
     def update_status(self, text):
         self.status_lbl.setText(text)
 
-    def update_plot(self, grouped_data):
-        self.grouped_data = grouped_data
+    def on_sliders_changed(self):
+        # Update labels
+        start_val = self.start_slider.value()
+        self.start_lbl.setText(f"Start File: {start_val}")
 
+        end_val = self.end_slider.value()
+        if end_val >= self.total_files - 1 and self.total_files > 0:
+            self.end_lbl.setText("End File: Last")
+        else:
+            self.end_lbl.setText(f"End File: {end_val}")
+
+        # Re-trigger plot with current data
+        if self.grouped_data:
+            self.redraw_plot()
+
+    def update_plot(self, grouped_data, total_bsrh_files):
+        self.grouped_data = grouped_data
+        self.total_files = total_bsrh_files
+
+        # Update sliders
+        was_start_max = (self.start_slider.value() == self.start_slider.maximum())
+        was_end_max = (self.end_slider.value() == self.end_slider.maximum())
+
+        if total_bsrh_files > 0:
+            max_idx = total_bsrh_files - 1
+
+            # Temporarily block signals to avoid multiple redraws
+            self.start_slider.blockSignals(True)
+            self.end_slider.blockSignals(True)
+
+            self.start_slider.setMaximum(max_idx)
+            self.end_slider.setMaximum(max_idx)
+
+            # If end slider was at the maximum before, keep it at the new maximum
+            if was_end_max:
+                self.end_slider.setValue(max_idx)
+                self.end_lbl.setText("End File: Last")
+
+            self.start_slider.blockSignals(False)
+            self.end_slider.blockSignals(False)
+
+        self.redraw_plot()
+
+    def redraw_plot(self):
         motor_positions_h = []
         avg_sizes_h = []
 
         motor_positions_v = []
         avg_sizes_v = []
 
-        for pos, data in grouped_data.items():
-            if data['bsrh_sizes_h']:
-                motor_positions_h.append(pos)
-                avg_sizes_h.append(np.mean(data['bsrh_sizes_h']))
+        start_idx = self.start_slider.value()
+        end_idx = self.end_slider.value()
 
-            if data['bsrh_sizes_v']:
+        # If end_slider is at max, it signifies "Last", so include all remaining
+        if end_idx == self.end_slider.maximum():
+            end_idx = float('inf')
+
+        for pos, data in self.grouped_data.items():
+            valid_h = []
+            for i, f_idx in enumerate(data['file_indices']):
+                if start_idx <= f_idx <= end_idx and i < len(data['bsrh_sizes_h']):
+                    if data['bsrh_sizes_h'][i] is not None:
+                        valid_h.append(data['bsrh_sizes_h'][i])
+            if valid_h:
+                motor_positions_h.append(pos)
+                avg_sizes_h.append(np.mean(valid_h))
+
+            valid_v = []
+            for i, f_idx in enumerate(data['file_indices']):
+                if start_idx <= f_idx <= end_idx and i < len(data['bsrh_sizes_v']):
+                    if data['bsrh_sizes_v'][i] is not None:
+                        valid_v.append(data['bsrh_sizes_v'][i])
+            if valid_v:
                 motor_positions_v.append(pos)
-                avg_sizes_v.append(np.mean(data['bsrh_sizes_v']))
+                avg_sizes_v.append(np.mean(valid_v))
 
         self.ax.clear()
         self.ax.set_xlabel(f"Motor Position ({self.motor_input.text().strip()})")
@@ -561,7 +666,32 @@ class AnalysisGUI(QWidget):
 
             if best_pos is not None:
                 data = self.grouped_data[best_pos]
-                dialog = SecondaryPlotDialog(best_pos, data, is_horizontal, is_vertical, self)
+
+                # Filter data for the dialog based on sliders
+                start_idx = self.start_slider.value()
+                end_idx = self.end_slider.value()
+                if end_idx == self.end_slider.maximum():
+                    end_idx = float('inf')
+
+                filtered_data = {
+                    'bsrh_sizes_h': [], 'bws_sizes_h': [],
+                    'bsrh_sizes_v': [], 'bws_sizes_v': [],
+                    'bunches': []
+                }
+
+                for i, f_idx in enumerate(data['file_indices']):
+                    if start_idx <= f_idx <= end_idx:
+                        if i < len(data['bsrh_sizes_h']):
+                            filtered_data['bsrh_sizes_h'].append(data['bsrh_sizes_h'][i])
+                        if i < len(data['bws_sizes_h']):
+                            filtered_data['bws_sizes_h'].append(data['bws_sizes_h'][i])
+                        if i < len(data['bsrh_sizes_v']):
+                            filtered_data['bsrh_sizes_v'].append(data['bsrh_sizes_v'][i])
+                        if i < len(data['bws_sizes_v']):
+                            filtered_data['bws_sizes_v'].append(data['bws_sizes_v'][i])
+                        filtered_data['bunches'].append(data['bunches'][i])
+
+                dialog = SecondaryPlotDialog(best_pos, filtered_data, is_horizontal, is_vertical, self)
                 dialog.exec_()
 
 if __name__ == "__main__":
