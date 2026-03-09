@@ -20,8 +20,8 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 # Utility functions for fitting
-def gaussian(x, amp, cen, wid):
-    return amp * np.exp(-(x - cen)**2 / (2 * wid**2))
+def gaussian(x, amp, cen, wid, const):
+    return amp * np.exp(-(x - cen)**2 / (2 * wid**2)) + const
 
 def fit_gaussian(x, y, p0):
     try:
@@ -38,19 +38,22 @@ class AnalysisThread(QThread):
     status_signal = pyqtSignal(str)
     finished_signal = pyqtSignal()
 
-    def __init__(self, bsrh_path, bws_path, motor_name):
+    def __init__(self, bsrh_path, bws_h_path, bws_v_path, motor_name):
         super().__init__()
         self.bsrh_path = bsrh_path
-        self.bws_path = bws_path
+        self.bws_h_path = bws_h_path
+        self.bws_v_path = bws_v_path
         self.motor_name = motor_name
         self.running = True
 
         # Keep track of processed files
-        self.processed_bws = set()
+        self.processed_bws_h = set()
+        self.processed_bws_v = set()
         self.processed_bsrh = set()
 
         # Keep track of continuous data
-        self.bws_data = []
+        self.bws_data_h = []
+        self.bws_data_v = []
         self.bsrh_grouped_data = {}
 
         self.dctx = zstd.ZstdDecompressor()
@@ -61,11 +64,16 @@ class AnalysisThread(QThread):
     def run(self):
         self.status_signal.emit("Started real-time analysis...")
         while self.running:
-            bws_updated = self.process_new_bws(self.bws_path)
+            bws_h_updated = False
+            bws_v_updated = False
+            if self.bws_h_path:
+                bws_h_updated = self.process_new_bws(self.bws_h_path, self.processed_bws_h, self.bws_data_h, "Horizontal")
+            if self.bws_v_path:
+                bws_v_updated = self.process_new_bws(self.bws_v_path, self.processed_bws_v, self.bws_data_v, "Vertical")
+
             bsrh_updated = self.process_new_bsrh(self.bsrh_path)
 
-            if bws_updated or bsrh_updated:
-                # Re-calculate matches with new BWS data or simply emit new BSRH groups
+            if bws_h_updated or bws_v_updated or bsrh_updated:
                 self.update_plot_signal.emit(self.bsrh_grouped_data)
 
             time.sleep(1.0) # Poll every 1 second
@@ -73,21 +81,20 @@ class AnalysisThread(QThread):
         self.status_signal.emit("Analysis stopped.")
         self.finished_signal.emit()
 
-    def process_new_bws(self, directory):
+    def process_new_bws(self, directory, processed_set, data_list, plane):
         """ Processes newly added BWS files and extracts beam sizes for each bunch and timestamp """
         updated = False
-        if not os.path.isdir(directory):
-            self.status_signal.emit(f"BWS directory not found: {directory}")
+        if not directory or not os.path.isdir(directory):
             return updated
 
-        files = sorted([f for f in os.listdir(directory) if f.endswith('.pkl.zst') and f not in self.processed_bws])
+        files = sorted([f for f in os.listdir(directory) if f.endswith('.pkl.zst') and f not in processed_set])
         total_files = len(files)
         if total_files == 0:
             return updated
 
         for i, filename in enumerate(files):
             if not self.running: break
-            self.status_signal.emit(f"Processing new BWS file: {filename}")
+            self.status_signal.emit(f"Processing new BWS {plane} file: {filename}")
 
             filepath = os.path.join(directory, filename)
             try:
@@ -119,13 +126,13 @@ class AnalysisThread(QThread):
                     x_in = pos_in[:pts_in]
                     # Simple moving average to smooth
                     y_in = y_in - np.mean(y_in[:10])
-                    popt_in = fit_gaussian(x_in, y_in, [max(y_in), np.mean(x_in), 0.28])
+                    popt_in = fit_gaussian(x_in, y_in, [max(y_in), np.mean(x_in), 0.28, np.min(y_in)])
 
                     # OUT scan
                     y_out = proj_out[k * pts_out:(k + 1) * pts_out]
                     x_out = pos_out[:pts_out]
                     y_out = y_out - np.mean(y_out[:10])
-                    popt_out = fit_gaussian(x_out, y_out, [max(y_out), np.mean(x_out), 0.28])
+                    popt_out = fit_gaussian(x_out, y_out, [max(y_out), np.mean(x_out), 0.28, np.min(y_out)])
 
                     size_in = abs(popt_in[2]) if popt_in else None
                     size_out = abs(popt_out[2]) if popt_out else None
@@ -137,17 +144,17 @@ class AnalysisThread(QThread):
                     elif size_out:
                         bunches_sizes[bunch_num] = size_out
 
-                self.bws_data.append({
+                data_list.append({
                     'timestamp': timestamp,
                     'bunches': bunches_sizes
                 })
-                self.processed_bws.add(filename)
+                processed_set.add(filename)
                 updated = True
             except Exception as e:
                 print(f"Error processing BWS file {filename}: {e}")
 
         # Sort BWS measurements by timestamp
-        self.bws_data.sort(key=lambda x: x['timestamp'])
+        data_list.sort(key=lambda x: x['timestamp'])
         return updated
 
     def process_new_bsrh(self, directory):
@@ -193,30 +200,46 @@ class AnalysisThread(QThread):
                     if bunch_slot is None:
                         continue
 
-                    # Find closest BWS measurement
-                    closest_bws = self.find_closest_bws(timestamp, bunch_slot)
-                    if not closest_bws:
-                        continue
-
-                    # Process image to find BSRH beam size
+                    # Process image to find BSRH beam sizes
                     image = event.cam_data['image2D']
-                    # Use horizontal projection for beam size (or average of H and V)
-                    # For simplicity, let's use horizontal projection
+
+                    # Horizontal projection
                     proj_x = np.sum(image, axis=0)
                     proj_x = proj_x - np.mean(proj_x[:50])
                     x_temp = np.arange(len(proj_x))
+                    popt_h = fit_gaussian(x_temp, proj_x, [np.max(proj_x), np.argmax(proj_x), 15.0, np.min(proj_x)])
+                    bsrh_size_h = abs(popt_h[2]) if popt_h else None
 
-                    popt = fit_gaussian(x_temp, proj_x, [np.max(proj_x), np.argmax(proj_x), 15.0])
+                    # Vertical projection
+                    proj_y = np.sum(image, axis=1)
+                    proj_y = proj_y - np.mean(proj_y[:50])
+                    y_temp = np.arange(len(proj_y))
+                    popt_v = fit_gaussian(y_temp, proj_y, [np.max(proj_y), np.argmax(proj_y), 15.0, np.min(proj_y)])
+                    bsrh_size_v = abs(popt_v[2]) if popt_v else None
 
-                    if popt:
-                        bsrh_size = abs(popt[2])
+                    if bsrh_size_h is None and bsrh_size_v is None:
+                        continue
 
-                        if motor_pos not in self.bsrh_grouped_data:
-                            self.bsrh_grouped_data[motor_pos] = {'bsrh_sizes': [], 'bws_sizes': [], 'bunches': []}
+                    # Find closest BWS measurements
+                    closest_bws_h = self.find_closest_bws(self.bws_data_h, timestamp, bunch_slot) if self.bws_h_path else None
+                    closest_bws_v = self.find_closest_bws(self.bws_data_v, timestamp, bunch_slot) if self.bws_v_path else None
 
-                        self.bsrh_grouped_data[motor_pos]['bsrh_sizes'].append(bsrh_size)
-                        self.bsrh_grouped_data[motor_pos]['bws_sizes'].append(closest_bws)
-                        self.bsrh_grouped_data[motor_pos]['bunches'].append(bunch_slot)
+                    if motor_pos not in self.bsrh_grouped_data:
+                        self.bsrh_grouped_data[motor_pos] = {
+                            'bsrh_sizes_h': [], 'bws_sizes_h': [],
+                            'bsrh_sizes_v': [], 'bws_sizes_v': [],
+                            'bunches': []
+                        }
+
+                    if bsrh_size_h is not None:
+                        self.bsrh_grouped_data[motor_pos]['bsrh_sizes_h'].append(bsrh_size_h)
+                        self.bsrh_grouped_data[motor_pos]['bws_sizes_h'].append(closest_bws_h)
+
+                    if bsrh_size_v is not None:
+                        self.bsrh_grouped_data[motor_pos]['bsrh_sizes_v'].append(bsrh_size_v)
+                        self.bsrh_grouped_data[motor_pos]['bws_sizes_v'].append(closest_bws_v)
+
+                    self.bsrh_grouped_data[motor_pos]['bunches'].append(bunch_slot)
 
                 self.processed_bsrh.add(filename)
                 updated = True
@@ -226,12 +249,12 @@ class AnalysisThread(QThread):
 
         return updated
 
-    def find_closest_bws(self, bsrh_time, bunch_slot):
+    def find_closest_bws(self, bws_data_list, bsrh_time, bunch_slot):
         """ Finds the closest BWS measurement for a given timestamp and bunch slot """
         best_diff = float('inf')
         best_size = None
 
-        for bws in self.bws_data:
+        for bws in bws_data_list:
             if bunch_slot in bws['bunches']:
                 diff = abs((bsrh_time - bws['timestamp']).total_seconds())
                 if diff < best_diff:
@@ -241,9 +264,10 @@ class AnalysisThread(QThread):
         return best_size
 
 class SecondaryPlotDialog(QDialog):
-    def __init__(self, motor_pos, bsrh_sizes, bws_sizes, bunches, parent=None):
+    def __init__(self, motor_pos, data, is_horizontal, is_vertical, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(f"Correlation Analysis for Motor Position: {motor_pos}")
+        plane_str = "Horizontal" if is_horizontal else "Vertical"
+        self.setWindowTitle(f"Correlation Analysis ({plane_str}) for Motor Position: {motor_pos}")
         self.resize(800, 600)
 
         self.layout = QVBoxLayout(self)
@@ -252,17 +276,37 @@ class SecondaryPlotDialog(QDialog):
         self.canvas = FigureCanvas(self.figure)
         self.layout.addWidget(self.canvas)
 
-        self.plot_data(bsrh_sizes, bws_sizes)
+        self.plot_data(data, is_horizontal, is_vertical)
 
-    def plot_data(self, bsrh_sizes, bws_sizes):
+    def plot_data(self, data, is_horizontal, is_vertical):
         ax = self.figure.add_subplot(111)
         ax.clear()
+
+        if is_horizontal:
+            # Filter out None values
+            valid_idx = [i for i, bws in enumerate(data['bws_sizes_h']) if bws is not None]
+            bws_sizes = [data['bws_sizes_h'][i] for i in valid_idx]
+            bsrh_sizes = [data['bsrh_sizes_h'][i] for i in valid_idx]
+        elif is_vertical:
+            valid_idx = [i for i, bws in enumerate(data['bws_sizes_v']) if bws is not None]
+            bws_sizes = [data['bws_sizes_v'][i] for i in valid_idx]
+            bsrh_sizes = [data['bsrh_sizes_v'][i] for i in valid_idx]
+        else:
+            return
+
+        if len(bws_sizes) == 0:
+            ax.text(0.5, 0.5, 'No valid BWS data to correlate.', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
+            self.canvas.draw()
+            return
 
         # We need to plot BSRH_size^2 vs BWS_size^2
         x_data = np.array(bws_sizes)**2
         y_data = np.array(bsrh_sizes)**2
 
-        ax.scatter(x_data, y_data, color='blue', label='Data Points')
+        color = 'blue' if is_horizontal else 'red'
+        plane_str = "Horizontal" if is_horizontal else "Vertical"
+
+        ax.scatter(x_data, y_data, color=color, label=f'{plane_str} Data Points')
 
         # Perform linear fit
         try:
@@ -271,7 +315,7 @@ class SecondaryPlotDialog(QDialog):
             slope, intercept = coeffs[0], coeffs[1]
 
             fit_line = slope * x_data + intercept
-            ax.plot(x_data, fit_line, color='red', label=f'Fit: y = {slope:.2f}x + {intercept:.2f}')
+            ax.plot(x_data, fit_line, color='black', linestyle='--', label=f'Fit: y = {slope:.2f}x + {intercept:.2f}')
 
             # Calculate Magnification and PSF
             if slope > 0:
@@ -295,7 +339,7 @@ class SecondaryPlotDialog(QDialog):
 
         ax.set_xlabel('BWS Size Squared')
         ax.set_ylabel('BSRH Size Squared (px^2)')
-        ax.set_title('BSRH vs BWS Beam Size Squared')
+        ax.set_title(f'{plane_str} BSRH vs BWS Beam Size Squared')
         ax.legend()
         ax.grid(True)
         self.canvas.draw()
@@ -309,25 +353,39 @@ class AnalysisGUI(QWidget):
         self.layout = QVBoxLayout(self)
 
         # Input Layout
-        input_layout = QHBoxLayout()
+        input_layout = QVBoxLayout()
 
+        bsrh_layout = QHBoxLayout()
         self.bsrh_btn = QPushButton("Select BSRH Dir")
         self.bsrh_btn.clicked.connect(self.select_bsrh_dir)
         self.bsrh_lbl = QLabel("No directory selected")
+        bsrh_layout.addWidget(self.bsrh_btn)
+        bsrh_layout.addWidget(self.bsrh_lbl)
 
-        self.bws_btn = QPushButton("Select BWS Dir")
-        self.bws_btn.clicked.connect(self.select_bws_dir)
-        self.bws_lbl = QLabel("No directory selected")
+        bws_h_layout = QHBoxLayout()
+        self.bws_h_btn = QPushButton("Select BWS Horizontal Dir (Optional)")
+        self.bws_h_btn.clicked.connect(self.select_bws_h_dir)
+        self.bws_h_lbl = QLabel("No directory selected")
+        bws_h_layout.addWidget(self.bws_h_btn)
+        bws_h_layout.addWidget(self.bws_h_lbl)
 
+        bws_v_layout = QHBoxLayout()
+        self.bws_v_btn = QPushButton("Select BWS Vertical Dir (Optional)")
+        self.bws_v_btn.clicked.connect(self.select_bws_v_dir)
+        self.bws_v_lbl = QLabel("No directory selected")
+        bws_v_layout.addWidget(self.bws_v_btn)
+        bws_v_layout.addWidget(self.bws_v_lbl)
+
+        motor_layout = QHBoxLayout()
         self.motor_input = QLineEdit()
         self.motor_input.setPlaceholderText("Enter motor name (e.g., M3-X)")
+        motor_layout.addWidget(QLabel("Motor:"))
+        motor_layout.addWidget(self.motor_input)
 
-        input_layout.addWidget(self.bsrh_btn)
-        input_layout.addWidget(self.bsrh_lbl)
-        input_layout.addWidget(self.bws_btn)
-        input_layout.addWidget(self.bws_lbl)
-        input_layout.addWidget(QLabel("Motor:"))
-        input_layout.addWidget(self.motor_input)
+        input_layout.addLayout(bsrh_layout)
+        input_layout.addLayout(bws_h_layout)
+        input_layout.addLayout(bws_v_layout)
+        input_layout.addLayout(motor_layout)
 
         self.layout.addLayout(input_layout)
 
@@ -366,10 +424,12 @@ class AnalysisGUI(QWidget):
         self.canvas.mpl_connect('pick_event', self.on_pick)
 
         self.bsrh_path = ""
-        self.bws_path = ""
+        self.bws_h_path = ""
+        self.bws_v_path = ""
         self.worker = None
         self.grouped_data = {}
-        self.scatter_plot = None
+        self.scatter_plot_h = None
+        self.scatter_plot_v = None
 
     def select_bsrh_dir(self):
         dir_path = QFileDialog.getExistingDirectory(self, "Select BSRH Directory")
@@ -377,16 +437,22 @@ class AnalysisGUI(QWidget):
             self.bsrh_path = dir_path
             self.bsrh_lbl.setText(dir_path)
 
-    def select_bws_dir(self):
-        dir_path = QFileDialog.getExistingDirectory(self, "Select BWS Directory")
+    def select_bws_h_dir(self):
+        dir_path = QFileDialog.getExistingDirectory(self, "Select BWS Horizontal Directory")
         if dir_path:
-            self.bws_path = dir_path
-            self.bws_lbl.setText(dir_path)
+            self.bws_h_path = dir_path
+            self.bws_h_lbl.setText(dir_path)
+
+    def select_bws_v_dir(self):
+        dir_path = QFileDialog.getExistingDirectory(self, "Select BWS Vertical Directory")
+        if dir_path:
+            self.bws_v_path = dir_path
+            self.bws_v_lbl.setText(dir_path)
 
     def start_analysis(self):
         motor_name = self.motor_input.text().strip()
-        if not self.bsrh_path or not self.bws_path or not motor_name:
-            QMessageBox.warning(self, "Input Error", "Please select directories and provide a motor name.")
+        if not self.bsrh_path or not motor_name:
+            QMessageBox.warning(self, "Input Error", "Please select at least the BSRH directory and provide a motor name.")
             return
 
         self.start_btn.setEnabled(False)
@@ -400,7 +466,7 @@ class AnalysisGUI(QWidget):
         self.ax.set_title("Average BSRH Beam Size vs Motor Position")
         self.canvas.draw()
 
-        self.worker = AnalysisThread(self.bsrh_path, self.bws_path, motor_name)
+        self.worker = AnalysisThread(self.bsrh_path, self.bws_h_path, self.bws_v_path, motor_name)
         self.worker.progress_signal.connect(self.update_progress)
         self.worker.status_signal.connect(self.update_status)
         self.worker.update_plot_signal.connect(self.update_plot)
@@ -423,21 +489,38 @@ class AnalysisGUI(QWidget):
     def update_plot(self, grouped_data):
         self.grouped_data = grouped_data
 
-        motor_positions = []
-        avg_sizes = []
+        motor_positions_h = []
+        avg_sizes_h = []
+
+        motor_positions_v = []
+        avg_sizes_v = []
 
         for pos, data in grouped_data.items():
-            motor_positions.append(pos)
-            avg_sizes.append(np.mean(data['bsrh_sizes']))
+            if data['bsrh_sizes_h']:
+                motor_positions_h.append(pos)
+                avg_sizes_h.append(np.mean(data['bsrh_sizes_h']))
+
+            if data['bsrh_sizes_v']:
+                motor_positions_v.append(pos)
+                avg_sizes_v.append(np.mean(data['bsrh_sizes_v']))
 
         self.ax.clear()
         self.ax.set_xlabel(f"Motor Position ({self.motor_input.text().strip()})")
         self.ax.set_ylabel("Average BSRH Beam Size (px)")
         self.ax.set_title("Average BSRH Beam Size vs Motor Position")
 
-        if motor_positions:
-            # Note: picker=5 means a 5 point tolerance for clicks
-            self.scatter_plot = self.ax.scatter(motor_positions, avg_sizes, c='blue', picker=5)
+        # Determine if points should be clickable (if we have corresponding BWS data)
+        picker_h = 5 if self.bws_h_path else None
+        picker_v = 5 if self.bws_v_path else None
+
+        if motor_positions_h:
+            self.scatter_plot_h = self.ax.scatter(motor_positions_h, avg_sizes_h, c='blue', label='Horizontal', picker=picker_h)
+
+        if motor_positions_v:
+            self.scatter_plot_v = self.ax.scatter(motor_positions_v, avg_sizes_v, c='red', label='Vertical', picker=picker_v)
+
+        if motor_positions_h or motor_positions_v:
+            self.ax.legend()
             self.ax.grid(True)
 
         self.canvas.draw()
@@ -450,14 +533,21 @@ class AnalysisGUI(QWidget):
         self.status_lbl.setText("Analysis finished.")
 
     def on_pick(self, event):
-        if event.artist != self.scatter_plot:
+        is_horizontal = False
+        is_vertical = False
+
+        if event.artist == self.scatter_plot_h:
+            is_horizontal = True
+        elif event.artist == self.scatter_plot_v:
+            is_vertical = True
+        else:
             return
 
         ind = event.ind
         if len(ind) > 0:
             index = ind[0]
             # Retrieve motor position from the plot data
-            offsets = self.scatter_plot.get_offsets()
+            offsets = event.artist.get_offsets()
             motor_pos = offsets[index][0]
 
             # Find the closest matching motor_pos in our grouped_data keys
@@ -471,7 +561,7 @@ class AnalysisGUI(QWidget):
 
             if best_pos is not None:
                 data = self.grouped_data[best_pos]
-                dialog = SecondaryPlotDialog(best_pos, data['bsrh_sizes'], data['bws_sizes'], data['bunches'], self)
+                dialog = SecondaryPlotDialog(best_pos, data, is_horizontal, is_vertical, self)
                 dialog.exec_()
 
 if __name__ == "__main__":
