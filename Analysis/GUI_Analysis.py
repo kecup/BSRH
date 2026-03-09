@@ -134,14 +134,14 @@ class AnalysisThread(QThread):
                     y_out = y_out - np.mean(y_out[:10])
                     popt_out = fit_gaussian(x_out, y_out, [max(y_out), np.mean(x_out), 0.28, np.min(y_out)])
 
-                    size_in = abs(popt_in[2]) if popt_in else None
-                    size_out = abs(popt_out[2]) if popt_out else None
+                    size_in = abs(popt_in[2]) if popt_in is not None else None
+                    size_out = abs(popt_out[2]) if popt_out is not None else None
 
-                    if size_in and size_out:
+                    if size_in is not None and size_out is not None:
                         bunches_sizes[bunch_num] = (size_in + size_out) / 2.0
-                    elif size_in:
+                    elif size_in is not None:
                         bunches_sizes[bunch_num] = size_in
-                    elif size_out:
+                    elif size_out is not None:
                         bunches_sizes[bunch_num] = size_out
 
                 data_list.append({
@@ -208,14 +208,14 @@ class AnalysisThread(QThread):
                     proj_x = proj_x - np.mean(proj_x[:50])
                     x_temp = np.arange(len(proj_x))
                     popt_h = fit_gaussian(x_temp, proj_x, [np.max(proj_x), np.argmax(proj_x), 15.0, np.min(proj_x)])
-                    bsrh_size_h = abs(popt_h[2]) if popt_h else None
+                    bsrh_size_h = abs(popt_h[2]) if popt_h is not None else None
 
                     # Vertical projection
                     proj_y = np.sum(image, axis=1)
                     proj_y = proj_y - np.mean(proj_y[:50])
                     y_temp = np.arange(len(proj_y))
                     popt_v = fit_gaussian(y_temp, proj_y, [np.max(proj_y), np.argmax(proj_y), 15.0, np.min(proj_y)])
-                    bsrh_size_v = abs(popt_v[2]) if popt_v else None
+                    bsrh_size_v = abs(popt_v[2]) if popt_v is not None else None
 
                     if bsrh_size_h is None and bsrh_size_v is None:
                         continue
