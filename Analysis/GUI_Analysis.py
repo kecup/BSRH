@@ -100,13 +100,18 @@ class AnalysisThread(QThread):
         if not directory or not os.path.isdir(directory):
             return updated
 
-        files = sorted([f for f in os.listdir(directory) if f.endswith('.pkl.zst') and f not in processed_set])
-        total_files = len(files)
-        if total_files == 0:
+        all_files = sorted([f for f in os.listdir(directory) if f.endswith('.pkl.zst')])
+        if len(all_files) == 0:
             return updated
 
-        for i, filename in enumerate(files):
+        for i, filename in enumerate(all_files):
             if not self.running: break
+
+            # Note: We don't apply UI slider limits to BWS because they are matched by timestamp to BSRH.
+            # However, we still track absolute file parsing.
+            if filename in processed_set:
+                continue
+
             self.status_signal.emit(f"Processing new BWS {plane} file: {filename}")
 
             filepath = os.path.join(directory, filename)
@@ -191,17 +196,23 @@ class AnalysisThread(QThread):
             self.status_signal.emit(f"BSRH directory not found: {directory}")
             return updated
 
-        files = sorted([f for f in os.listdir(directory) if f.endswith('.pkl.zst') and f not in self.processed_bsrh])
-        total_files = len(files)
-        if total_files == 0:
+        # Get all files to establish absolute chronological indexing
+        all_files = sorted([f for f in os.listdir(directory) if f.endswith('.pkl.zst')])
+        self.total_bsrh_files = len(all_files)
+
+        if self.total_bsrh_files == 0:
             return updated
 
-        for i, filename in enumerate(files):
+        for i, filename in enumerate(all_files):
             if not self.running: break
 
-            # The list 'files' is sorted; its index 'i' maps to the chronological file index.
+            # The list 'all_files' is sorted; its index 'i' maps to the absolute chronological file index.
             # Only process files within the user's defined slider range.
             if i < self.start_limit or i > self.end_limit:
+                continue
+
+            # Skip if already fully parsed
+            if filename in self.processed_bsrh:
                 continue
 
             self.status_signal.emit(f"Processing new BSRH file: {filename}")
@@ -289,7 +300,6 @@ class AnalysisThread(QThread):
                     self.bsrh_grouped_data[motor_pos]['file_indices'].append(current_file_idx)
 
                 self.processed_bsrh.add(filename)
-                self.total_bsrh_files += 1
                 updated = True
 
             except Exception as e:
