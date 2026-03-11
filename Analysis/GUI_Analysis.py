@@ -10,9 +10,10 @@ import datetime as dt
 import copy
 from scipy.optimize import curve_fit
 
+import random
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLabel, QLineEdit, QFileDialog, QProgressBar, QMessageBox, QDialog, QSlider
+    QLabel, QLineEdit, QFileDialog, QProgressBar, QMessageBox, QDialog, QSlider, QCheckBox
 )
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
 
@@ -39,12 +40,13 @@ class AnalysisThread(QThread):
     status_signal = pyqtSignal(str)
     finished_signal = pyqtSignal()
 
-    def __init__(self, bsrh_path, bws_h_path, bws_v_path, motor_name):
+    def __init__(self, bsrh_path, bws_h_path, bws_v_path, motor_name, test_mode=False):
         super().__init__()
         self.bsrh_path = bsrh_path
         self.bws_h_path = bws_h_path
         self.bws_v_path = bws_v_path
         self.motor_name = motor_name
+        self.test_mode = test_mode
         self.running = True
 
         # Keep track of processed files
@@ -309,6 +311,18 @@ class AnalysisThread(QThread):
 
     def find_closest_bws(self, bws_data_list, bsrh_time, bunch_slot):
         """ Finds the closest BWS measurement for a given timestamp and bunch slot """
+        if not bws_data_list:
+            return None
+
+        if self.test_mode:
+            # In test mode, completely ignore timestamps and bunches, and just pick a random available size
+            random_scan = random.choice(bws_data_list)
+            if random_scan['bunches']:
+                # Pick a random bunch's size from this scan
+                random_bunch = random.choice(list(random_scan['bunches'].keys()))
+                return random_scan['bunches'][random_bunch]
+            return None
+
         best_diff = float('inf')
         best_size = None
 
@@ -439,6 +453,10 @@ class AnalysisGUI(QWidget):
         self.motor_input.setPlaceholderText("Enter motor name (e.g., M3-X)")
         motor_layout.addWidget(QLabel("Motor:"))
         motor_layout.addWidget(self.motor_input)
+
+        self.test_mode_checkbox = QCheckBox("Test Mode (Randomize BWS Matching)")
+        self.test_mode_checkbox.setToolTip("If checked, ignores timestamps/bunches and randomly pairs available BWS data with BSRH events to test GUI components.")
+        motor_layout.addWidget(self.test_mode_checkbox)
 
         input_layout.addLayout(bsrh_layout)
         input_layout.addLayout(bws_h_layout)
@@ -573,7 +591,8 @@ class AnalysisGUI(QWidget):
         self.ax.set_title("Average BSRH Beam Size vs Motor Position")
         self.canvas.draw()
 
-        self.worker = AnalysisThread(self.bsrh_path, self.bws_h_path, self.bws_v_path, motor_name)
+        test_mode_enabled = self.test_mode_checkbox.isChecked()
+        self.worker = AnalysisThread(self.bsrh_path, self.bws_h_path, self.bws_v_path, motor_name, test_mode=test_mode_enabled)
 
         # Pass the initial slider constraints down to the worker thread
         start_idx = self.start_slider.value()
