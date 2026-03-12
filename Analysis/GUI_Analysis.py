@@ -536,6 +536,7 @@ class AnalysisGUI(QWidget):
         self.total_files = 0
         self.scatter_plot_h = None
         self.scatter_plot_v = None
+        self.active_dialogs = []
 
     def select_bsrh_dir(self):
         dir_path = QFileDialog.getExistingDirectory(self, "Select BSRH Directory")
@@ -789,7 +790,11 @@ class AnalysisGUI(QWidget):
                         filtered_data['bunches'].append(data['bunches'][i])
 
                 dialog = SecondaryPlotDialog(best_pos, filtered_data, is_horizontal, is_vertical, self)
-                dialog.exec_()
+                self.active_dialogs.append(dialog)
+                dialog.show()
+
+                # Clean up any closed dialogs to prevent memory leaks
+                self.active_dialogs = [d for d in self.active_dialogs if d.isVisible()]
 
 if __name__ == "__main__":
     # Required to initialize the Java VM so that pickle can load JAPC objects
