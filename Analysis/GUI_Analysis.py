@@ -521,14 +521,22 @@ class AnalysisGUI(QWidget):
         self.layout.addLayout(slider_layout)
 
         # Main Plot Canvas
-        self.figure = Figure()
+        self.figure = Figure(figsize=(8, 8))
         self.canvas = FigureCanvas(self.figure)
         self.layout.addWidget(self.canvas)
 
-        self.ax = self.figure.add_subplot(111)
-        self.ax.set_xlabel("Motor Position")
-        self.ax.set_ylabel("Average BSRH Beam Size (px)")
-        self.ax.set_title("Average BSRH Beam Size vs Motor Position")
+        self.ax_beam = self.figure.add_subplot(211)
+        self.ax_beam.set_xlabel("Motor Position")
+        self.ax_beam.set_ylabel("Average BSRH Beam Size (px)")
+        self.ax_beam.set_title("Average BSRH Beam Size vs Motor Position")
+
+        self.ax_params = self.figure.add_subplot(212)
+        self.ax_params_twin = self.ax_params.twinx()
+        self.ax_params.set_xlabel("Motor Position")
+        self.ax_params.set_ylabel("PSF (\u03bcm)")
+        self.ax_params_twin.set_ylabel("Pixel Size (\u03bcm/px)")
+
+        self.figure.tight_layout()
         self.canvas.draw()
 
         # Connect pick event for scatter plot
@@ -592,10 +600,17 @@ class AnalysisGUI(QWidget):
 
         # We don't clear total_files or sliders here because they are initialized during directory selection
 
-        self.ax.clear()
-        self.ax.set_xlabel(f"Motor Position ({motor_name})")
-        self.ax.set_ylabel("Average BSRH Beam Size (px)")
-        self.ax.set_title("Average BSRH Beam Size vs Motor Position")
+        self.ax_beam.clear()
+        self.ax_beam.set_xlabel(f"Motor Position ({motor_name})")
+        self.ax_beam.set_ylabel("Average BSRH Beam Size (px)")
+        self.ax_beam.set_title("Average BSRH Beam Size vs Motor Position")
+
+        self.ax_params.clear()
+        self.ax_params_twin.clear()
+        self.ax_params.set_xlabel(f"Motor Position ({motor_name})")
+        self.ax_params.set_ylabel("PSF (\u03bcm)")
+        self.ax_params_twin.set_ylabel("Pixel Size (\u03bcm/px)")
+
         self.canvas.draw()
 
         test_mode_enabled = self.test_mode_checkbox.isChecked()
@@ -683,9 +698,13 @@ class AnalysisGUI(QWidget):
     def redraw_plot(self):
         motor_positions_h = []
         avg_sizes_h = []
+        psf_h_list = []
+        pix_h_list = []
 
         motor_positions_v = []
         avg_sizes_v = []
+        psf_v_list = []
+        pix_v_list = []
 
         start_idx = self.start_slider.value()
         end_idx = self.end_slider.value()
@@ -696,41 +715,101 @@ class AnalysisGUI(QWidget):
 
         for pos, data in self.grouped_data.items():
             valid_h = []
+            valid_bws_h = []
             for i, f_idx in enumerate(data['file_indices']):
                 if start_idx <= f_idx <= end_idx and i < len(data['bsrh_sizes_h']):
                     if data['bsrh_sizes_h'][i] is not None:
                         valid_h.append(data['bsrh_sizes_h'][i])
+                        if i < len(data['bws_sizes_h']) and data['bws_sizes_h'][i] is not None:
+                            valid_bws_h.append(data['bws_sizes_h'][i])
             if valid_h:
                 motor_positions_h.append(pos)
                 avg_sizes_h.append(np.mean(valid_h))
 
+                # Compute PSF and Pixel Size for this position
+                if valid_bws_h and len(valid_bws_h) == len(valid_h) and len(valid_h) > 1:
+                    x_data = np.array([bws * 1.023 for bws in valid_bws_h])**2
+                    y_data = np.array(valid_h)**2
+                    try:
+                        coeffs = np.polyfit(x_data, y_data, 1)
+                        slope, intercept = coeffs[0], coeffs[1]
+                        pix = np.sqrt(1 / slope) if slope > 0 else np.nan
+                        psf = np.sqrt(intercept / slope) if slope > 0 and intercept > 0 else 0.0
+                        psf_h_list.append(psf * 1000) # to um
+                        pix_h_list.append(pix * 1000) # to um/px
+                    except:
+                        psf_h_list.append(np.nan)
+                        pix_h_list.append(np.nan)
+                else:
+                    psf_h_list.append(np.nan)
+                    pix_h_list.append(np.nan)
+
             valid_v = []
+            valid_bws_v = []
             for i, f_idx in enumerate(data['file_indices']):
                 if start_idx <= f_idx <= end_idx and i < len(data['bsrh_sizes_v']):
                     if data['bsrh_sizes_v'][i] is not None:
                         valid_v.append(data['bsrh_sizes_v'][i])
+                        if i < len(data['bws_sizes_v']) and data['bws_sizes_v'][i] is not None:
+                            valid_bws_v.append(data['bws_sizes_v'][i])
             if valid_v:
                 motor_positions_v.append(pos)
                 avg_sizes_v.append(np.mean(valid_v))
 
-        self.ax.clear()
-        self.ax.set_xlabel(f"Motor Position ({self.motor_input.text().strip()})")
-        self.ax.set_ylabel("Average BSRH Beam Size (px)")
-        self.ax.set_title("Average BSRH Beam Size vs Motor Position")
+                if valid_bws_v and len(valid_bws_v) == len(valid_v) and len(valid_v) > 1:
+                    x_data = np.array([bws * 0.936 for bws in valid_bws_v])**2
+                    y_data = np.array(valid_v)**2
+                    try:
+                        coeffs = np.polyfit(x_data, y_data, 1)
+                        slope, intercept = coeffs[0], coeffs[1]
+                        pix = np.sqrt(1 / slope) if slope > 0 else np.nan
+                        psf = np.sqrt(intercept / slope) if slope > 0 and intercept > 0 else 0.0
+                        psf_v_list.append(psf * 1000) # to um
+                        pix_v_list.append(pix * 1000) # to um/px
+                    except:
+                        psf_v_list.append(np.nan)
+                        pix_v_list.append(np.nan)
+                else:
+                    psf_v_list.append(np.nan)
+                    pix_v_list.append(np.nan)
+
+        self.ax_beam.clear()
+        self.ax_beam.set_xlabel(f"Motor Position ({self.motor_input.text().strip()})")
+        self.ax_beam.set_ylabel("Average BSRH Beam Size (px)")
+        self.ax_beam.set_title("Average BSRH Beam Size vs Motor Position")
+
+        self.ax_params.clear()
+        self.ax_params_twin.clear()
+        self.ax_params.set_xlabel(f"Motor Position ({self.motor_input.text().strip()})")
+        self.ax_params.set_ylabel("PSF (\u03bcm)")
+        self.ax_params_twin.set_ylabel("Pixel Size (\u03bcm/px)")
 
         # Determine if points should be clickable (if we have corresponding BWS data)
         picker_h = 5 if self.bws_h_path else None
         picker_v = 5 if self.bws_v_path else None
 
         if motor_positions_h:
-            self.scatter_plot_h = self.ax.scatter(motor_positions_h, avg_sizes_h, c='blue', label='Horizontal', picker=picker_h)
+            self.scatter_plot_h = self.ax_beam.scatter(motor_positions_h, avg_sizes_h, c='blue', label='Horizontal', picker=picker_h)
+            # Plot PSF/Pix
+            self.ax_params.plot(motor_positions_h, psf_h_list, 'bo-', label='PSF H')
+            self.ax_params_twin.plot(motor_positions_h, pix_h_list, 'b^--', label='Pix H')
 
         if motor_positions_v:
-            self.scatter_plot_v = self.ax.scatter(motor_positions_v, avg_sizes_v, c='red', label='Vertical', picker=picker_v)
+            self.scatter_plot_v = self.ax_beam.scatter(motor_positions_v, avg_sizes_v, c='red', label='Vertical', picker=picker_v)
+            # Plot PSF/Pix
+            self.ax_params.plot(motor_positions_v, psf_v_list, 'ro-', label='PSF V')
+            self.ax_params_twin.plot(motor_positions_v, pix_v_list, 'r^--', label='Pix V')
 
         if motor_positions_h or motor_positions_v:
-            self.ax.legend()
-            self.ax.grid(True)
+            self.ax_beam.legend()
+            self.ax_beam.grid(True)
+
+            # Combine legends for ax_params and twin
+            lines_1, labels_1 = self.ax_params.get_legend_handles_labels()
+            lines_2, labels_2 = self.ax_params_twin.get_legend_handles_labels()
+            if lines_1 or lines_2:
+                self.ax_params.legend(lines_1 + lines_2, labels_1 + labels_2, loc='best')
+            self.ax_params.grid(True)
 
         self.canvas.draw()
 
