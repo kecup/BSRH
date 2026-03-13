@@ -13,7 +13,7 @@ from scipy import stats
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QLineEdit, QFileDialog, QProgressBar, QMessageBox, QDialog,
-    QComboBox
+    QComboBox, QSpinBox
 )
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
 
@@ -106,45 +106,57 @@ class AnalysisThread(QThread):
         self.plane = plane # 'H' or 'V'
         self.running = True
 
-        self.processed_bws = set()
-        self.processed_bsrh = set()
-
         self.bws_data = [] # Stores full profiles per timestamp
         self.bsrh_grouped_data = {} # Keyed by motor_pos
 
         self.dctx = zstd.ZstdDecompressor()
 
+        # Ranges
+        self.bsrh_start_idx = 0
+        self.bsrh_end_idx = 0
+
+    def set_bsrh_range(self, start, end):
+        self.bsrh_start_idx = start
+        self.bsrh_end_idx = end
+
     def stop(self):
         self.running = False
 
     def run(self):
-        self.status_signal.emit("Started real-time analysis...")
-        while self.running:
-            bws_updated = self.process_new_bws(self.bws_path)
-            bsrh_updated = self.process_new_bsrh(self.bsrh_path)
+        self.status_signal.emit("Started offline analysis...")
 
-            if bws_updated or bsrh_updated:
-                # Group data and attempt rigorous minimization
-                self.perform_optimization()
-                self.update_plot_signal.emit(self.bsrh_grouped_data)
+        self.process_new_bws(self.bws_path)
 
-            time.sleep(1.0) # Poll every 1 second
+        if not self.running:
+            self.status_signal.emit("Analysis stopped.")
+            self.finished_signal.emit()
+            return
 
-        self.status_signal.emit("Analysis stopped.")
+        self.process_new_bsrh(self.bsrh_path)
+
+        if not self.running:
+            self.status_signal.emit("Analysis stopped.")
+            self.finished_signal.emit()
+            return
+
+        self.perform_optimization()
+        self.update_plot_signal.emit(self.bsrh_grouped_data)
+
+        self.status_signal.emit("Analysis finished.")
         self.finished_signal.emit()
 
     def process_new_bws(self, directory):
-        updated = False
         if not os.path.isdir(directory):
             self.status_signal.emit(f"BWS directory not found: {directory}")
-            return updated
+            return
 
-        files = sorted([f for f in os.listdir(directory) if f.endswith('.pkl.zst') and f not in self.processed_bws])
-        if not files: return updated
+        files = sorted([f for f in os.listdir(directory) if f.endswith('.pkl.zst')])
+        if not files: return
 
-        for filename in files:
+        for i, filename in enumerate(files):
             if not self.running: break
-            self.status_signal.emit(f"Processing new BWS file: {filename}")
+            self.progress_signal.emit(i, len(files))
+            self.status_signal.emit(f"Loading BWS file: {filename}")
 
             filepath = os.path.join(directory, filename)
             try:
@@ -188,26 +200,27 @@ class AnalysisThread(QThread):
                     'timestamp': timestamp,
                     'bunches': bunches_profiles
                 })
-                self.processed_bws.add(filename)
-                updated = True
             except Exception as e:
                 print(f"Error processing BWS file {filename}: {e}")
 
         self.bws_data.sort(key=lambda x: x['timestamp'])
-        return updated
 
     def process_new_bsrh(self, directory):
-        updated = False
         if not os.path.isdir(directory):
             self.status_signal.emit(f"BSRH directory not found: {directory}")
-            return updated
+            return
 
-        files = sorted([f for f in os.listdir(directory) if f.endswith('.pkl.zst') and f not in self.processed_bsrh])
-        if not files: return updated
+        files = sorted([f for f in os.listdir(directory) if f.endswith('.pkl.zst')])
+        if not files: return
 
-        for filename in files:
+        start_idx = max(0, self.bsrh_start_idx)
+        end_idx = min(len(files), self.bsrh_end_idx + 1)
+        selected_files = files[start_idx:end_idx]
+
+        for i, filename in enumerate(selected_files):
             if not self.running: break
-            self.status_signal.emit(f"Processing new BSRH file: {filename}")
+            self.progress_signal.emit(i, len(selected_files))
+            self.status_signal.emit(f"Loading BSRH file: {filename}")
 
             filepath = os.path.join(directory, filename)
             try:
@@ -274,13 +287,8 @@ class AnalysisThread(QThread):
                         self.bsrh_grouped_data[motor_pos]['bunches'].append(bunch_slot)
                         self.bsrh_grouped_data[motor_pos]['optimized'] = False # Re-flag for optimization
 
-                self.processed_bsrh.add(filename)
-                updated = True
-
             except Exception as e:
                 print(f"Error processing BSRH file {filename}: {e}")
-
-        return updated
 
     def find_closest_bws(self, bsrh_time, bunch_slot):
         best_diff = float('inf')
@@ -297,7 +305,7 @@ class AnalysisThread(QThread):
 
     def perform_optimization(self):
         for pos, data in self.bsrh_grouped_data.items():
-            if not data['optimized'] and len(data['bws_profiles']) > 0:
+            if not data['optimized'] and len(data['bws_profiles']) > 4:
                 self.status_signal.emit(f"Running optimization for motor pos {pos}...")
 
                 # Initial Guesses and Bounds
@@ -408,16 +416,28 @@ class AnalysisGUI(QWidget):
         self.plane_combo = QComboBox()
         self.plane_combo.addItems(["H", "V"])
 
+        self.bsrh_start_spin = QSpinBox()
+        self.bsrh_start_spin.setRange(0, 9999)
+        self.bsrh_end_spin = QSpinBox()
+        self.bsrh_end_spin.setRange(0, 9999)
+
         input_layout.addWidget(self.bsrh_btn)
         input_layout.addWidget(self.bsrh_lbl)
-        input_layout.addWidget(self.bws_btn)
-        input_layout.addWidget(self.bws_lbl)
-        input_layout.addWidget(QLabel("Plane:"))
-        input_layout.addWidget(self.plane_combo)
-        input_layout.addWidget(QLabel("Motor:"))
-        input_layout.addWidget(self.motor_input)
+        input_layout.addWidget(QLabel("BSRH Start Idx:"))
+        input_layout.addWidget(self.bsrh_start_spin)
+        input_layout.addWidget(QLabel("BSRH End Idx:"))
+        input_layout.addWidget(self.bsrh_end_spin)
+
+        input_layout2 = QHBoxLayout()
+        input_layout2.addWidget(self.bws_btn)
+        input_layout2.addWidget(self.bws_lbl)
+        input_layout2.addWidget(QLabel("Plane:"))
+        input_layout2.addWidget(self.plane_combo)
+        input_layout2.addWidget(QLabel("Motor:"))
+        input_layout2.addWidget(self.motor_input)
 
         self.layout.addLayout(input_layout)
+        self.layout.addLayout(input_layout2)
 
         control_layout = QHBoxLayout()
         self.start_btn = QPushButton("Start Analysis")
@@ -496,6 +516,7 @@ class AnalysisGUI(QWidget):
         self.canvas.draw()
 
         self.worker = AnalysisThread(self.bsrh_path, self.bws_path, motor_name, plane)
+        self.worker.set_bsrh_range(self.bsrh_start_spin.value(), self.bsrh_end_spin.value())
         self.worker.progress_signal.connect(self.update_progress)
         self.worker.status_signal.connect(self.update_status)
         self.worker.update_plot_signal.connect(self.update_plot)
