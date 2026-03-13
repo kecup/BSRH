@@ -25,9 +25,9 @@ from matplotlib.figure import Figure
 def gaussian(x, amp, cen, wid, const):
     return amp * np.exp(-(x - cen)**2 / (2 * wid**2)) + const
 
-def fit_gaussian(x, y, p0):
+def fit_gaussian(x, y, p0, bounds=(-np.inf, np.inf)):
     try:
-        popt, pcov = curve_fit(gaussian, x, y, p0=p0, maxfev=2000)
+        popt, pcov = curve_fit(gaussian, x, y, p0=p0, bounds=bounds, maxfev=2000)
         return popt
     except Exception:
         return None
@@ -154,18 +154,22 @@ class AnalysisThread(QThread):
                 for k in range(min(max_bunch, len(bunch_list))):
                     bunch_num = bunch_list[k]
 
+                    # Enforce realistic bounds to prevent variance explosion on noisy fits
+                    # Amplitude: [0, inf], Center: [-30, 30], Width: [0.01, 15], Const: [-inf, inf]
+                    bws_bounds = ([0, -30.0, 0.01, -np.inf], [np.inf, 30.0, 15.0, np.inf])
+
                     # IN scan
                     y_in = proj_in[k * pts_in:(k + 1) * pts_in]
                     x_in = pos_in[:pts_in]
                     # Simple moving average to smooth
                     y_in = y_in - np.mean(y_in[:10])
-                    popt_in = fit_gaussian(x_in, y_in, [max(y_in), np.mean(x_in), 0.28, np.min(y_in)])
+                    popt_in = fit_gaussian(x_in, y_in, [max(y_in), np.mean(x_in), 0.28, np.min(y_in)], bounds=bws_bounds)
 
                     # OUT scan
                     y_out = proj_out[k * pts_out:(k + 1) * pts_out]
                     x_out = pos_out[:pts_out]
                     y_out = y_out - np.mean(y_out[:10])
-                    popt_out = fit_gaussian(x_out, y_out, [max(y_out), np.mean(x_out), 0.28, np.min(y_out)])
+                    popt_out = fit_gaussian(x_out, y_out, [max(y_out), np.mean(x_out), 0.28, np.min(y_out)], bounds=bws_bounds)
 
                     size_in = abs(popt_in[2]) if popt_in is not None else None
                     size_out = abs(popt_out[2]) if popt_out is not None else None
@@ -357,11 +361,13 @@ class SecondaryPlotDialog(QDialog):
         if is_horizontal:
             # Filter out None values from both BSRH and BWS
             valid_idx = [i for i, bws in enumerate(data['bws_sizes_h']) if bws is not None and data['bsrh_sizes_h'][i] is not None]
-            bws_sizes = [data['bws_sizes_h'][i] for i in valid_idx]
+            # Apply Beta-Function scaling BSRH/BWS coefficient
+            bws_sizes = [data['bws_sizes_h'][i] * 1.023 for i in valid_idx]
             bsrh_sizes = [data['bsrh_sizes_h'][i] for i in valid_idx]
         elif is_vertical:
             valid_idx = [i for i, bws in enumerate(data['bws_sizes_v']) if bws is not None and data['bsrh_sizes_v'][i] is not None]
-            bws_sizes = [data['bws_sizes_v'][i] for i in valid_idx]
+            # Apply Beta-Function scaling BSRH/BWS coefficient
+            bws_sizes = [data['bws_sizes_v'][i] * 0.936 for i in valid_idx]
             bsrh_sizes = [data['bsrh_sizes_v'][i] for i in valid_idx]
         else:
             return
@@ -409,9 +415,9 @@ class SecondaryPlotDialog(QDialog):
         except Exception as e:
             print(f"Fit error: {e}")
 
-        ax.set_xlabel('BWS Size Squared')
+        ax.set_xlabel('Scaled BWS Size Squared (Expected BSRH Size)')
         ax.set_ylabel('BSRH Size Squared (px^2)')
-        ax.set_title(f'{plane_str} BSRH vs BWS Beam Size Squared')
+        ax.set_title(f'{plane_str} BSRH vs Scaled BWS Beam Size Squared')
         ax.legend()
         ax.grid(True)
         self.canvas.draw()
