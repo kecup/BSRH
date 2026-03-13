@@ -209,20 +209,23 @@ class AnalysisThread(QThread):
         if self.total_bsrh_files == 0:
             return updated
 
+        # Determine the list of files to actively process this sweep
+        files_to_process = []
         for i, filename in enumerate(all_files):
-            if not self.running: break
-
-            # The list 'all_files' is sorted; its index 'i' maps to the absolute chronological file index.
-            # Only process files within the user's defined slider range.
             if i < self.start_limit or i > self.end_limit:
                 continue
+            if filename not in self.processed_bsrh:
+                files_to_process.append((i, filename))
 
-            # Skip if already fully parsed
-            if filename in self.processed_bsrh:
-                continue
+        sweep_total = len(files_to_process)
+        if sweep_total == 0:
+            return updated
 
-            self.status_signal.emit(f"Processing new BSRH file: {filename}")
-            current_file_idx = i
+        for sweep_idx, (current_file_idx, filename) in enumerate(files_to_process):
+            if not self.running: break
+
+            self.progress_signal.emit(sweep_idx + 1, sweep_total)
+            self.status_signal.emit(f"Processing new BSRH file: {filename} ({sweep_idx + 1}/{sweep_total})")
 
             filepath = os.path.join(directory, filename)
 
@@ -722,12 +725,12 @@ class AnalysisGUI(QWidget):
                         valid_h.append(data['bsrh_sizes_h'][i])
                         if i < len(data['bws_sizes_h']) and data['bws_sizes_h'][i] is not None:
                             valid_bws_h.append(data['bws_sizes_h'][i])
-            if valid_h:
+            if len(valid_h) >= 4:
                 motor_positions_h.append(pos)
                 avg_sizes_h.append(np.mean(valid_h))
 
                 # Compute PSF and Pixel Size for this position
-                if valid_bws_h and len(valid_bws_h) == len(valid_h) and len(valid_h) > 1:
+                if valid_bws_h and len(valid_bws_h) == len(valid_h):
                     x_data = np.array([bws * 1.023 for bws in valid_bws_h])**2
                     y_data = np.array(valid_h)**2
                     try:
@@ -752,11 +755,11 @@ class AnalysisGUI(QWidget):
                         valid_v.append(data['bsrh_sizes_v'][i])
                         if i < len(data['bws_sizes_v']) and data['bws_sizes_v'][i] is not None:
                             valid_bws_v.append(data['bws_sizes_v'][i])
-            if valid_v:
+            if len(valid_v) >= 4:
                 motor_positions_v.append(pos)
                 avg_sizes_v.append(np.mean(valid_v))
 
-                if valid_bws_v and len(valid_bws_v) == len(valid_v) and len(valid_v) > 1:
+                if valid_bws_v and len(valid_bws_v) == len(valid_v):
                     x_data = np.array([bws * 0.936 for bws in valid_bws_v])**2
                     y_data = np.array(valid_v)**2
                     try:
