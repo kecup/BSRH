@@ -46,48 +46,55 @@ def moving_average(a, n=3):
 
 def CoolFuncH(params, bwsArray, bsrhArray, fbctArray, n=12):  # Params[0] = PSF, Params[1] = pixel size, Params[2] = (scale of bsrh) tail of the PSF, arrays come already as 1000 points from -4 to 4
     newX = np.linspace(-4, 4, 1000)
-    crop = 510#600 ###change here if needed
+    crop = 510  # 600 ###change here if needed
     tmpPSF = gaussian(newX, 1, 0, params[0])
-    tmpPSF = tmpPSF / np.sum(tmpPSF)
+    tmpPSF /= np.sum(tmpPSF)
 
     # tmpPSF = specGauss(newX, 1, 0, params[0], params[3])
-    # tmpPSF = tmpPSF/np.sum(tmpPSF)
+    # tmpPSF /= np.sum(tmpPSF)
     n = len(bwsArray)
     totalSquares = 0
+    pixel_scale = params[1] / 1000.0
     for bunch in range(n):
-        bsrh = np.interp(newX, params[1] / 1000 * bsrhArray[bunch][0], bsrhArray[bunch][1])
-        #bsrh = restoration.richardson_lucy(bsrh, tmpPSF, 5,False)
-        #bsrh = fbctArray[bunch]/np.sum(bsrh)*bsrh
+        bsrh = np.interp(newX, pixel_scale * bsrhArray[bunch][0], bsrhArray[bunch][1])
+        # bsrh = restoration.richardson_lucy(bsrh, tmpPSF, 5,False)
+        # bsrh = fbctArray[bunch]/np.sum(bsrh)*bsrh
 
         bws = np.convolve(bwsArray[bunch], tmpPSF, 'same')
-        #bws = fbctArray[bunch]/np.sum(bwsArray[bunch])*bwsArray[bunch]
+        # bws = fbctArray[bunch]/np.sum(bwsArray[bunch])*bwsArray[bunch]
 
-        bsrh = np.sum(bws[:crop]) / np.sum(bsrh[:crop]) * bsrh
-        totalSquares+= chi2(params[2]*bsrh[:crop],bws[:crop])
-        # totalSquares += chi2(bsrh[:crop], bws[:crop])
+        bws_crop = bws[:crop]
+        bsrh_crop = bsrh[:crop]
+        bsrh = np.sum(bws_crop) / np.sum(bsrh_crop) * bsrh_crop
+        totalSquares += chi2(params[2] * bsrh, bws_crop)
+        # totalSquares += chi2(bsrh, bws_crop)
     return totalSquares
+
 
 def CoolFuncV(params, bwsArray, bsrhArray, fbctArray, n=12):  # Params[0] = PSF, Params[1] = pixel size, Params[2] = (scale of bsrh) tail of the PSF, arrays come already as 1000 points from -4 to 4
     newX = np.linspace(-4, 4, 1000)
     crop = -1 ###change here if needed
     tmpPSF = gaussian(newX, 1, 0, params[0])
-    tmpPSF = tmpPSF / np.sum(tmpPSF)
+    tmpPSF /= np.sum(tmpPSF)
 
     # tmpPSF = specGauss(newX, 1, 0, params[0], params[3])
-    # tmpPSF = tmpPSF/np.sum(tmpPSF)s
+    # tmpPSF /= np.sum(tmpPSF)s
     n = len(bwsArray)
     totalSquares = 0
+    pixel_scale = params[1] / 1000.0
     for bunch in range(n):
-        bsrh = np.interp(newX, params[1] / 1000 * bsrhArray[bunch][0], bsrhArray[bunch][1])
+        bsrh = np.interp(newX, pixel_scale * bsrhArray[bunch][0], bsrhArray[bunch][1])
         # bsrh = restoration.richardson_lucy(bsrh, tmpPSF, 5, False)
-        #bsrh = fbctArray[bunch] / np.sum(bsrh) * bsrh
+        # bsrh = fbctArray[bunch] / np.sum(bsrh) * bsrh
 
         bws = np.convolve(bwsArray[bunch], tmpPSF, 'same')
-        #bws = fbctArray[bunch]/np.sum(bws)*bws
+        # bws = fbctArray[bunch]/np.sum(bws)*bws
 
-        bsrh = np.sum(bws)/np.sum(bsrh)*bsrh
-        totalSquares+= chi2(params[2]*bsrh[:crop],bws[:crop])
-        # totalSquares += chi2(bsrh[:crop], bws[:crop])
+        bws_crop = bws[:crop]
+        bsrh_crop = bsrh[:crop]
+        bsrh = np.sum(bws_crop) / np.sum(bsrh_crop) * bsrh_crop
+        totalSquares += chi2(params[2] * bsrh, bws_crop)
+        # totalSquares += chi2(bsrh, bws_crop)
     return totalSquares
 
 japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
@@ -316,7 +323,7 @@ else:
     fig.suptitle("Horizontal Comparison of BSRH and BWS Profiles")
 
     tmpPSF = gaussian(newX, 1 / (out[0] * np.sqrt(2 * np.pi)), 0, out[0])
-    tmpPSF = tmpPSF / np.sum(tmpPSF)
+    tmpPSF /= np.sum(tmpPSF)
 
     for slot, bunch in enumerate(plotList):
         bsrh = np.interp(newX, out[1] / 1000 * Hbsrh[bunch][0], Hbsrh[bunch][1])
@@ -490,7 +497,7 @@ else:
     fig.suptitle("Vertical Comparison of BSRH and BWS Profiles")
 
     tmpPSF = gaussian(newX, 1, 0, out[0])
-    tmpPSF = tmpPSF / np.sum(tmpPSF)
+    tmpPSF /= np.sum(tmpPSF)
 
     for slot, bunch in enumerate(plotList):
         bsrh = np.interp(newX, out[1] / 1000 * Vbsrh[bunch][0], Vbsrh[bunch][1])
