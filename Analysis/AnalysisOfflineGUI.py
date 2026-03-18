@@ -158,6 +158,412 @@ class MaskValidationDialog(QDialog):
 def gaussian(x, amp, cen, wid):
     return amp * np.exp(-(x - cen)**2 / (2 * wid**2))
 
+class AnalysisWorker(QThread):
+    progress_signal = pyqtSignal(int)
+    status_signal = pyqtSignal(str)
+    finished_signal = pyqtSignal(dict)
+    error_signal = pyqtSignal(str)
+
+    def __init__(self, task_type, directories=None, params=None, bws_args=None, parent=None):
+        super().__init__(parent)
+        self.task_type = task_type
+        self.directories = directories
+        self.params = params
+        self.bws_args = bws_args
+
+        self.results = {
+            'H': {'bsrh': {}, 'bws': {}},
+            'V': {'bsrh': {}, 'bws': {}}
+        }
+
+    def run(self):
+        try:
+            if self.task_type == 'BSRH':
+                self.run_bsrh_analysis()
+            elif self.task_type == 'BWS':
+                self.fetch_bws_data()
+            self.finished_signal.emit(self.results)
+        except Exception as e:
+            traceback.print_exc()
+            self.error_signal.emit(str(e))
+
+    def run_bsrh_analysis(self):
+        sigma = self.params['sigma']
+        pixelSizeH = self.params['pixelSizeH']
+        pixelSizeV = self.params['pixelSizeV']
+        psfWidthH = self.params['psfWidthH']
+        psfWidthV = self.params['psfWidthV']
+        rl_iterations = int(self.params['rl_iterations'])
+
+        # Hardcoded Constants
+        INTENSIFIER_GAIN = 5651.0
+
+        SIGMA_TO_MM_X = 263.0
+        SIGMA_TO_MM_Y = 361.0
+
+        y1, y2 = 154, 454
+        x1, x2 = 284, 684
+
+        dctx = zstd.ZstdDecompressor()
+
+        total_files = 0
+
+        # Track cPc per bunch dynamically from unmasked background images
+        cpc_per_bunch = {}
+        # Fallback if an unmasked image hasn't been seen for a bunch yet
+        global_cpc_fallback = 44.0
+        all_files = []
+        for d, start_idx, end_idx in self.directories:
+            if os.path.isdir(d):
+                files = [f for f in os.listdir(d) if f.endswith('.pkl.zst')]
+                files = sorted(files)
+                # Apply range
+                end_idx = min(end_idx, len(files) - 1)
+                if start_idx <= end_idx and start_idx < len(files):
+                    files_in_range = files[start_idx:end_idx+1]
+                    all_files.extend([os.path.join(d, f) for f in files_in_range])
+
+        total_files = len(all_files)
+
+        if total_files == 0:
+            self.error_signal.emit("No .pkl.zst files found in selected directories/ranges.")
+            return
+
+        # 1. Find the first masked image to auto-detect and validate mask
+        maskX, maskY, maskR = self.params.get('maskX', 455), self.params.get('maskY', 300), self.params.get('maskR', 40)
+
+        for i, filepath in enumerate(all_files):
+            self.progress_signal.emit(int((i / total_files) * 100))
+            self.status_signal.emit(f"Processing file {i+1}/{total_files}: {os.path.basename(filepath)}")
+
+            try:
+                with open(filepath, 'rb') as f:
+                    with dctx.stream_reader(f) as reader:
+                        file_data = pickle.load(reader)
+            except Exception as e:
+                print(f"Error reading {filepath}: {e}")
+                continue
+
+            for event in file_data:
+                try:
+                    timestamp = event.timestamp
+                    if timestamp.tzinfo is not None:
+                        timestamp = timestamp.replace(tzinfo=None)
+
+                    delaySlots_raw = event.device_data.get("GATE-INT", {}).get("delaySlots", -1)
+                    delaySlots = int(np.asarray(delaySlots_raw).item()) if isinstance(delaySlots_raw, np.ndarray) else int(delaySlots_raw)
+                    if delaySlots == -1:
+                        continue
+
+                    tmpFBCT = event.device_data.get('FBCT1', {}).get('averageBunchIntensities', [])
+                    if isinstance(tmpFBCT, np.ndarray) and tmpFBCT.size == 0:
+                        tmpFBCT = []
+                    bunch_charge = 0
+                    if len(tmpFBCT) > delaySlots:
+                        # Attempt to handle pulseLength if present (like in cpc_bunches.py)
+                        pulse_length_raw = event.device_data.get("GATE-INT", {}).get("pulseLength", 4)
+                        pulse_length = int(np.asarray(pulse_length_raw).item()) if isinstance(pulse_length_raw, np.ndarray) else int(pulse_length_raw)
+
+                        end_slot = min(len(tmpFBCT), delaySlots + max(1, pulse_length // 4))
+                        bunch_charge = np.sum(tmpFBCT[delaySlots:end_slot])
+
+                    # Fix truth value of an array
+                    if isinstance(bunch_charge, np.ndarray):
+                        if bunch_charge.size == 1:
+                            bunch_charge = bunch_charge.item()
+                        else:
+                            bunch_charge = np.sum(bunch_charge)
+
+                    if bunch_charge <= 0:
+                        continue # Can't calculate relative projection without a reference FBCT charge
+
+                    image = event.cam_data['image2D']
+                    exposure_raw = event.device_data.get('GATE-INT', {}).get('numberOfPulses', 1)
+                    exposure = int(np.asarray(exposure_raw).item()) if isinstance(exposure_raw, np.ndarray) else int(exposure_raw)
+                    if exposure == 0: exposure = 1
+
+                    fArr = event.device_data.get('FILTERS.B2', {}).get('channelState', [0,0,0])
+                    # Ensure scalars for the math
+                    fArr0 = np.asarray(fArr[0]).item() if isinstance(fArr[0], np.ndarray) else fArr[0]
+                    fArr1 = np.asarray(fArr[1]).item() if isinstance(fArr[1], np.ndarray) else fArr[1]
+                    fArr2 = np.asarray(fArr[2]).item() if isinstance(fArr[2], np.ndarray) else fArr[2]
+                    in_filter = pow(12.6, 3 * fArr0 + 2 * fArr1 + fArr2)
+
+                    cmask_x = event.device_data.get('CMASK-X', None)
+                    cmask_y = event.device_data.get('CMASK-Y', None)
+
+                    # Assuming mask is present if CMASK is close to mask position
+                    # "different CMASK-X or Y value" for background
+                    # Let's say if abs(cmask_x - maskX) < some_threshold, it's masked
+                    is_bg_H = False
+                    if cmask_x is not None:
+                        cmask_x_val = np.asarray(cmask_x).item() if isinstance(cmask_x, np.ndarray) else cmask_x
+                        if abs(cmask_x_val - maskX) > 100:
+                            is_bg_H = True
+                    # If there's no CMASK info, assume masked for safety
+
+                    is_bg_V = False
+                    if cmask_y is not None:
+                        cmask_y_val = np.asarray(cmask_y).item() if isinstance(cmask_y, np.ndarray) else cmask_y
+                        if abs(cmask_y_val - maskY) > 100:
+                            is_bg_V = True
+
+                    if image.shape[0] <= 2:
+                        projection_x = image[0]
+                        projection_x = projection_x - np.mean(projection_x[:50])
+                        if image.shape[0] > 1:
+                            projection_y = image[1]
+                        else:
+                            projection_y = np.zeros_like(projection_x)
+                        projection_y = projection_y - np.mean(projection_y[:50])
+
+                        # Calculate CPC if background image
+                        if is_bg_H or is_bg_V:
+                            # if 1D profile, img_sum approximation
+                            img_sum = np.sum(projection_x[264:644]) + np.sum(projection_y[154:454])
+                            if img_sum > 0:
+                                current_cpc = (bunch_charge * exposure) / (img_sum * INTENSIFIER_GAIN * in_filter)
+                                cpc_per_bunch[delaySlots] = current_cpc
+                                global_cpc_fallback = current_cpc # update fallback
+                    else:
+                        projection_x = np.sum(image[y1:y2, :], axis=0)
+                        projection_x = projection_x - np.mean(projection_x[:50])
+
+                        projection_y = np.sum(image[:, x1:x2], axis=1)
+                        projection_y = projection_y - np.mean(projection_y[:50])
+
+                        # Calculate CPC if background image
+                        if is_bg_H or is_bg_V:
+                            img_sum = np.sum(image[y1:y2, 264:644])
+                            if img_sum > 0:
+                                current_cpc = (bunch_charge * exposure) / (img_sum * INTENSIFIER_GAIN * in_filter)
+                                cpc_per_bunch[delaySlots] = current_cpc
+                                global_cpc_fallback = current_cpc # update fallback
+
+                    current_cpc = cpc_per_bunch.get(delaySlots, global_cpc_fallback)
+
+                    # Initialize bunch lists if needed
+                    for plane_dict in [self.results['H']['bsrh'], self.results['V']['bsrh']]:
+                        if delaySlots not in plane_dict:
+                            plane_dict[delaySlots] = {'time': [], 'rpi': [], 'is_bg': []}
+
+                    # --- Horizontal ---
+                    total_integral_x = np.sum(projection_x)
+                    if total_integral_x > 0:
+                        if is_bg_H:
+                            # 1D Deconvolution
+                            x_indices = np.arange(len(projection_x))
+                            psf = gaussian(x_indices, 1.0, len(projection_x)//2, psfWidthH)
+                            psf = psf / np.sum(psf)
+                            deconv_x = richardson_lucy_1d(projection_x, psf, rl_iterations)
+
+                            try:
+                                popt, _ = curve_fit(gaussian, x_indices, deconv_x, p0=[np.max(deconv_x), np.argmax(deconv_x), 20.0])
+                                cenX = popt[1]
+                            except:
+                                cenX = np.argmax(deconv_x)
+
+                            xl1 = int(cenX - sigma * SIGMA_TO_MM_X / pixelSizeH)
+                            xr1 = int(cenX + sigma * SIGMA_TO_MM_X / pixelSizeH)
+
+                            tails = 0
+                            if xl1 > 0: tails += np.sum(deconv_x[:xl1])
+                            if xr1 < len(deconv_x): tails += np.sum(deconv_x[xr1:])
+
+                            tails_charge = tails * current_cpc * INTENSIFIER_GAIN * in_filter / exposure
+                            rpiH = tails_charge / bunch_charge
+
+                            self.results['H']['bsrh'][delaySlots]['time'].append(timestamp)
+                            self.results['H']['bsrh'][delaySlots]['rpi'].append(rpiH)
+                            self.results['H']['bsrh'][delaySlots]['is_bg'].append(True)
+
+                        else:
+                            # Masked calculation
+                            x_temp = list(range(max(0, maskX - maskR))) + list(range(min(len(projection_x), maskX + maskR), len(projection_x)))
+                            valid_x = np.array(x_temp)
+                            valid_proj_x = projection_x[valid_x]
+
+                            try:
+                                resX, _ = curve_fit(gaussian, valid_x, valid_proj_x, p0=[np.max(valid_proj_x), maskX, 20.0])
+                                cenX = resX[1]
+                                if abs(cenX - maskX) > maskR:
+                                    print(f"Warning: Core outside mask (X). Fit: {cenX}, Mask: {maskX}")
+                                    cenX = maskX # fallback
+                            except:
+                                cenX = maskX
+
+                            xl1 = int(cenX - sigma * SIGMA_TO_MM_X / pixelSizeH)
+                            xr1 = int(cenX + sigma * SIGMA_TO_MM_X / pixelSizeH)
+
+                            tails = 0
+                            if 0 < xl1 < maskX - maskR:
+                                tails += np.sum(projection_x[:xl1])
+                            elif xl1 <= 0:
+                                pass # no left tail
+
+                            if len(projection_x) > xr1 > maskX + maskR:
+                                tails += np.sum(projection_x[xr1:])
+                            elif xr1 >= len(projection_x):
+                                pass
+
+                            tails_charge = tails * current_cpc * INTENSIFIER_GAIN * in_filter / exposure
+                            rpiH = tails_charge / bunch_charge
+
+                            self.results['H']['bsrh'][delaySlots]['time'].append(timestamp)
+                            self.results['H']['bsrh'][delaySlots]['rpi'].append(rpiH)
+                            self.results['H']['bsrh'][delaySlots]['is_bg'].append(False)
+
+                    # --- Vertical ---
+                    total_integral_y = np.sum(projection_y)
+                    if total_integral_y > 0:
+                        if is_bg_V:
+                            # 1D Deconvolution
+                            y_indices = np.arange(len(projection_y))
+                            psf = gaussian(y_indices, 1.0, len(projection_y)//2, psfWidthV)
+                            psf = psf / np.sum(psf)
+                            deconv_y = richardson_lucy_1d(projection_y, psf, rl_iterations)
+
+                            try:
+                                popt, _ = curve_fit(gaussian, y_indices, deconv_y, p0=[np.max(deconv_y), np.argmax(deconv_y), 20.0])
+                                cenY = popt[1]
+                            except:
+                                cenY = np.argmax(deconv_y)
+
+                            yl1 = int(cenY - sigma * SIGMA_TO_MM_Y / pixelSizeV)
+                            yr1 = int(cenY + sigma * SIGMA_TO_MM_Y / pixelSizeV)
+
+                            tails = 0
+                            if yl1 > 0: tails += np.sum(deconv_y[:yl1])
+                            if yr1 < len(deconv_y): tails += np.sum(deconv_y[yr1:])
+
+                            tails_charge = tails * current_cpc * INTENSIFIER_GAIN * in_filter / exposure
+                            rpiV = tails_charge / bunch_charge
+
+                            self.results['V']['bsrh'][delaySlots]['time'].append(timestamp)
+                            self.results['V']['bsrh'][delaySlots]['rpi'].append(rpiV)
+                            self.results['V']['bsrh'][delaySlots]['is_bg'].append(True)
+
+                        else:
+                            # Masked calculation
+                            y_temp = list(range(max(0, maskY - maskR))) + list(range(min(len(projection_y), maskY + maskR), len(projection_y)))
+                            valid_y = np.array(y_temp)
+                            valid_proj_y = projection_y[valid_y]
+
+                            try:
+                                resY, _ = curve_fit(gaussian, valid_y, valid_proj_y, p0=[np.max(valid_proj_y), maskY, 20.0])
+                                cenY = resY[1]
+                                if abs(cenY - maskY) > maskR:
+                                    print(f"Warning: Core outside mask (Y). Fit: {cenY}, Mask: {maskY}")
+                                    cenY = maskY # fallback
+                            except:
+                                cenY = maskY
+
+                            yl1 = int(cenY - sigma * SIGMA_TO_MM_Y / pixelSizeV)
+                            yr1 = int(cenY + sigma * SIGMA_TO_MM_Y / pixelSizeV)
+
+                            tails = 0
+                            if 0 < yl1 < maskY - maskR:
+                                tails += np.sum(projection_y[:yl1])
+                            elif yl1 <= 0:
+                                pass # no left tail
+
+                            if len(projection_y) > yr1 > maskY + maskR:
+                                tails += np.sum(projection_y[yr1:])
+                            elif yr1 >= len(projection_y):
+                                pass
+
+                            tails_charge = tails * current_cpc * INTENSIFIER_GAIN * in_filter / exposure
+                            rpiV = tails_charge / bunch_charge
+
+                            self.results['V']['bsrh'][delaySlots]['time'].append(timestamp)
+                            self.results['V']['bsrh'][delaySlots]['rpi'].append(rpiV)
+                            self.results['V']['bsrh'][delaySlots]['is_bg'].append(False)
+                except Exception as e:
+                    print(f"Error processing event: {e}")
+                    traceback.print_exc()
+
+        self.progress_signal.emit(100)
+        self.status_signal.emit("BSRH Analysis Complete")
+
+    def fetch_bws_data(self):
+        t1, t2, bunches_to_fetch = self.bws_args
+
+        try:
+            ldb = pytimber.LoggingDB(source="nxcals")
+
+            self.status_signal.emit("Fetching BWS via pytimber (Horizontal)...")
+            PointNumberH = ldb.get('LHC.BWS.5L4.B2H1:Acquisition:nbPtsPerProjInSet1', t1, t2)
+            Pos_inH = ldb.get('LHC.BWS.5L4.B2H1:Acquisition:projPositionSet1', t1, t2)
+            Proj_inH = ldb.get('LHC.BWS.5L4.B2H1:Acquisition:projDataSet1', t1, t2)
+
+            self.status_signal.emit("Fetching BWS via pytimber (Vertical)...")
+            PointNumberV = ldb.get('LHC.BWS.5R4.B2V1:Acquisition:nbPtsPerProjInSet1', t1, t2)
+            Pos_inV = ldb.get('LHC.BWS.5R4.B2V1:Acquisition:projPositionSet1', t1, t2)
+            Proj_inV = ldb.get('LHC.BWS.5R4.B2V1:Acquisition:projDataSet1', t1, t2)
+
+            self.status_signal.emit("Processing BWS Data...")
+
+            def process_bws(PointNumber, Pos_in, Proj_in, plane, size_mm):
+                if not PointNumber or not Pos_in or not Proj_in: return
+                _, p_num = list(PointNumber.items())[0]
+                _, p_pos = list(Pos_in.items())[0]
+                _, p_proj = list(Proj_in.items())[0]
+
+                # timestamps are p_pos[0]
+                timestamps = p_pos[0]
+
+                for bunch in bunches_to_fetch:
+                    if bunch not in self.results[plane]['bws']:
+                        self.results[plane]['bws'][bunch] = {'time': [], 'rpi': []}
+
+                    for j in range(len(timestamps)):
+                        try:
+                            scan_time = dt.datetime.fromtimestamp(timestamps[j])
+                            count = int(p_num[1][j])
+
+                            x = p_pos[1][j][0][:count]
+
+                            start_idx = bunch * count
+                            end_idx = (bunch + 1) * count
+                            if end_idx > len(p_proj[1][j][0]):
+                                continue # Bunch index out of range
+
+                            y = p_proj[1][j][0][start_idx:end_idx]
+                            y = y - np.mean(y[:50])
+
+                            total_integral = np.sum(y)
+                            if total_integral <= 0: continue
+
+                            # Fit to find center and size
+                            popt, _ = curve_fit(gaussian, x, y, p0=[np.max(y), np.mean(x), 0.28])
+                            cen = popt[1]
+
+                            # calculate RPI
+                            left_edge = cen - self.params['sigma'] * size_mm
+                            right_edge = cen + self.params['sigma'] * size_mm
+
+                            tails = 0
+                            for k in range(len(x)):
+                                if x[k] < left_edge or x[k] > right_edge:
+                                    tails += y[k]
+
+                            rpi = tails / total_integral
+                            self.results[plane]['bws'][bunch]['time'].append(scan_time)
+                            self.results[plane]['bws'][bunch]['rpi'].append(rpi)
+                        except Exception as e:
+                            print(f"BWS Process Error Event {j}: {e}")
+
+            hSize = 257.0 / 1000.0
+            vSize = 386.0 / 1000.0
+
+            process_bws(PointNumberH, Pos_inH, Proj_inH, 'H', hSize)
+            process_bws(PointNumberV, Pos_inV, Proj_inV, 'V', vSize)
+
+            self.status_signal.emit("BWS Fetch Complete")
+        except Exception as e:
+            traceback.print_exc()
+            self.error_signal.emit(f"Failed to fetch data: {e}")
+
 def richardson_lucy_1d(image, psf, iterations=10):
     """
     1D Richardson-Lucy deconvolution.
@@ -377,14 +783,154 @@ class AnalysisOfflineGUI(QWidget):
 
         directories = [widget.get_range() for widget in self.dir_widgets]
 
-        # In a real app, this should be a QThread to not freeze the GUI.
-        # For simplicity in this template, we'll do it sequentially or you can upgrade to QThread.
+        # Determine the mask from the first valid masked image in the selection
+        dctx = zstd.ZstdDecompressor()
+        all_files = []
+        for d, start_idx, end_idx in directories:
+            if os.path.isdir(d):
+                files = [f for f in os.listdir(d) if f.endswith('.pkl.zst')]
+                files = sorted(files)
+                end_idx = min(end_idx, len(files) - 1)
+                if start_idx <= end_idx and start_idx < len(files):
+                    files_in_range = files[start_idx:end_idx+1]
+                    all_files.extend([os.path.join(d, f) for f in files_in_range])
+
+        if len(all_files) == 0:
+            QMessageBox.warning(self, "No files", "No data to process.")
+            return
+
+        maskX, maskY, maskR = 455, 300, 40 # defaults
+        found_masked = False
+
+        for filepath in all_files:
+            if found_masked: break
+            try:
+                with open(filepath, 'rb') as f:
+                    with dctx.stream_reader(f) as reader:
+                        file_data = pickle.load(reader)
+                        for event in file_data:
+                            cmask_x = event.device_data.get('CMASK-X', None)
+                            if cmask_x is not None:
+                                cmask_x_val = np.asarray(cmask_x).item() if isinstance(cmask_x, np.ndarray) else cmask_x
+                                if abs(cmask_x_val - 455) < 100:
+                                    image = event.cam_data['image2D']
+                                    if image.shape[0] <= 2:
+                                        found_masked = True
+                                        break
+
+                                    center_region = image[154:454, 284:684]
+                                    min_idx = np.unravel_index(np.argmin(center_region, axis=None), center_region.shape)
+                                    guessedY = min_idx[0] + 154
+                                    guessedX = min_idx[1] + 284
+
+                                    dialog = MaskValidationDialog(image, guessedX, guessedY, maskR, self)
+                                    if dialog.exec_() == QDialog.Accepted:
+                                        maskX, maskY, maskR = dialog.get_mask_params()
+                                        found_masked = True
+                                    else:
+                                        self.status_lbl.setText("Analysis aborted (mask validation cancelled).")
+                                        return
+                                    break
+            except Exception as e:
+                pass
+
+        if not found_masked:
+            QMessageBox.warning(self, "Warning", "Could not find a masked image to validate the mask. Using defaults.")
+
+        params['maskX'] = maskX
+        params['maskY'] = maskY
+        params['maskR'] = maskR
+
+        self.btn_start_bsrh.setEnabled(False)
+        self.btn_fetch_bws.setEnabled(False)
         self.status_lbl.setText("Analyzing BSRH...")
-        QApplication.processEvents()
 
-        self.run_bsrh_analysis(directories, params)
+        self.worker = AnalysisWorker('BSRH', directories=directories, params=params)
+        self.worker.progress_signal.connect(self.progress_bar.setValue)
+        self.worker.status_signal.connect(self.status_lbl.setText)
+        self.worker.error_signal.connect(self.handle_worker_error)
+        self.worker.finished_signal.connect(self.analysis_finished)
+        self.worker.start()
 
-        self.status_lbl.setText("BSRH Analysis Complete")
+    def fetch_bws_data(self):
+        if not HAS_PYTIMBER:
+            QMessageBox.warning(self, "Pytimber Missing", "Pytimber module is not installed.")
+            return
+
+        params = self.get_params()
+        if not params:
+            return
+
+        # Ask for start and end time
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Fetch BWS Data")
+        layout = QFormLayout(dialog)
+
+        start_input = QLineEdit("2024-03-13 12:00:00")
+        end_input = QLineEdit("2024-03-14 08:50:00")
+        bunch_input = QLineEdit("1") # The pytimber snippet used '1' as a bunch offset
+
+        layout.addRow("Start Time (YYYY-MM-DD HH:MM:SS):", start_input)
+        layout.addRow("End Time (YYYY-MM-DD HH:MM:SS):", end_input)
+        layout.addRow("Bunches (comma separated):", bunch_input)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addRow(buttons)
+
+        if dialog.exec_() != QDialog.Accepted:
+            return
+
+        try:
+            t1 = dt.datetime.strptime(start_input.text(), "%Y-%m-%d %H:%M:%S")
+            t2 = dt.datetime.strptime(end_input.text(), "%Y-%m-%d %H:%M:%S")
+            bunches_to_fetch = [int(b.strip()) for b in bunch_input.text().split(',')]
+        except ValueError:
+            QMessageBox.warning(self, "Input Error", "Invalid date format or bunch list.")
+            return
+
+        try:
+            self.btn_start_bsrh.setEnabled(False)
+            self.btn_fetch_bws.setEnabled(False)
+
+            self.worker = AnalysisWorker('BWS', bws_args=(t1, t2, bunches_to_fetch), params=params)
+            self.worker.progress_signal.connect(self.progress_bar.setValue)
+            self.worker.status_signal.connect(self.status_lbl.setText)
+            self.worker.error_signal.connect(self.handle_worker_error)
+            self.worker.finished_signal.connect(self.analysis_finished)
+            self.worker.start()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Pytimber Error", f"Failed to fetch data: {e}")
+            self.status_lbl.setText("BWS Fetch Failed")
+
+    def handle_worker_error(self, err_str):
+        QMessageBox.critical(self, "Analysis Error", err_str)
+        self.status_lbl.setText("Error occurred.")
+        self.btn_start_bsrh.setEnabled(True)
+        if HAS_PYTIMBER: self.btn_fetch_bws.setEnabled(True)
+
+    def analysis_finished(self, new_results):
+        # Update self.results with the new data
+        for plane in ['H', 'V']:
+            # For BSRH
+            for bunch, data in new_results[plane]['bsrh'].items():
+                if bunch not in self.results[plane]['bsrh']:
+                    self.results[plane]['bsrh'][bunch] = {'time': [], 'rpi': [], 'is_bg': []}
+                self.results[plane]['bsrh'][bunch]['time'].extend(data['time'])
+                self.results[plane]['bsrh'][bunch]['rpi'].extend(data['rpi'])
+                self.results[plane]['bsrh'][bunch]['is_bg'].extend(data['is_bg'])
+            # For BWS
+            for bunch, data in new_results[plane]['bws'].items():
+                if bunch not in self.results[plane]['bws']:
+                    self.results[plane]['bws'][bunch] = {'time': [], 'rpi': []}
+                self.results[plane]['bws'][bunch]['time'].extend(data['time'])
+                self.results[plane]['bws'][bunch]['rpi'].extend(data['rpi'])
+
+        self.btn_start_bsrh.setEnabled(True)
+        if HAS_PYTIMBER: self.btn_fetch_bws.setEnabled(True)
+        self.update_bunch_list()
         self.update_plot()
 
     def run_bsrh_analysis(self, directories, params):
