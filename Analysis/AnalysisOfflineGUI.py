@@ -277,7 +277,31 @@ class AnalysisWorker(QThread):
                     if bunch_charge <= 0:
                         continue # Can't calculate relative projection without a reference FBCT charge
 
-                    image = event.cam_data['image2D']
+                    is_1d_profiles = False
+                    profile_h, profile_v = None, None
+                    image_2d = None
+
+                    if isinstance(event.cam_data, list) and len(event.cam_data) >= 2:
+                        is_1d_profiles = True
+                        profile_h, profile_v = event.cam_data[0], event.cam_data[1]
+                    elif isinstance(event.cam_data, dict) and 'image2D' in event.cam_data:
+                        img_data = event.cam_data['image2D']
+                        if isinstance(img_data, list) and len(img_data) >= 2:
+                            is_1d_profiles = True
+                            profile_h, profile_v = img_data[0], img_data[1]
+                        elif hasattr(img_data, 'shape') and img_data.shape[0] <= 2:
+                            is_1d_profiles = True
+                            profile_h = img_data[0]
+                            if img_data.shape[0] > 1:
+                                profile_v = img_data[1]
+                            else:
+                                profile_v = np.zeros_like(profile_h)
+                        else:
+                            image_2d = img_data
+
+                    if not is_1d_profiles and image_2d is None:
+                        continue # Unrecognized data format
+
                     exposure_raw = event.device_data.get('GATE-INT', {}).get('numberOfPulses', 1)
                     exposure = int(np.asarray(exposure_raw).item()) if isinstance(exposure_raw, np.ndarray) else int(exposure_raw)
                     if exposure == 0: exposure = 1
@@ -308,13 +332,11 @@ class AnalysisWorker(QThread):
                         if abs(cmask_y_val - maskY) > 100:
                             is_bg_V = True
 
-                    if image.shape[0] <= 2:
-                        projection_x = image[0]
+                    if is_1d_profiles:
+                        projection_x = np.asarray(profile_h)
                         projection_x = projection_x - np.mean(projection_x[:50])
-                        if image.shape[0] > 1:
-                            projection_y = image[1]
-                        else:
-                            projection_y = np.zeros_like(projection_x)
+
+                        projection_y = np.asarray(profile_v)
                         projection_y = projection_y - np.mean(projection_y[:50])
 
                         # Calculate CPC if background image
@@ -326,15 +348,15 @@ class AnalysisWorker(QThread):
                                 cpc_per_bunch[delaySlots] = current_cpc
                                 global_cpc_fallback = current_cpc # update fallback
                     else:
-                        projection_x = np.sum(image[y1:y2, :], axis=0)
+                        projection_x = np.sum(image_2d[y1:y2, :], axis=0)
                         projection_x = projection_x - np.mean(projection_x[:50])
 
-                        projection_y = np.sum(image[:, x1:x2], axis=1)
+                        projection_y = np.sum(image_2d[:, x1:x2], axis=1)
                         projection_y = projection_y - np.mean(projection_y[:50])
 
                         # Calculate CPC if background image
                         if is_bg_H or is_bg_V:
-                            img_sum = np.sum(image[y1:y2, 264:644])
+                            img_sum = np.sum(image_2d[y1:y2, 264:644])
                             if img_sum > 0:
                                 current_cpc = (bunch_charge * exposure) / (img_sum * INTENSIFIER_GAIN * in_filter)
                                 cpc_per_bunch[delaySlots] = current_cpc
@@ -813,17 +835,30 @@ class AnalysisOfflineGUI(QWidget):
                             if cmask_x is not None:
                                 cmask_x_val = np.asarray(cmask_x).item() if isinstance(cmask_x, np.ndarray) else cmask_x
                                 if abs(cmask_x_val - 455) < 100:
-                                    image = event.cam_data['image2D']
-                                    if image.shape[0] <= 2:
+                                    is_1d_profiles = False
+                                    image_2d = None
+
+                                    if isinstance(event.cam_data, list) and len(event.cam_data) >= 2:
+                                        is_1d_profiles = True
+                                    elif isinstance(event.cam_data, dict) and 'image2D' in event.cam_data:
+                                        img_data = event.cam_data['image2D']
+                                        if isinstance(img_data, list) and len(img_data) >= 2:
+                                            is_1d_profiles = True
+                                        elif hasattr(img_data, 'shape') and img_data.shape[0] <= 2:
+                                            is_1d_profiles = True
+                                        else:
+                                            image_2d = img_data
+
+                                    if is_1d_profiles or image_2d is None:
                                         found_masked = True
                                         break
 
-                                    center_region = image[154:454, 284:684]
+                                    center_region = image_2d[154:454, 284:684]
                                     min_idx = np.unravel_index(np.argmin(center_region, axis=None), center_region.shape)
                                     guessedY = min_idx[0] + 154
                                     guessedX = min_idx[1] + 284
 
-                                    dialog = MaskValidationDialog(image, guessedX, guessedY, maskR, self)
+                                    dialog = MaskValidationDialog(image_2d, guessedX, guessedY, maskR, self)
                                     if dialog.exec_() == QDialog.Accepted:
                                         maskX, maskY, maskR = dialog.get_mask_params()
                                         found_masked = True
@@ -1010,7 +1045,7 @@ class AnalysisOfflineGUI(QWidget):
                                     guessedX = min_idx[1] + 284
 
                                     # Show dialog to user
-                                    dialog = MaskValidationDialog(image, guessedX, guessedY, maskR, self)
+                                    dialog = MaskValidationDialog(image_2d, guessedX, guessedY, maskR, self)
                                     if dialog.exec_() == QDialog.Accepted:
                                         maskX, maskY, maskR = dialog.get_mask_params()
                                         found_masked = True
