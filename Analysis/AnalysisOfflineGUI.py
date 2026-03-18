@@ -7,6 +7,7 @@ import zstandard as zstd
 import dill as pickle
 import numpy as np
 import datetime as dt
+import traceback
 from scipy.optimize import curve_fit
 from scipy.signal import convolve, get_window
 
@@ -496,27 +497,44 @@ class AnalysisOfflineGUI(QWidget):
                     if timestamp.tzinfo is not None:
                         timestamp = timestamp.replace(tzinfo=None)
 
-                    delaySlots = int(event.device_data.get("GATE-INT", {}).get("delaySlots", -1))
+                    delaySlots_raw = event.device_data.get("GATE-INT", {}).get("delaySlots", -1)
+                    delaySlots = int(np.asarray(delaySlots_raw).item()) if isinstance(delaySlots_raw, np.ndarray) else int(delaySlots_raw)
                     if delaySlots == -1:
                         continue
 
                     tmpFBCT = event.device_data.get('FBCT1', {}).get('averageBunchIntensities', [])
+                    if isinstance(tmpFBCT, np.ndarray) and tmpFBCT.size == 0:
+                        tmpFBCT = []
                     bunch_charge = 0
-                    if tmpFBCT and delaySlots < len(tmpFBCT):
+                    if len(tmpFBCT) > delaySlots:
                         # Attempt to handle pulseLength if present (like in cpc_bunches.py)
-                        pulse_length = int(event.device_data.get("GATE-INT", {}).get("pulseLength", 4))
+                        pulse_length_raw = event.device_data.get("GATE-INT", {}).get("pulseLength", 4)
+                        pulse_length = int(np.asarray(pulse_length_raw).item()) if isinstance(pulse_length_raw, np.ndarray) else int(pulse_length_raw)
+
                         end_slot = min(len(tmpFBCT), delaySlots + max(1, pulse_length // 4))
                         bunch_charge = np.sum(tmpFBCT[delaySlots:end_slot])
 
-                    if np.asarray(bunch_charge).item() <= 0 if isinstance(bunch_charge, np.ndarray) else bunch_charge <= 0:
+                    # Fix truth value of an array
+                    if isinstance(bunch_charge, np.ndarray):
+                        if bunch_charge.size == 1:
+                            bunch_charge = bunch_charge.item()
+                        else:
+                            bunch_charge = np.sum(bunch_charge)
+
+                    if bunch_charge <= 0:
                         continue # Can't calculate relative projection without a reference FBCT charge
 
                     image = event.cam_data['image2D']
-                    exposure = event.device_data.get('GATE-INT', {}).get('numberOfPulses', 1)
+                    exposure_raw = event.device_data.get('GATE-INT', {}).get('numberOfPulses', 1)
+                    exposure = int(np.asarray(exposure_raw).item()) if isinstance(exposure_raw, np.ndarray) else int(exposure_raw)
                     if exposure == 0: exposure = 1
 
                     fArr = event.device_data.get('FILTERS.B2', {}).get('channelState', [0,0,0])
-                    in_filter = pow(12.6, 3 * fArr[0] + 2 * fArr[1] + fArr[2])
+                    # Ensure scalars for the math
+                    fArr0 = np.asarray(fArr[0]).item() if isinstance(fArr[0], np.ndarray) else fArr[0]
+                    fArr1 = np.asarray(fArr[1]).item() if isinstance(fArr[1], np.ndarray) else fArr[1]
+                    fArr2 = np.asarray(fArr[2]).item() if isinstance(fArr[2], np.ndarray) else fArr[2]
+                    in_filter = pow(12.6, 3 * fArr0 + 2 * fArr1 + fArr2)
 
                     cmask_x = event.device_data.get('CMASK-X', None)
                     cmask_y = event.device_data.get('CMASK-Y', None)
@@ -709,6 +727,7 @@ class AnalysisOfflineGUI(QWidget):
                             self.results['V']['bsrh'][delaySlots]['is_bg'].append(False)
                 except Exception as e:
                     print(f"Error processing event: {e}")
+                    traceback.print_exc()
 
         self.progress_bar.setValue(100)
         self.update_bunch_list()
