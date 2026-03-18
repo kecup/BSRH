@@ -348,8 +348,7 @@ class AnalysisOfflineGUI(QWidget):
         rl_iterations = int(params['rl_iterations'])
 
         # Hardcoded Constants
-        INTENSIFIER_GAIN = 5623.0
-        cPc = 44.0
+        INTENSIFIER_GAIN = 5651.0
 
         SIGMA_TO_MM_X = 263.0
         SIGMA_TO_MM_Y = 361.0
@@ -360,6 +359,11 @@ class AnalysisOfflineGUI(QWidget):
         dctx = zstd.ZstdDecompressor()
 
         total_files = 0
+
+        # Track cPc per bunch dynamically from unmasked background images
+        cpc_per_bunch = {}
+        # Fallback if an unmasked image hasn't been seen for a bunch yet
+        global_cpc_fallback = 44.0
         all_files = []
         for entry in directories:
             # Parse entry "path | start:end"
@@ -455,10 +459,15 @@ class AnalysisOfflineGUI(QWidget):
                         continue
 
                     tmpFBCT = event.device_data.get('FBCT1', {}).get('averageBunchIntensities', [])
-                    # Assuming we can match delaySlots to a bunch index or just use the slot as ID
-                    # FBCT intensities are ordered, we need the total intensity to normalize if calculating RPI
-                    # If we don't know the exact mapping, we might just sum the projection instead of FBCT
-                    # As per requested RPI definition: ratio of the tails to the total integral.
+                    bunch_charge = 0
+                    if tmpFBCT and delaySlots < len(tmpFBCT):
+                        # Attempt to handle pulseLength if present (like in cpc_bunches.py)
+                        pulse_length = int(event.device_data.get("GATE-INT", {}).get("pulseLength", 4))
+                        end_slot = min(len(tmpFBCT), delaySlots + max(1, pulse_length // 4))
+                        bunch_charge = np.sum(tmpFBCT[delaySlots:end_slot])
+
+                    if bunch_charge <= 0:
+                        continue # Can't calculate relative projection without a reference FBCT charge
 
                     image = event.cam_data['image2D']
                     exposure = event.device_data.get('GATE-INT', {}).get('numberOfPulses', 1)
@@ -481,6 +490,16 @@ class AnalysisOfflineGUI(QWidget):
                     is_bg_V = False
                     if cmask_y is not None and abs(cmask_y - maskY) > 100:
                         is_bg_V = True
+
+                    # Calculate CPC if background image
+                    if is_bg_H or is_bg_V:
+                        img_sum = np.sum(image[y1:y2, 264:644])
+                        if img_sum > 0:
+                            current_cpc = (bunch_charge * exposure) / (img_sum * INTENSIFIER_GAIN * in_filter)
+                            cpc_per_bunch[delaySlots] = current_cpc
+                            global_cpc_fallback = current_cpc # update fallback
+
+                    current_cpc = cpc_per_bunch.get(delaySlots, global_cpc_fallback)
 
                     projection_x = np.sum(image[y1:y2, :], axis=0)
                     projection_x = projection_x - np.mean(projection_x[:50])
@@ -516,7 +535,9 @@ class AnalysisOfflineGUI(QWidget):
                             if xl1 > 0: tails += np.sum(deconv_x[:xl1])
                             if xr1 < len(deconv_x): tails += np.sum(deconv_x[xr1:])
 
-                            rpiH = tails / np.sum(deconv_x)
+                            tails_charge = tails * current_cpc * INTENSIFIER_GAIN * in_filter / exposure
+                            rpiH = tails_charge / bunch_charge
+
                             self.results['H']['bsrh'][delaySlots]['time'].append(timestamp)
                             self.results['H']['bsrh'][delaySlots]['rpi'].append(rpiH)
                             self.results['H']['bsrh'][delaySlots]['is_bg'].append(True)
@@ -550,7 +571,9 @@ class AnalysisOfflineGUI(QWidget):
                             elif xr1 >= len(projection_x):
                                 pass
 
-                            rpiH = tails / total_integral_x
+                            tails_charge = tails * current_cpc * INTENSIFIER_GAIN * in_filter / exposure
+                            rpiH = tails_charge / bunch_charge
+
                             self.results['H']['bsrh'][delaySlots]['time'].append(timestamp)
                             self.results['H']['bsrh'][delaySlots]['rpi'].append(rpiH)
                             self.results['H']['bsrh'][delaySlots]['is_bg'].append(False)
@@ -578,7 +601,9 @@ class AnalysisOfflineGUI(QWidget):
                             if yl1 > 0: tails += np.sum(deconv_y[:yl1])
                             if yr1 < len(deconv_y): tails += np.sum(deconv_y[yr1:])
 
-                            rpiV = tails / np.sum(deconv_y)
+                            tails_charge = tails * current_cpc * INTENSIFIER_GAIN * in_filter / exposure
+                            rpiV = tails_charge / bunch_charge
+
                             self.results['V']['bsrh'][delaySlots]['time'].append(timestamp)
                             self.results['V']['bsrh'][delaySlots]['rpi'].append(rpiV)
                             self.results['V']['bsrh'][delaySlots]['is_bg'].append(True)
@@ -612,7 +637,9 @@ class AnalysisOfflineGUI(QWidget):
                             elif yr1 >= len(projection_y):
                                 pass
 
-                            rpiV = tails / total_integral_y
+                            tails_charge = tails * current_cpc * INTENSIFIER_GAIN * in_filter / exposure
+                            rpiV = tails_charge / bunch_charge
+
                             self.results['V']['bsrh'][delaySlots]['time'].append(timestamp)
                             self.results['V']['bsrh'][delaySlots]['rpi'].append(rpiV)
                             self.results['V']['bsrh'][delaySlots]['is_bg'].append(False)
@@ -806,6 +833,12 @@ class AnalysisOfflineGUI(QWidget):
         self.canvas.draw()
 
 if __name__ == '__main__':
+    try:
+        import pyjapc
+        japc = pyjapc.PyJapc(selector='', incaAcceleratorName='')
+    except Exception as e:
+        print(f"Warning: Could not initialize pyjapc. Data loading might fail. ({e})")
+
     app = QApplication(sys.argv)
     gui = AnalysisOfflineGUI()
     gui.show()
