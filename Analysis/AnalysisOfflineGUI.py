@@ -14,9 +14,67 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QLineEdit, QFileDialog, QProgressBar, QMessageBox, QDialog,
     QListWidget, QListWidgetItem, QGroupBox, QFormLayout, QComboBox, QCheckBox,
-    QTabWidget, QSplitter, QDialogButtonBox
+    QTabWidget, QSplitter, QDialogButtonBox, QScrollArea, QSlider
 )
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
+
+class DirectoryEntryWidget(QWidget):
+    def __init__(self, directory, total_files, parent=None):
+        super().__init__(parent)
+        self.directory = directory
+        self.total_files = total_files
+        self.start_idx = 0
+        self.end_idx = max(0, total_files - 1)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(5, 5, 5, 5)
+
+        # Header with path and remove button
+        header_layout = QHBoxLayout()
+        path_label = QLabel(directory)
+        path_label.setWordWrap(True)
+        self.remove_btn = QPushButton("Remove")
+        header_layout.addWidget(path_label, stretch=1)
+        header_layout.addWidget(self.remove_btn)
+        layout.addLayout(header_layout)
+
+        # Sliders layout
+        slider_layout = QFormLayout()
+
+        self.start_slider = QSlider(Qt.Horizontal)
+        self.start_slider.setRange(0, self.end_idx)
+        self.start_slider.setValue(self.start_idx)
+        self.start_label = QLabel(f"Start: 0")
+
+        self.end_slider = QSlider(Qt.Horizontal)
+        self.end_slider.setRange(0, self.end_idx)
+        self.end_slider.setValue(self.end_idx)
+        self.end_label = QLabel(f"End: {self.end_idx}")
+
+        slider_layout.addRow(self.start_label, self.start_slider)
+        slider_layout.addRow(self.end_label, self.end_slider)
+        layout.addLayout(slider_layout)
+
+        # Connections
+        self.start_slider.valueChanged.connect(self.on_start_changed)
+        self.end_slider.valueChanged.connect(self.on_end_changed)
+
+    def on_start_changed(self, val):
+        if val > self.end_slider.value():
+            self.start_slider.setValue(self.end_slider.value())
+            val = self.end_slider.value()
+        self.start_idx = val
+        self.start_label.setText(f"Start: {val}")
+
+    def on_end_changed(self, val):
+        if val < self.start_slider.value():
+            self.end_slider.setValue(self.start_slider.value())
+            val = self.start_slider.value()
+        self.end_idx = val
+        self.end_label.setText(f"End: {val}")
+
+    def get_range(self):
+        return self.directory, self.start_idx, self.end_idx
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -153,19 +211,23 @@ class AnalysisOfflineGUI(QWidget):
         dir_group = QGroupBox("Data Directories")
         dir_layout = QVBoxLayout()
 
-        self.dir_list = QListWidget()
-        dir_layout.addWidget(self.dir_list)
+        self.dir_scroll = QScrollArea()
+        self.dir_scroll.setWidgetResizable(True)
+        self.dir_container = QWidget()
+        self.dir_container_layout = QVBoxLayout(self.dir_container)
+        self.dir_container_layout.setAlignment(Qt.AlignTop)
+        self.dir_scroll.setWidget(self.dir_container)
+        dir_layout.addWidget(self.dir_scroll)
 
         btn_layout = QHBoxLayout()
         self.btn_add_dir = QPushButton("Add Dir")
         self.btn_add_dir.clicked.connect(self.add_directory)
-        self.btn_remove_dir = QPushButton("Remove Selected")
-        self.btn_remove_dir.clicked.connect(self.remove_directory)
         btn_layout.addWidget(self.btn_add_dir)
-        btn_layout.addWidget(self.btn_remove_dir)
         dir_layout.addLayout(btn_layout)
         dir_group.setLayout(dir_layout)
         left_layout.addWidget(dir_group)
+
+        self.dir_widgets = []
 
         # 2. Parameters Group
         param_group = QGroupBox("Analysis Parameters")
@@ -277,36 +339,24 @@ class AnalysisOfflineGUI(QWidget):
         if not dir_path:
             return
 
-        # Ask for file range (start and end index)
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Select File Range")
-        layout = QFormLayout(dialog)
+        # Count files in the directory
+        files = [f for f in os.listdir(dir_path) if f.endswith('.pkl.zst')]
+        total_files = len(files)
 
-        start_input = QLineEdit("0")
-        end_input = QLineEdit("999999")
+        if total_files == 0:
+            QMessageBox.information(self, "No Files", f"No .pkl.zst files found in:\n{dir_path}")
+            return
 
-        layout.addRow("Start Index:", start_input)
-        layout.addRow("End Index:", end_input)
+        widget = DirectoryEntryWidget(dir_path, total_files)
+        widget.remove_btn.clicked.connect(lambda: self.remove_directory(widget))
+        self.dir_container_layout.addWidget(widget)
+        self.dir_widgets.append(widget)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addRow(buttons)
-
-        if dialog.exec_() == QDialog.Accepted:
-            try:
-                start_idx = int(start_input.text())
-                end_idx = int(end_input.text())
-                # Format: "path | start_idx:end_idx"
-                entry = f"{dir_path} | {start_idx}:{end_idx}"
-                item = QListWidgetItem(entry)
-                self.dir_list.addItem(item)
-            except ValueError:
-                QMessageBox.warning(self, "Input Error", "Start and End indices must be integers.")
-
-    def remove_directory(self):
-        for item in self.dir_list.selectedItems():
-            self.dir_list.takeItem(self.dir_list.row(item))
+    def remove_directory(self, widget):
+        self.dir_container_layout.removeWidget(widget)
+        widget.deleteLater()
+        if widget in self.dir_widgets:
+            self.dir_widgets.remove(widget)
 
     def get_params(self):
         try:
@@ -316,7 +366,7 @@ class AnalysisOfflineGUI(QWidget):
             return None
 
     def start_bsrh_analysis(self):
-        if self.dir_list.count() == 0:
+        if len(self.dir_widgets) == 0:
             QMessageBox.warning(self, "No Directories", "Please add at least one directory.")
             return
 
@@ -324,7 +374,7 @@ class AnalysisOfflineGUI(QWidget):
         if not params:
             return
 
-        directories = [self.dir_list.item(i).text() for i in range(self.dir_list.count())]
+        directories = [widget.get_range() for widget in self.dir_widgets]
 
         # In a real app, this should be a QThread to not freeze the GUI.
         # For simplicity in this template, we'll do it sequentially or you can upgrade to QThread.
@@ -365,23 +415,7 @@ class AnalysisOfflineGUI(QWidget):
         # Fallback if an unmasked image hasn't been seen for a bunch yet
         global_cpc_fallback = 44.0
         all_files = []
-        for entry in directories:
-            # Parse entry "path | start:end"
-            parts = entry.split(" | ")
-            if len(parts) == 2:
-                d = parts[0]
-                indices = parts[1].split(":")
-                try:
-                    start_idx = int(indices[0])
-                    end_idx = int(indices[1])
-                except:
-                    start_idx = 0
-                    end_idx = 999999
-            else:
-                d = entry
-                start_idx = 0
-                end_idx = 999999
-
+        for d, start_idx, end_idx in directories:
             if os.path.isdir(d):
                 files = [f for f in os.listdir(d) if f.endswith('.pkl.zst')]
                 files = sorted(files)
@@ -410,25 +444,33 @@ class AnalysisOfflineGUI(QWidget):
                         for event in file_data:
                             # Assume it's a masked image if CMASK is present and not explicitly "background"
                             cmask_x = event.device_data.get('CMASK-X', None)
-                            if cmask_x is not None and abs(cmask_x - 455) < 100:
-                                image = event.cam_data['image2D']
-                                # Simple auto-guess: find minimum in center region
-                                center_region = image[154:454, 284:684]
-                                # find the index of the minimum value in the 2D array
-                                min_idx = np.unravel_index(np.argmin(center_region, axis=None), center_region.shape)
-                                # min_idx is (y, x) within the region
-                                guessedY = min_idx[0] + 154
-                                guessedX = min_idx[1] + 284
+                            if cmask_x is not None:
+                                cmask_x_val = np.asarray(cmask_x).item() if isinstance(cmask_x, np.ndarray) else cmask_x
+                                if abs(cmask_x_val - 455) < 100:
+                                    image = event.cam_data['image2D']
+                                    if image.shape[0] <= 2:
+                                        # It's a 1D profile, we can't do the 2D mask validation easily. Use defaults.
+                                        maskX, maskY, maskR = 455, 300, 40
+                                        found_masked = True
+                                        break
 
-                                # Show dialog to user
-                                dialog = MaskValidationDialog(image, guessedX, guessedY, maskR, self)
-                                if dialog.exec_() == QDialog.Accepted:
-                                    maskX, maskY, maskR = dialog.get_mask_params()
-                                    found_masked = True
-                                else:
-                                    self.status_lbl.setText("Analysis aborted (mask validation cancelled).")
-                                    return
-                                break
+                                    # Simple auto-guess: find minimum in center region
+                                    center_region = image[154:454, 284:684]
+                                    # find the index of the minimum value in the 2D array
+                                    min_idx = np.unravel_index(np.argmin(center_region, axis=None), center_region.shape)
+                                    # min_idx is (y, x) within the region
+                                    guessedY = min_idx[0] + 154
+                                    guessedX = min_idx[1] + 284
+
+                                    # Show dialog to user
+                                    dialog = MaskValidationDialog(image, guessedX, guessedY, maskR, self)
+                                    if dialog.exec_() == QDialog.Accepted:
+                                        maskX, maskY, maskR = dialog.get_mask_params()
+                                        found_masked = True
+                                    else:
+                                        self.status_lbl.setText("Analysis aborted (mask validation cancelled).")
+                                        return
+                                    break
             except Exception as e:
                 print(f"Error checking {filepath} for mask: {e}")
 
@@ -466,7 +508,7 @@ class AnalysisOfflineGUI(QWidget):
                         end_slot = min(len(tmpFBCT), delaySlots + max(1, pulse_length // 4))
                         bunch_charge = np.sum(tmpFBCT[delaySlots:end_slot])
 
-                    if bunch_charge <= 0:
+                    if np.asarray(bunch_charge).item() <= 0 if isinstance(bunch_charge, np.ndarray) else bunch_charge <= 0:
                         continue # Can't calculate relative projection without a reference FBCT charge
 
                     image = event.cam_data['image2D']
@@ -483,29 +525,51 @@ class AnalysisOfflineGUI(QWidget):
                     # "different CMASK-X or Y value" for background
                     # Let's say if abs(cmask_x - maskX) < some_threshold, it's masked
                     is_bg_H = False
-                    if cmask_x is not None and abs(cmask_x - maskX) > 100:
-                        is_bg_H = True
+                    if cmask_x is not None:
+                        cmask_x_val = np.asarray(cmask_x).item() if isinstance(cmask_x, np.ndarray) else cmask_x
+                        if abs(cmask_x_val - maskX) > 100:
+                            is_bg_H = True
                     # If there's no CMASK info, assume masked for safety
 
                     is_bg_V = False
-                    if cmask_y is not None and abs(cmask_y - maskY) > 100:
-                        is_bg_V = True
+                    if cmask_y is not None:
+                        cmask_y_val = np.asarray(cmask_y).item() if isinstance(cmask_y, np.ndarray) else cmask_y
+                        if abs(cmask_y_val - maskY) > 100:
+                            is_bg_V = True
 
-                    # Calculate CPC if background image
-                    if is_bg_H or is_bg_V:
-                        img_sum = np.sum(image[y1:y2, 264:644])
-                        if img_sum > 0:
-                            current_cpc = (bunch_charge * exposure) / (img_sum * INTENSIFIER_GAIN * in_filter)
-                            cpc_per_bunch[delaySlots] = current_cpc
-                            global_cpc_fallback = current_cpc # update fallback
+                    if image.shape[0] <= 2:
+                        projection_x = image[0]
+                        projection_x = projection_x - np.mean(projection_x[:50])
+                        if image.shape[0] > 1:
+                            projection_y = image[1]
+                        else:
+                            projection_y = np.zeros_like(projection_x)
+                        projection_y = projection_y - np.mean(projection_y[:50])
+
+                        # Calculate CPC if background image
+                        if is_bg_H or is_bg_V:
+                            # if 1D profile, img_sum approximation
+                            img_sum = np.sum(projection_x[264:644]) + np.sum(projection_y[154:454])
+                            if img_sum > 0:
+                                current_cpc = (bunch_charge * exposure) / (img_sum * INTENSIFIER_GAIN * in_filter)
+                                cpc_per_bunch[delaySlots] = current_cpc
+                                global_cpc_fallback = current_cpc # update fallback
+                    else:
+                        projection_x = np.sum(image[y1:y2, :], axis=0)
+                        projection_x = projection_x - np.mean(projection_x[:50])
+
+                        projection_y = np.sum(image[:, x1:x2], axis=1)
+                        projection_y = projection_y - np.mean(projection_y[:50])
+
+                        # Calculate CPC if background image
+                        if is_bg_H or is_bg_V:
+                            img_sum = np.sum(image[y1:y2, 264:644])
+                            if img_sum > 0:
+                                current_cpc = (bunch_charge * exposure) / (img_sum * INTENSIFIER_GAIN * in_filter)
+                                cpc_per_bunch[delaySlots] = current_cpc
+                                global_cpc_fallback = current_cpc # update fallback
 
                     current_cpc = cpc_per_bunch.get(delaySlots, global_cpc_fallback)
-
-                    projection_x = np.sum(image[y1:y2, :], axis=0)
-                    projection_x = projection_x - np.mean(projection_x[:50])
-
-                    projection_y = np.sum(image[:, x1:x2], axis=1)
-                    projection_y = projection_y - np.mean(projection_y[:50])
 
                     # Initialize bunch lists if needed
                     for plane_dict in [self.results['H']['bsrh'], self.results['V']['bsrh']]:
