@@ -29,6 +29,73 @@ try:
 except ImportError:
     HAS_PYTIMBER = False
 
+import matplotlib.patches as patches
+
+class MaskValidationDialog(QDialog):
+    def __init__(self, image, initial_x, initial_y, initial_r, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Validate Mask Position")
+        self.resize(800, 600)
+
+        self.image = image
+        self.maskX = initial_x
+        self.maskY = initial_y
+        self.maskR = initial_r
+
+        layout = QVBoxLayout(self)
+
+        self.figure = Figure()
+        self.canvas = FigureCanvas(self.figure)
+        self.ax = self.figure.add_subplot(111)
+        layout.addWidget(self.canvas)
+
+        controls = QHBoxLayout()
+        self.x_input = QLineEdit(str(self.maskX))
+        self.y_input = QLineEdit(str(self.maskY))
+        self.r_input = QLineEdit(str(self.maskR))
+
+        controls.addWidget(QLabel("Mask X:"))
+        controls.addWidget(self.x_input)
+        controls.addWidget(QLabel("Mask Y:"))
+        controls.addWidget(self.y_input)
+        controls.addWidget(QLabel("Mask R:"))
+        controls.addWidget(self.r_input)
+
+        self.x_input.textChanged.connect(self.update_plot)
+        self.y_input.textChanged.connect(self.update_plot)
+        self.r_input.textChanged.connect(self.update_plot)
+
+        layout.addLayout(controls)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.circle = None
+        self.initial_plot()
+
+    def initial_plot(self):
+        self.ax.imshow(self.image, cmap='gray')
+        self.circle = patches.Circle((self.maskX, self.maskY), self.maskR, color='r', fill=False)
+        self.ax.add_patch(self.circle)
+        self.canvas.draw()
+
+    def update_plot(self):
+        try:
+            self.maskX = int(self.x_input.text())
+            self.maskY = int(self.y_input.text())
+            self.maskR = int(self.r_input.text())
+            if self.circle:
+                self.circle.center = (self.maskX, self.maskY)
+                self.circle.set_radius(self.maskR)
+                self.canvas.draw()
+        except ValueError:
+            pass
+
+    def get_mask_params(self):
+        return self.maskX, self.maskY, self.maskR
+
 def gaussian(x, amp, cen, wid):
     return amp * np.exp(-(x - cen)**2 / (2 * wid**2))
 
@@ -108,17 +175,12 @@ class AnalysisOfflineGUI(QWidget):
 
         # Default values based on Offline_Sofia.py / OffineHalo.py
         params = {
-            "maskX": "455",
-            "maskY": "300",
-            "maskR": "40",
             "sigma": "3.5",
             "pixelSizeH": "18.5",
             "pixelSizeV": "17.5",
             "psfWidthH": "15.0", # PSF width in pixels for deconvolution
             "psfWidthV": "15.0",
-            "rl_iterations": "10",
-            "INTENSIFIER_GAIN": "5623",
-            "cPc": "44.0"
+            "rl_iterations": "10"
         }
 
         for p_name, p_val in params.items():
@@ -134,14 +196,25 @@ class AnalysisOfflineGUI(QWidget):
         exec_layout = QVBoxLayout()
 
         view_layout = QHBoxLayout()
-        view_layout.addWidget(QLabel("Bunches to plot (csv):"))
-        self.bunch_input = QLineEdit("0,10,20")
-        view_layout.addWidget(self.bunch_input)
 
+        bunch_layout = QVBoxLayout()
+        bunch_layout.addWidget(QLabel("Select Bunches:"))
+        self.bunch_list = QListWidget()
+        self.bunch_list.setSelectionMode(QListWidget.MultiSelection)
+        self.bunch_list.itemSelectionChanged.connect(self.update_plot)
+        bunch_layout.addWidget(self.bunch_list)
+
+        view_layout.addLayout(bunch_layout)
+
+        plane_layout = QVBoxLayout()
+        plane_layout.addWidget(QLabel("Select Plane:"))
         self.plane_combo = QComboBox()
         self.plane_combo.addItems(["Horizontal", "Vertical"])
         self.plane_combo.currentIndexChanged.connect(self.update_plot)
-        view_layout.addWidget(self.plane_combo)
+        plane_layout.addWidget(self.plane_combo)
+        plane_layout.addStretch()
+
+        view_layout.addLayout(plane_layout)
         exec_layout.addLayout(view_layout)
 
         self.btn_start_bsrh = QPushButton("Start BSRH Analysis")
@@ -267,17 +340,16 @@ class AnalysisOfflineGUI(QWidget):
         self.results['H']['bsrh'].clear()
         self.results['V']['bsrh'].clear()
 
-        maskX = int(params['maskX'])
-        maskY = int(params['maskY'])
-        maskR = int(params['maskR'])
         sigma = params['sigma']
         pixelSizeH = params['pixelSizeH']
         pixelSizeV = params['pixelSizeV']
         psfWidthH = params['psfWidthH']
         psfWidthV = params['psfWidthV']
         rl_iterations = int(params['rl_iterations'])
-        INTENSIFIER_GAIN = params['INTENSIFIER_GAIN']
-        cPc = params['cPc']
+
+        # Hardcoded Constants
+        INTENSIFIER_GAIN = 5623.0
+        cPc = 44.0
 
         SIGMA_TO_MM_X = 263.0
         SIGMA_TO_MM_Y = 361.0
@@ -320,6 +392,45 @@ class AnalysisOfflineGUI(QWidget):
         if total_files == 0:
             QMessageBox.information(self, "No files", "No .pkl.zst files found in selected directories/ranges.")
             return
+
+        # 1. Find the first masked image to auto-detect and validate mask
+        maskX, maskY, maskR = 455, 300, 40 # defaults
+        found_masked = False
+
+        for filepath in all_files:
+            if found_masked: break
+            try:
+                with open(filepath, 'rb') as f:
+                    with dctx.stream_reader(f) as reader:
+                        file_data = pickle.load(reader)
+                        for event in file_data:
+                            # Assume it's a masked image if CMASK is present and not explicitly "background"
+                            cmask_x = event.device_data.get('CMASK-X', None)
+                            if cmask_x is not None and abs(cmask_x - 455) < 100:
+                                image = event.cam_data['image2D']
+                                # Simple auto-guess: find minimum in center region
+                                center_region = image[154:454, 284:684]
+                                # find the index of the minimum value in the 2D array
+                                min_idx = np.unravel_index(np.argmin(center_region, axis=None), center_region.shape)
+                                # min_idx is (y, x) within the region
+                                guessedY = min_idx[0] + 154
+                                guessedX = min_idx[1] + 284
+
+                                # Show dialog to user
+                                dialog = MaskValidationDialog(image, guessedX, guessedY, maskR, self)
+                                if dialog.exec_() == QDialog.Accepted:
+                                    maskX, maskY, maskR = dialog.get_mask_params()
+                                    found_masked = True
+                                else:
+                                    self.status_lbl.setText("Analysis aborted (mask validation cancelled).")
+                                    return
+                                break
+            except Exception as e:
+                print(f"Error checking {filepath} for mask: {e}")
+
+        if not found_masked:
+            QMessageBox.warning(self, "Warning", "Could not find a masked image to validate the mask. Using defaults.")
+            maskX, maskY, maskR = 455, 300, 40
 
         for i, filepath in enumerate(all_files):
             self.progress_bar.setValue(int((i / total_files) * 100))
@@ -509,6 +620,7 @@ class AnalysisOfflineGUI(QWidget):
                     print(f"Error processing event: {e}")
 
         self.progress_bar.setValue(100)
+        self.update_bunch_list()
 
     def fetch_bws_data(self):
         if not HAS_PYTIMBER:
@@ -628,17 +740,32 @@ class AnalysisOfflineGUI(QWidget):
             QMessageBox.critical(self, "Pytimber Error", f"Failed to fetch data: {e}")
             self.status_lbl.setText("BWS Fetch Failed")
 
+        self.update_bunch_list()
         self.update_plot()
+
+    def update_bunch_list(self):
+        # Gather all unique bunch numbers from results
+        all_bunches = set()
+        for plane in ['H', 'V']:
+            all_bunches.update(self.results[plane]['bsrh'].keys())
+            all_bunches.update(self.results[plane]['bws'].keys())
+
+        # Store currently selected items to restore selection
+        selected = [item.text() for item in self.bunch_list.selectedItems()]
+
+        self.bunch_list.clear()
+        for b in sorted(list(all_bunches)):
+            item = QListWidgetItem(str(b))
+            self.bunch_list.addItem(item)
+            if str(b) in selected:
+                item.setSelected(True)
 
     def update_plot(self):
         self.ax.clear()
         plane = "H" if self.plane_combo.currentText() == "Horizontal" else "V"
 
-        bunch_str = self.bunch_input.text()
-        try:
-            bunches = [int(x.strip()) for x in bunch_str.split(',') if x.strip()]
-        except ValueError:
-            bunches = []
+        # Read bunches from the list widget
+        bunches = [int(item.text()) for item in self.bunch_list.selectedItems()]
 
         self.ax.set_xlabel("Time")
         self.ax.set_ylabel("RPI")
