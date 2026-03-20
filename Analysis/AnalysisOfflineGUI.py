@@ -241,6 +241,10 @@ class AnalysisWorker(QThread):
             'H': {'bsrh': {}, 'bws': {}},
             'V': {'bsrh': {}, 'bws': {}}
         }
+        self.is_running = True
+
+    def stop(self):
+        self.is_running = False
 
     def run(self):
         try:
@@ -299,6 +303,8 @@ class AnalysisWorker(QThread):
         maskX, maskY, maskR = self.params.get('maskX', 455), self.params.get('maskY', 300), self.params.get('maskR', 40)
 
         for i, filepath in enumerate(all_files):
+            if not self.is_running:
+                return
             self.progress_signal.emit(int((i / total_files) * 100))
             self.status_signal.emit(f"Processing file {i+1}/{total_files}: {os.path.basename(filepath)}")
 
@@ -311,6 +317,8 @@ class AnalysisWorker(QThread):
                 continue
 
             for event_idx, event in enumerate(file_data):
+                if not self.is_running:
+                    return
                 try:
                     timestamp = event.timestamp
                     if timestamp.tzinfo is not None:
@@ -629,6 +637,8 @@ class AnalysisWorker(QThread):
                         self.results[plane]['bws'][bunch] = {'time': [], 'rpi': []}
 
                     for j in range(len(timestamps)):
+                        if not self.is_running:
+                            return
                         try:
                             scan_time = dt.datetime.fromtimestamp(timestamps[j])
                             count = int(p_num[1][j])
@@ -866,6 +876,13 @@ class AnalysisOfflineGUI(QWidget):
 
         self.current_mask = {'X': 455, 'Y': 300, 'R': 40}
 
+    def closeEvent(self, event):
+        if self.worker and self.worker.isRunning():
+            self.status_lbl.setText("Stopping worker thread...")
+            self.worker.stop()
+            self.worker.wait(2000) # wait up to 2 seconds for clean exit
+        event.accept()
+
     def add_directory(self):
         dir_path = QFileDialog.getExistingDirectory(self, "Select BSRH Directory")
         if not dir_path:
@@ -982,7 +999,12 @@ class AnalysisOfflineGUI(QWidget):
         self.btn_refine_mask.setEnabled(False)
         self.status_lbl.setText("Analyzing BSRH...")
 
-        self.worker = AnalysisWorker('BSRH', directories=directories, params=params)
+        # Stop existing worker if any (shouldn't happen with buttons disabled, but safe)
+        if self.worker and self.worker.isRunning():
+            self.worker.stop()
+            self.worker.wait()
+
+        self.worker = AnalysisWorker('BSRH', directories=directories, params=params, parent=self)
         self.worker.progress_signal.connect(self.progress_bar.setValue)
         self.worker.status_signal.connect(self.status_lbl.setText)
         self.worker.error_signal.connect(self.handle_worker_error)
@@ -1031,7 +1053,11 @@ class AnalysisOfflineGUI(QWidget):
             self.btn_start_bsrh.setEnabled(False)
             self.btn_fetch_bws.setEnabled(False)
 
-            self.worker = AnalysisWorker('BWS', bws_args=(t1, t2, bunches_to_fetch), params=params)
+            if self.worker and self.worker.isRunning():
+                self.worker.stop()
+                self.worker.wait()
+
+            self.worker = AnalysisWorker('BWS', bws_args=(t1, t2, bunches_to_fetch), params=params, parent=self)
             self.worker.progress_signal.connect(self.progress_bar.setValue)
             self.worker.status_signal.connect(self.status_lbl.setText)
             self.worker.error_signal.connect(self.handle_worker_error)
