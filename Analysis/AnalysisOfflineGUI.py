@@ -90,6 +90,72 @@ except ImportError:
 
 import matplotlib.patches as patches
 
+class PointDetailsDialog(QDialog):
+    def __init__(self, filepath, event_idx, plane, maskX, maskY, maskR, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"Point Details: {os.path.basename(filepath)} [Event {event_idx}]")
+        self.resize(800, 600)
+
+        layout = QVBoxLayout(self)
+        self.figure = Figure()
+        self.canvas = FigureCanvas(self.figure)
+        self.ax = self.figure.add_subplot(111)
+        layout.addWidget(self.canvas)
+
+        # Load the data
+        try:
+            dctx = zstd.ZstdDecompressor()
+            with open(filepath, 'rb') as f:
+                with dctx.stream_reader(f) as reader:
+                    file_data = pickle.load(reader)
+
+            event = file_data[event_idx]
+            is_1d_profiles = False
+            image_2d = None
+            profile_h = None
+            profile_v = None
+
+            if isinstance(event.cam_data, list) and len(event.cam_data) >= 2:
+                is_1d_profiles = True
+                profile_h, profile_v = event.cam_data[0], event.cam_data[1]
+            elif isinstance(event.cam_data, dict) and 'image2D' in event.cam_data:
+                img_data = event.cam_data['image2D']
+                if isinstance(img_data, list) and len(img_data) >= 2:
+                    is_1d_profiles = True
+                    profile_h, profile_v = img_data[0], img_data[1]
+                elif hasattr(img_data, 'shape') and img_data.shape[0] <= 2:
+                    is_1d_profiles = True
+                    profile_h = img_data[0]
+                    if img_data.shape[0] > 1:
+                        profile_v = img_data[1]
+                    else:
+                        profile_v = np.zeros_like(profile_h)
+                else:
+                    image_2d = img_data
+
+            if not is_1d_profiles and image_2d is not None:
+                # Show 2D image and circle
+                self.ax.imshow(image_2d, cmap='gray')
+                circle = patches.Circle((maskX, maskY), maskR, color='r', fill=False)
+                self.ax.add_patch(circle)
+                self.ax.set_title("2D Raw Image with Mask")
+            elif is_1d_profiles:
+                # Show 1D profile
+                profile = profile_h if plane == 'H' else profile_v
+                self.ax.plot(profile, color='blue')
+                mask_center = maskX if plane == 'H' else maskY
+                self.ax.axvline(x=mask_center - maskR, color='r', linestyle='--')
+                self.ax.axvline(x=mask_center + maskR, color='r', linestyle='--')
+                self.ax.set_title(f"1D Profile ({plane}) with Mask Boundaries")
+            else:
+                self.ax.text(0.5, 0.5, "Unknown data format", ha='center', va='center')
+
+        except Exception as e:
+            self.ax.text(0.5, 0.5, f"Error loading event:\n{e}", ha='center', va='center')
+            traceback.print_exc()
+
+        self.canvas.draw()
+
 class MaskValidationDialog(QDialog):
     def __init__(self, image, initial_x, initial_y, initial_r, parent=None):
         super().__init__(parent)
@@ -367,7 +433,11 @@ class AnalysisWorker(QThread):
                     # Initialize bunch lists if needed
                     for plane_dict in [self.results['H']['bsrh'], self.results['V']['bsrh']]:
                         if delaySlots not in plane_dict:
-                            plane_dict[delaySlots] = {'time': [], 'rpi': [], 'is_bg': []}
+                            plane_dict[delaySlots] = {
+                                'time': [], 'rpi': [], 'is_bg': [],
+                                'filepath': [], 'event_idx': [],
+                                'maskX': [], 'maskY': [], 'maskR': []
+                            }
 
                     # --- Horizontal ---
                     total_integral_x = np.sum(projection_x)
@@ -398,6 +468,11 @@ class AnalysisWorker(QThread):
                             self.results['H']['bsrh'][delaySlots]['time'].append(timestamp)
                             self.results['H']['bsrh'][delaySlots]['rpi'].append(rpiH)
                             self.results['H']['bsrh'][delaySlots]['is_bg'].append(True)
+                            self.results['H']['bsrh'][delaySlots]['filepath'].append(filepath)
+                            self.results['H']['bsrh'][delaySlots]['event_idx'].append(event_idx)
+                            self.results['H']['bsrh'][delaySlots]['maskX'].append(maskX)
+                            self.results['H']['bsrh'][delaySlots]['maskY'].append(maskY)
+                            self.results['H']['bsrh'][delaySlots]['maskR'].append(maskR)
 
                         else:
                             # Masked calculation
@@ -434,6 +509,11 @@ class AnalysisWorker(QThread):
                             self.results['H']['bsrh'][delaySlots]['time'].append(timestamp)
                             self.results['H']['bsrh'][delaySlots]['rpi'].append(rpiH)
                             self.results['H']['bsrh'][delaySlots]['is_bg'].append(False)
+                            self.results['H']['bsrh'][delaySlots]['filepath'].append(filepath)
+                            self.results['H']['bsrh'][delaySlots]['event_idx'].append(event_idx)
+                            self.results['H']['bsrh'][delaySlots]['maskX'].append(maskX)
+                            self.results['H']['bsrh'][delaySlots]['maskY'].append(maskY)
+                            self.results['H']['bsrh'][delaySlots]['maskR'].append(maskR)
 
                     # --- Vertical ---
                     total_integral_y = np.sum(projection_y)
@@ -464,6 +544,11 @@ class AnalysisWorker(QThread):
                             self.results['V']['bsrh'][delaySlots]['time'].append(timestamp)
                             self.results['V']['bsrh'][delaySlots]['rpi'].append(rpiV)
                             self.results['V']['bsrh'][delaySlots]['is_bg'].append(True)
+                            self.results['V']['bsrh'][delaySlots]['filepath'].append(filepath)
+                            self.results['V']['bsrh'][delaySlots]['event_idx'].append(event_idx)
+                            self.results['V']['bsrh'][delaySlots]['maskX'].append(maskX)
+                            self.results['V']['bsrh'][delaySlots]['maskY'].append(maskY)
+                            self.results['V']['bsrh'][delaySlots]['maskR'].append(maskR)
 
                         else:
                             # Masked calculation
@@ -500,6 +585,11 @@ class AnalysisWorker(QThread):
                             self.results['V']['bsrh'][delaySlots]['time'].append(timestamp)
                             self.results['V']['bsrh'][delaySlots]['rpi'].append(rpiV)
                             self.results['V']['bsrh'][delaySlots]['is_bg'].append(False)
+                            self.results['V']['bsrh'][delaySlots]['filepath'].append(filepath)
+                            self.results['V']['bsrh'][delaySlots]['event_idx'].append(event_idx)
+                            self.results['V']['bsrh'][delaySlots]['maskX'].append(maskX)
+                            self.results['V']['bsrh'][delaySlots]['maskY'].append(maskY)
+                            self.results['V']['bsrh'][delaySlots]['maskR'].append(maskR)
                 except Exception as e:
                     print(f"Error processing event: {e}")
                     traceback.print_exc()
@@ -757,11 +847,13 @@ class AnalysisOfflineGUI(QWidget):
         splitter.setSizes([400, 800])
 
         # Data structures to hold results
-        # format: self.results['H']['bsrh'][bunch_id] = {'time': [], 'rpi': [], 'is_bg': []}
         self.results = {
             'H': {'bsrh': {}, 'bws': {}},
             'V': {'bsrh': {}, 'bws': {}}
         }
+
+        self.worker = None
+        self.canvas.mpl_connect('pick_event', self.on_pick)
 
     def add_directory(self):
         dir_path = QFileDialog.getExistingDirectory(self, "Select BSRH Directory")
@@ -952,10 +1044,19 @@ class AnalysisOfflineGUI(QWidget):
             # For BSRH
             for bunch, data in new_results[plane]['bsrh'].items():
                 if bunch not in self.results[plane]['bsrh']:
-                    self.results[plane]['bsrh'][bunch] = {'time': [], 'rpi': [], 'is_bg': []}
+                    self.results[plane]['bsrh'][bunch] = {
+                        'time': [], 'rpi': [], 'is_bg': [],
+                        'filepath': [], 'event_idx': [],
+                        'maskX': [], 'maskY': [], 'maskR': []
+                    }
                 self.results[plane]['bsrh'][bunch]['time'].extend(data['time'])
                 self.results[plane]['bsrh'][bunch]['rpi'].extend(data['rpi'])
                 self.results[plane]['bsrh'][bunch]['is_bg'].extend(data['is_bg'])
+                self.results[plane]['bsrh'][bunch]['filepath'].extend(data.get('filepath', []))
+                self.results[plane]['bsrh'][bunch]['event_idx'].extend(data.get('event_idx', []))
+                self.results[plane]['bsrh'][bunch]['maskX'].extend(data.get('maskX', []))
+                self.results[plane]['bsrh'][bunch]['maskY'].extend(data.get('maskY', []))
+                self.results[plane]['bsrh'][bunch]['maskR'].extend(data.get('maskR', []))
             # For BWS
             for bunch, data in new_results[plane]['bws'].items():
                 if bunch not in self.results[plane]['bws']:
@@ -1072,7 +1173,7 @@ class AnalysisOfflineGUI(QWidget):
                 print(f"Error reading {filepath}: {e}")
                 continue
 
-            for event in file_data:
+            for event_idx, event in enumerate(file_data):
                 try:
                     timestamp = event.timestamp
                     if timestamp.tzinfo is not None:
@@ -1477,10 +1578,17 @@ class AnalysisOfflineGUI(QWidget):
                 t_bg = [t for i, t in enumerate(times) if is_bg[i]]
                 r_bg = [r for i, r in enumerate(rpis) if is_bg[i]]
 
+                # Keep track of original indices to map back clicks
+                idx_masked = [i for i, bg in enumerate(is_bg) if not bg]
+                idx_bg = [i for i, bg in enumerate(is_bg) if bg]
+
                 if t_masked:
-                    self.ax.plot(t_masked, r_masked, marker='o', linestyle='-', label=f"BSRH B{b} (Masked)")
+                    line, = self.ax.plot(t_masked, r_masked, marker='o', linestyle='-', label=f"BSRH B{b} (Masked)", picker=5)
+                    # store metadata
+                    line.meta = {'bunch': b, 'indices': idx_masked, 'type': 'masked'}
                 if t_bg:
-                    self.ax.plot(t_bg, r_bg, marker='x', linestyle='', label=f"BSRH B{b} (BG)")
+                    line, = self.ax.plot(t_bg, r_bg, marker='x', linestyle='', label=f"BSRH B{b} (BG)", picker=5)
+                    line.meta = {'bunch': b, 'indices': idx_bg, 'type': 'bg'}
 
         # Plot BWS
         bws_data = self.results[plane]['bws']
@@ -1495,6 +1603,29 @@ class AnalysisOfflineGUI(QWidget):
             self.ax.legend()
         self.ax.grid(True)
         self.canvas.draw()
+
+    def on_pick(self, event):
+        if not hasattr(event.artist, 'meta'):
+            return
+
+        meta = event.artist.meta
+        ind = event.ind[0] # first clicked point index in the drawn line
+        original_idx = meta['indices'][ind]
+        bunch = meta['bunch']
+
+        plane = "H" if self.plane_combo.currentText() == "Horizontal" else "V"
+        data = self.results[plane]['bsrh'][bunch]
+
+        filepath = data['filepath'][original_idx]
+        event_idx = data['event_idx'][original_idx]
+        mX = data['maskX'][original_idx]
+        mY = data['maskY'][original_idx]
+        mR = data['maskR'][original_idx]
+
+        # We will implement PointDetailsDialog in the next step
+        # This will open the dialog.
+        dialog = PointDetailsDialog(filepath, event_idx, plane, mX, mY, mR, self)
+        dialog.exec_()
 
 if __name__ == '__main__':
     try:
