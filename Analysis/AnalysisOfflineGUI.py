@@ -961,31 +961,34 @@ class AnalysisOfflineGUI(QWidget):
                                 if abs(cmask_x_val - self.current_mask['X']) < 150: # broadened threshold slightly
 
                                     img_data = event.cam_data.get('image2D') if isinstance(event.cam_data, dict) else event.cam_data
+                                    image_2d = None
+
                                     # Need a full 2D image for validation overlay
                                     if isinstance(img_data, list) or (hasattr(img_data, 'shape') and img_data.shape[0] <= 2):
                                         continue # Keep searching for a true 2D image
-
-                                    image_2d = img_data
-
-                                    # Auto-guess ONLY if we haven't touched defaults yet, else use current
-                                    if self.current_mask['X'] == 455 and self.current_mask['Y'] == 300:
-                                        center_region = image_2d[154:454, 284:684]
-                                        min_idx = np.unravel_index(np.argmin(center_region, axis=None), center_region.shape)
-                                        maskY = min_idx[0] + 154
-                                        maskX = min_idx[1] + 284
-
-                                    dialog = MaskValidationDialog(image_2d, maskX, maskY, maskR, self)
-                                    if dialog.exec_() == QDialog.Accepted:
-                                        nX, nY, nR = dialog.get_mask_params()
-                                        self.current_mask['X'] = nX
-                                        self.current_mask['Y'] = nY
-                                        self.current_mask['R'] = nR
-                                        QMessageBox.information(self, "Mask Validated", f"Mask position updated to: X={nX}, Y={nY}, R={nR}")
                                     else:
-                                        self.status_lbl.setText("Mask refinement cancelled.")
+                                        image_2d = img_data
 
-                                    found_masked = True
-                                    break
+                                    if image_2d is not None:
+                                        # Auto-guess ONLY if we haven't touched defaults yet, else use current
+                                        if self.current_mask['X'] == 455 and self.current_mask['Y'] == 300:
+                                            center_region = image_2d[154:454, 284:684]
+                                            min_idx = np.unravel_index(np.argmin(center_region, axis=None), center_region.shape)
+                                            maskY = min_idx[0] + 154
+                                            maskX = min_idx[1] + 284
+
+                                        dialog = MaskValidationDialog(image_2d, maskX, maskY, maskR, self)
+                                        if dialog.exec_() == QDialog.Accepted:
+                                            nX, nY, nR = dialog.get_mask_params()
+                                            self.current_mask['X'] = nX
+                                            self.current_mask['Y'] = nY
+                                            self.current_mask['R'] = nR
+                                            QMessageBox.information(self, "Mask Validated", f"Mask position updated to: X={nX}, Y={nY}, R={nR}")
+                                        else:
+                                            self.status_lbl.setText("Mask refinement cancelled.")
+
+                                        found_masked = True
+                                        break
             except Exception as e:
                 pass
 
