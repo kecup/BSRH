@@ -355,23 +355,34 @@ class SecondaryPlotDialog(QDialog):
         self.canvas = FigureCanvas(self.figure)
         self.layout.addWidget(self.canvas)
 
-        self.plot_data(data, is_horizontal, is_vertical)
+        self.motor_pos = motor_pos
+        self.data = data
+        self.is_horizontal = is_horizontal
+        self.is_vertical = is_vertical
+        self.parent_gui = parent
 
-    def plot_data(self, data, is_horizontal, is_vertical):
+        # Connect pick event to click points
+        self.canvas.mpl_connect('pick_event', self.on_pick)
+
+        self.plot_data()
+
+    def plot_data(self):
         ax = self.figure.add_subplot(111)
         ax.clear()
 
-        if is_horizontal:
+        self.valid_data_indices = []
+
+        if self.is_horizontal:
             # Filter out None values from both BSRH and BWS
-            valid_idx = [i for i, bws in enumerate(data['bws_sizes_h']) if bws is not None and data['bsrh_sizes_h'][i] is not None]
+            self.valid_data_indices = [i for i, bws in enumerate(self.data['bws_sizes_h']) if bws is not None and self.data['bsrh_sizes_h'][i] is not None]
             # Apply Beta-Function scaling BSRH/BWS coefficient
-            bws_sizes = [data['bws_sizes_h'][i] * 1.023 for i in valid_idx]
-            bsrh_sizes = [data['bsrh_sizes_h'][i] for i in valid_idx]
-        elif is_vertical:
-            valid_idx = [i for i, bws in enumerate(data['bws_sizes_v']) if bws is not None and data['bsrh_sizes_v'][i] is not None]
+            bws_sizes = [self.data['bws_sizes_h'][i] * 1.023 for i in self.valid_data_indices]
+            bsrh_sizes = [self.data['bsrh_sizes_h'][i] for i in self.valid_data_indices]
+        elif self.is_vertical:
+            self.valid_data_indices = [i for i, bws in enumerate(self.data['bws_sizes_v']) if bws is not None and self.data['bsrh_sizes_v'][i] is not None]
             # Apply Beta-Function scaling BSRH/BWS coefficient
-            bws_sizes = [data['bws_sizes_v'][i] * 0.936 for i in valid_idx]
-            bsrh_sizes = [data['bsrh_sizes_v'][i] for i in valid_idx]
+            bws_sizes = [self.data['bws_sizes_v'][i] * 0.936 for i in self.valid_data_indices]
+            bsrh_sizes = [self.data['bsrh_sizes_v'][i] for i in self.valid_data_indices]
         else:
             return
 
@@ -384,10 +395,10 @@ class SecondaryPlotDialog(QDialog):
         x_data = np.array(bws_sizes)**2
         y_data = np.array(bsrh_sizes)**2
 
-        color = 'blue' if is_horizontal else 'red'
-        plane_str = "Horizontal" if is_horizontal else "Vertical"
+        color = 'blue' if self.is_horizontal else 'red'
+        plane_str = "Horizontal" if self.is_horizontal else "Vertical"
 
-        ax.scatter(x_data, y_data, color=color, label=f'{plane_str} Data Points')
+        self.scatter_plot = ax.scatter(x_data, y_data, color=color, label=f'{plane_str} Data Points', picker=10)
 
         # Perform linear fit
         try:
@@ -426,36 +437,39 @@ class SecondaryPlotDialog(QDialog):
         self.canvas.draw()
 
     def on_pick(self, event):
-        if event.artist != self.scatter_plot:
-            return
+        try:
+            if event.artist != self.scatter_plot:
+                return
 
-        ind = event.ind
-        if len(ind) > 0:
-            index = ind[0]
+            ind = event.ind
+            if len(ind) > 0:
+                index = ind[0]
 
-            # The 'index' corresponds to the element in 'self.valid_data_indices'
-            actual_data_idx = self.valid_data_indices[index]
+                # The 'index' corresponds to the element in 'self.valid_data_indices'
+                actual_data_idx = self.valid_data_indices[index]
 
-            file_idx = self.data['file_indices'][actual_data_idx]
-            bunch_slot = self.data['bunches'][actual_data_idx]
+                file_idx = self.data['file_indices'][actual_data_idx]
+                bunch_slot = self.data['bunches'][actual_data_idx]
 
-            # Add to parent's ignored points
-            if self.parent_gui:
-                self.parent_gui.ignored_points.add((self.motor_pos, file_idx, bunch_slot))
+                # Add to parent's ignored points
+                if self.parent_gui:
+                    self.parent_gui.ignored_points.add((self.motor_pos, file_idx, bunch_slot))
 
-                # We also need to remove it from the local data so it disappears immediately on re-plot
-                # Just nullify it so valid_idx filter catches it
-                if self.is_horizontal:
-                    self.data['bsrh_sizes_h'][actual_data_idx] = None
-                if self.is_vertical:
-                    self.data['bsrh_sizes_v'][actual_data_idx] = None
+                    # We also need to remove it from the local data so it disappears immediately on re-plot
+                    # Just nullify it so valid_idx filter catches it
+                    if self.is_horizontal:
+                        self.data['bsrh_sizes_h'][actual_data_idx] = None
+                    if self.is_vertical:
+                        self.data['bsrh_sizes_v'][actual_data_idx] = None
 
-                # Re-plot the dialog
-                self.plot_data()
+                    # Re-plot the dialog
+                    self.plot_data()
 
-                # Tell parent to redraw the main plot
-                if self.parent_gui.grouped_data:
-                    self.parent_gui.redraw_plot()
+                    # Tell parent to redraw the main plot
+                    if self.parent_gui.grouped_data:
+                        self.parent_gui.redraw_plot()
+        except Exception as e:
+            print(f"Error ignoring point on pick event: {e}")
 
 class AnalysisGUI(QWidget):
     def __init__(self):
