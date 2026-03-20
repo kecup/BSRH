@@ -13,7 +13,7 @@ from scipy import stats
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QLineEdit, QFileDialog, QProgressBar, QMessageBox, QDialog,
-    QComboBox, QSpinBox, QCheckBox, QScrollArea
+    QComboBox, QSpinBox, QSlider
 )
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
 
@@ -360,31 +360,47 @@ class SecondaryPlotDialog(QDialog):
             self.info_lbl.setText(info_text)
         self.layout.addWidget(self.info_lbl)
 
-        # Checkbox selection layout
+        # Range slider layout for bunches
         self.selection_layout = QHBoxLayout()
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFixedHeight(60)
+        self.start_bunch_lbl = QLabel()
+        self.start_slider = QSlider(Qt.Horizontal)
+        self.start_slider.setRange(0, len(data['bunches']) - 1)
+        self.start_slider.valueChanged.connect(self.update_bunch_labels)
 
-        scroll_content = QWidget()
-        self.checkbox_layout = QHBoxLayout(scroll_content)
-        self.checkboxes = []
+        self.end_bunch_lbl = QLabel()
+        self.end_slider = QSlider(Qt.Horizontal)
+        self.end_slider.setRange(0, len(data['bunches']) - 1)
+        self.end_slider.setValue(len(data['bunches']) - 1)
+        self.end_slider.valueChanged.connect(self.update_bunch_labels)
 
-        for i, b in enumerate(data['bunches']):
-            cb = QCheckBox(f"Bunch {b}")
-            cb.setChecked(data['included'][i])
-            self.checkboxes.append(cb)
-            self.checkbox_layout.addWidget(cb)
-
-        scroll.setWidget(scroll_content)
-        self.selection_layout.addWidget(scroll)
+        self.selection_layout.addWidget(QLabel("Start Bunch:"))
+        self.selection_layout.addWidget(self.start_bunch_lbl)
+        self.selection_layout.addWidget(self.start_slider)
+        self.selection_layout.addWidget(QLabel("End Bunch:"))
+        self.selection_layout.addWidget(self.end_bunch_lbl)
+        self.selection_layout.addWidget(self.end_slider)
 
         self.recalc_btn = QPushButton("Re-calculate Fit")
         self.recalc_btn.clicked.connect(self.reoptimize)
         self.selection_layout.addWidget(self.recalc_btn)
 
         self.layout.addLayout(self.selection_layout)
+
+        # Initialize labels based on current included state or full range
+        first_included = 0
+        last_included = len(data['bunches']) - 1
+        if True in data['included']:
+            first_included = data['included'].index(True)
+            # Find the last True value
+            for i in range(len(data['included']) - 1, -1, -1):
+                if data['included'][i]:
+                    last_included = i
+                    break
+
+        self.start_slider.setValue(first_included)
+        self.end_slider.setValue(last_included)
+        self.update_bunch_labels()
 
         # Combo boxes layout
         self.combos_layout = QHBoxLayout()
@@ -420,6 +436,21 @@ class SecondaryPlotDialog(QDialog):
         self.figure.tight_layout()
 
         self.plot_all()
+
+    def update_bunch_labels(self):
+        s_val = self.start_slider.value()
+        e_val = self.end_slider.value()
+
+        # Enforce ordering
+        if s_val > e_val:
+            self.start_slider.setValue(e_val)
+            s_val = e_val
+        if e_val < s_val:
+            self.end_slider.setValue(s_val)
+            e_val = s_val
+
+        self.start_bunch_lbl.setText(str(self.data['bunches'][s_val]))
+        self.end_bunch_lbl.setText(str(self.data['bunches'][e_val]))
 
     def plot_all(self):
         if not self.data['optimized']:
@@ -476,9 +507,12 @@ class SecondaryPlotDialog(QDialog):
             self.canvas.draw()
 
     def reoptimize(self):
-        # Update included flags
-        for i, cb in enumerate(self.checkboxes):
-            self.data['included'][i] = cb.isChecked()
+        s_val = self.start_slider.value()
+        e_val = self.end_slider.value()
+
+        # Update included flags based on the range slider
+        for i in range(len(self.data['included'])):
+            self.data['included'][i] = (s_val <= i <= e_val)
 
         filtered_bws = [prof for i, prof in enumerate(self.data['bws_profiles']) if self.data['included'][i]]
         filtered_bsrh = [prof for i, prof in enumerate(self.data['bsrh_profiles']) if self.data['included'][i]]
