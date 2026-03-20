@@ -174,21 +174,32 @@ class MaskValidationDialog(QDialog):
         self.ax = self.figure.add_subplot(111)
         layout.addWidget(self.canvas)
 
-        controls = QHBoxLayout()
-        self.x_input = QLineEdit(str(self.maskX))
-        self.y_input = QLineEdit(str(self.maskY))
-        self.r_input = QLineEdit(str(self.maskR))
+        controls = QFormLayout()
 
-        controls.addWidget(QLabel("Mask X:"))
-        controls.addWidget(self.x_input)
-        controls.addWidget(QLabel("Mask Y:"))
-        controls.addWidget(self.y_input)
-        controls.addWidget(QLabel("Mask R:"))
-        controls.addWidget(self.r_input)
+        h, w = self.image.shape[:2]
 
-        self.x_input.textChanged.connect(self.update_plot)
-        self.y_input.textChanged.connect(self.update_plot)
-        self.r_input.textChanged.connect(self.update_plot)
+        self.x_slider = QSlider(Qt.Horizontal)
+        self.x_slider.setRange(0, w)
+        self.x_slider.setValue(self.maskX)
+        self.x_label = QLabel(f"Mask X: {self.maskX}")
+
+        self.y_slider = QSlider(Qt.Horizontal)
+        self.y_slider.setRange(0, h)
+        self.y_slider.setValue(self.maskY)
+        self.y_label = QLabel(f"Mask Y: {self.maskY}")
+
+        self.r_slider = QSlider(Qt.Horizontal)
+        self.r_slider.setRange(1, 100)
+        self.r_slider.setValue(self.maskR)
+        self.r_label = QLabel(f"Mask R: {self.maskR}")
+
+        controls.addRow(self.x_label, self.x_slider)
+        controls.addRow(self.y_label, self.y_slider)
+        controls.addRow(self.r_label, self.r_slider)
+
+        self.x_slider.valueChanged.connect(self.update_plot)
+        self.y_slider.valueChanged.connect(self.update_plot)
+        self.r_slider.valueChanged.connect(self.update_plot)
 
         layout.addLayout(controls)
 
@@ -207,16 +218,18 @@ class MaskValidationDialog(QDialog):
         self.canvas.draw()
 
     def update_plot(self):
-        try:
-            self.maskX = int(self.x_input.text())
-            self.maskY = int(self.y_input.text())
-            self.maskR = int(self.r_input.text())
-            if self.circle:
-                self.circle.center = (self.maskX, self.maskY)
-                self.circle.set_radius(self.maskR)
-                self.canvas.draw()
-        except ValueError:
-            pass
+        self.maskX = self.x_slider.value()
+        self.maskY = self.y_slider.value()
+        self.maskR = self.r_slider.value()
+
+        self.x_label.setText(f"Mask X: {self.maskX}")
+        self.y_label.setText(f"Mask Y: {self.maskY}")
+        self.r_label.setText(f"Mask R: {self.maskR}")
+
+        if self.circle:
+            self.circle.center = (self.maskX, self.maskY)
+            self.circle.set_radius(self.maskR)
+            self.canvas.draw()
 
     def get_mask_params(self):
         return self.maskX, self.maskY, self.maskR
