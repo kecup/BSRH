@@ -102,6 +102,17 @@ class PointDetailsDialog(QDialog):
         self.ax = self.figure.add_subplot(111)
         layout.addWidget(self.canvas)
 
+        # We will need the apply globally button and sliders
+        controls = QFormLayout()
+
+        self.maskX = maskX
+        self.maskY = maskY
+        self.maskR = maskR
+        self.plane = plane
+        self.circle = None
+        self.vline1 = None
+        self.vline2 = None
+
         # Load the data
         try:
             dctx = zstd.ZstdDecompressor()
@@ -110,51 +121,112 @@ class PointDetailsDialog(QDialog):
                     file_data = pickle.load(reader)
 
             event = file_data[event_idx]
-            is_1d_profiles = False
-            image_2d = None
-            profile_h = None
-            profile_v = None
+            self.is_1d_profiles = False
+            self.image_2d = None
+            self.profile_h = None
+            self.profile_v = None
 
             if isinstance(event.cam_data, list) and len(event.cam_data) >= 2:
-                is_1d_profiles = True
-                profile_h, profile_v = event.cam_data[0], event.cam_data[1]
+                self.is_1d_profiles = True
+                self.profile_h, self.profile_v = event.cam_data[0], event.cam_data[1]
             elif isinstance(event.cam_data, dict) and 'image2D' in event.cam_data:
                 img_data = event.cam_data['image2D']
                 if isinstance(img_data, list) and len(img_data) >= 2:
-                    is_1d_profiles = True
-                    profile_h, profile_v = img_data[0], img_data[1]
+                    self.is_1d_profiles = True
+                    self.profile_h, self.profile_v = img_data[0], img_data[1]
                 elif hasattr(img_data, 'shape') and img_data.shape[0] <= 2:
-                    is_1d_profiles = True
-                    profile_h = img_data[0]
+                    self.is_1d_profiles = True
+                    self.profile_h = img_data[0]
                     if img_data.shape[0] > 1:
-                        profile_v = img_data[1]
+                        self.profile_v = img_data[1]
                     else:
-                        profile_v = np.zeros_like(profile_h)
+                        self.profile_v = np.zeros_like(self.profile_h)
                 else:
-                    image_2d = img_data
+                    self.image_2d = img_data
 
-            if not is_1d_profiles and image_2d is not None:
+            if not self.is_1d_profiles and self.image_2d is not None:
                 # Show 2D image and circle
-                self.ax.imshow(image_2d, cmap='jet')
-                circle = patches.Circle((maskX, maskY), maskR, color='r', fill=False)
-                self.ax.add_patch(circle)
+                self.ax.imshow(self.image_2d, cmap='jet')
+                self.circle = patches.Circle((self.maskX, self.maskY), self.maskR, color='r', fill=False)
+                self.ax.add_patch(self.circle)
                 self.ax.set_title("2D Raw Image with Mask")
-            elif is_1d_profiles:
+                h, w = self.image_2d.shape[:2]
+            elif self.is_1d_profiles:
                 # Show 1D profile
-                profile = profile_h if plane == 'H' else profile_v
+                profile = self.profile_h if plane == 'H' else self.profile_v
                 self.ax.plot(profile, color='blue')
-                mask_center = maskX if plane == 'H' else maskY
-                self.ax.axvline(x=mask_center - maskR, color='r', linestyle='--')
-                self.ax.axvline(x=mask_center + maskR, color='r', linestyle='--')
+                mask_center = self.maskX if plane == 'H' else self.maskY
+                self.vline1 = self.ax.axvline(x=mask_center - self.maskR, color='r', linestyle='--')
+                self.vline2 = self.ax.axvline(x=mask_center + self.maskR, color='r', linestyle='--')
                 self.ax.set_title(f"1D Profile ({plane}) with Mask Boundaries")
+                h, w = 608, len(profile) # arbitrary defaults for 1D
             else:
                 self.ax.text(0.5, 0.5, "Unknown data format", ha='center', va='center')
+                h, w = 608, 968
 
         except Exception as e:
             self.ax.text(0.5, 0.5, f"Error loading event:\n{e}", ha='center', va='center')
             traceback.print_exc()
+            h, w = 608, 968
 
         self.canvas.draw()
+
+        self.x_slider = QSlider(Qt.Horizontal)
+        self.x_slider.setRange(0, w)
+        self.x_slider.setValue(self.maskX)
+        self.x_label = QLabel(f"Mask X: {self.maskX}")
+
+        self.y_slider = QSlider(Qt.Horizontal)
+        self.y_slider.setRange(0, h)
+        self.y_slider.setValue(self.maskY)
+        self.y_label = QLabel(f"Mask Y: {self.maskY}")
+
+        self.r_slider = QSlider(Qt.Horizontal)
+        self.r_slider.setRange(1, 100)
+        self.r_slider.setValue(self.maskR)
+        self.r_label = QLabel(f"Mask R: {self.maskR}")
+
+        controls.addRow(self.x_label, self.x_slider)
+        controls.addRow(self.y_label, self.y_slider)
+        controls.addRow(self.r_label, self.r_slider)
+
+        self.x_slider.valueChanged.connect(self.update_plot)
+        self.y_slider.valueChanged.connect(self.update_plot)
+        self.r_slider.valueChanged.connect(self.update_plot)
+
+        layout.addLayout(controls)
+
+        btn_layout = QHBoxLayout()
+        self.btn_apply = QPushButton("Apply Global and Relaunch Analysis")
+        self.btn_apply.clicked.connect(self.apply_and_relaunch)
+        self.btn_cancel = QPushButton("Close")
+        self.btn_cancel.clicked.connect(self.reject)
+
+        btn_layout.addWidget(self.btn_apply)
+        btn_layout.addWidget(self.btn_cancel)
+        layout.addLayout(btn_layout)
+
+    def update_plot(self):
+        self.maskX = self.x_slider.value()
+        self.maskY = self.y_slider.value()
+        self.maskR = self.r_slider.value()
+
+        self.x_label.setText(f"Mask X: {self.maskX}")
+        self.y_label.setText(f"Mask Y: {self.maskY}")
+        self.r_label.setText(f"Mask R: {self.maskR}")
+
+        if self.circle:
+            self.circle.center = (self.maskX, self.maskY)
+            self.circle.set_radius(self.maskR)
+            self.canvas.draw()
+        elif self.vline1 and self.vline2:
+            mask_center = self.maskX if self.plane == 'H' else self.maskY
+            self.vline1.set_xdata([mask_center - self.maskR, mask_center - self.maskR])
+            self.vline2.set_xdata([mask_center + self.maskR, mask_center + self.maskR])
+            self.canvas.draw()
+
+    def apply_and_relaunch(self):
+        self.accept()
 
 class MaskValidationDialog(QDialog):
     def __init__(self, image, initial_x, initial_y, initial_r, parent=None):
@@ -1676,10 +1748,17 @@ class AnalysisOfflineGUI(QWidget):
         mY = data['maskY'][original_idx]
         mR = data['maskR'][original_idx]
 
-        # We will implement PointDetailsDialog in the next step
-        # This will open the dialog.
         dialog = PointDetailsDialog(filepath, event_idx, plane, mX, mY, mR, self)
-        dialog.exec_()
+        if dialog.exec_() == QDialog.Accepted:
+            # User clicked "Apply Global and Relaunch Analysis"
+            nX = dialog.x_slider.value()
+            nY = dialog.y_slider.value()
+            nR = dialog.r_slider.value()
+            self.current_mask['X'] = nX
+            self.current_mask['Y'] = nY
+            self.current_mask['R'] = nR
+            QMessageBox.information(self, "Mask Updated", f"Mask position updated globally to: X={nX}, Y={nY}, R={nR}")
+            self.start_bsrh_analysis()
 
 if __name__ == '__main__':
     try:
