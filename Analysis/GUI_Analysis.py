@@ -425,6 +425,38 @@ class SecondaryPlotDialog(QDialog):
         ax.grid(True)
         self.canvas.draw()
 
+    def on_pick(self, event):
+        if event.artist != self.scatter_plot:
+            return
+
+        ind = event.ind
+        if len(ind) > 0:
+            index = ind[0]
+
+            # The 'index' corresponds to the element in 'self.valid_data_indices'
+            actual_data_idx = self.valid_data_indices[index]
+
+            file_idx = self.data['file_indices'][actual_data_idx]
+            bunch_slot = self.data['bunches'][actual_data_idx]
+
+            # Add to parent's ignored points
+            if self.parent_gui:
+                self.parent_gui.ignored_points.add((self.motor_pos, file_idx, bunch_slot))
+
+                # We also need to remove it from the local data so it disappears immediately on re-plot
+                # Just nullify it so valid_idx filter catches it
+                if self.is_horizontal:
+                    self.data['bsrh_sizes_h'][actual_data_idx] = None
+                if self.is_vertical:
+                    self.data['bsrh_sizes_v'][actual_data_idx] = None
+
+                # Re-plot the dialog
+                self.plot_data()
+
+                # Tell parent to redraw the main plot
+                if self.parent_gui.grouped_data:
+                    self.parent_gui.redraw_plot()
+
 class AnalysisGUI(QWidget):
     def __init__(self):
         super().__init__()
@@ -719,15 +751,44 @@ class AnalysisGUI(QWidget):
         for pos, data in self.grouped_data.items():
             valid_h = []
             valid_bws_h = []
+            bunches_h = {}
+
+            valid_v = []
+            valid_bws_v = []
+            bunches_v = {}
+
             for i, f_idx in enumerate(data['file_indices']):
-                if start_idx <= f_idx <= end_idx and i < len(data['bsrh_sizes_h']):
-                    if data['bsrh_sizes_h'][i] is not None:
-                        valid_h.append(data['bsrh_sizes_h'][i])
+                if start_idx <= f_idx <= end_idx:
+                    bunch_slot = data['bunches'][i]
+
+                    # Ensure we skip ignored points
+                    if (pos, f_idx, bunch_slot) in self.ignored_points:
+                        continue
+
+                    if i < len(data['bsrh_sizes_h']) and data['bsrh_sizes_h'][i] is not None:
+                        val_h = data['bsrh_sizes_h'][i]
+                        valid_h.append(val_h)
+                        if bunch_slot not in bunches_h: bunches_h[bunch_slot] = []
+                        bunches_h[bunch_slot].append(val_h)
+
                         if i < len(data['bws_sizes_h']) and data['bws_sizes_h'][i] is not None:
                             valid_bws_h.append(data['bws_sizes_h'][i])
+
+                    if i < len(data['bsrh_sizes_v']) and data['bsrh_sizes_v'][i] is not None:
+                        val_v = data['bsrh_sizes_v'][i]
+                        valid_v.append(val_v)
+                        if bunch_slot not in bunches_v: bunches_v[bunch_slot] = []
+                        bunches_v[bunch_slot].append(val_v)
+
+                        if i < len(data['bws_sizes_v']) and data['bws_sizes_v'][i] is not None:
+                            valid_bws_v.append(data['bws_sizes_v'][i])
+
             if len(valid_h) >= 4:
                 motor_positions_h.append(pos)
-                avg_sizes_h.append(np.mean(valid_h))
+
+                # Calculate the grand average of per-bunch averages
+                bunch_averages_h = [np.mean(vals) for vals in bunches_h.values()]
+                avg_sizes_h.append(np.mean(bunch_averages_h))
 
                 # Compute PSF and Pixel Size for this position
                 if valid_bws_h and len(valid_bws_h) == len(valid_h):
@@ -747,17 +808,12 @@ class AnalysisGUI(QWidget):
                     psf_h_list.append(np.nan)
                     pix_h_list.append(np.nan)
 
-            valid_v = []
-            valid_bws_v = []
-            for i, f_idx in enumerate(data['file_indices']):
-                if start_idx <= f_idx <= end_idx and i < len(data['bsrh_sizes_v']):
-                    if data['bsrh_sizes_v'][i] is not None:
-                        valid_v.append(data['bsrh_sizes_v'][i])
-                        if i < len(data['bws_sizes_v']) and data['bws_sizes_v'][i] is not None:
-                            valid_bws_v.append(data['bws_sizes_v'][i])
             if len(valid_v) >= 4:
                 motor_positions_v.append(pos)
-                avg_sizes_v.append(np.mean(valid_v))
+
+                # Calculate the grand average of per-bunch averages
+                bunch_averages_v = [np.mean(vals) for vals in bunches_v.values()]
+                avg_sizes_v.append(np.mean(bunch_averages_v))
 
                 if valid_bws_v and len(valid_bws_v) == len(valid_v):
                     x_data = np.array([bws * 0.936 for bws in valid_bws_v])**2
@@ -867,6 +923,10 @@ class AnalysisGUI(QWidget):
 
                 for i, f_idx in enumerate(data['file_indices']):
                     if start_idx <= f_idx <= end_idx:
+                        bunch_slot = data['bunches'][i]
+                        if (best_pos, f_idx, bunch_slot) in self.ignored_points:
+                            continue
+
                         if i < len(data['bsrh_sizes_h']):
                             filtered_data['bsrh_sizes_h'].append(data['bsrh_sizes_h'][i])
                         if i < len(data['bws_sizes_h']):
@@ -875,7 +935,8 @@ class AnalysisGUI(QWidget):
                             filtered_data['bsrh_sizes_v'].append(data['bsrh_sizes_v'][i])
                         if i < len(data['bws_sizes_v']):
                             filtered_data['bws_sizes_v'].append(data['bws_sizes_v'][i])
-                        filtered_data['bunches'].append(data['bunches'][i])
+                        filtered_data['bunches'].append(bunch_slot)
+                        filtered_data['file_indices'].append(f_idx)
 
                 dialog = SecondaryPlotDialog(best_pos, filtered_data, is_horizontal, is_vertical, self)
                 self.active_dialogs.append(dialog)
