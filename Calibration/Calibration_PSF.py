@@ -139,6 +139,13 @@ class AnalysisThread(QThread):
             self.finished_signal.emit()
             return
 
+        self.filter_to_single_sequence()
+
+        if not self.running:
+            self.status_signal.emit("Analysis stopped.")
+            self.finished_signal.emit()
+            return
+
         self.perform_optimization()
         self.update_plot_signal.emit(self.bsrh_grouped_data)
 
@@ -290,6 +297,37 @@ class AnalysisThread(QThread):
 
             except Exception as e:
                 print(f"Error processing BSRH file {filename}: {e}")
+
+    def filter_to_single_sequence(self):
+        self.status_signal.emit("Filtering data to single bunch sequence...")
+
+        for pos, data in self.bsrh_grouped_data.items():
+            if not data['bunches']:
+                continue
+
+            # Find sequence boundaries
+            sequences = []
+            current_seq = [0]
+
+            for i in range(1, len(data['bunches'])):
+                if data['bunches'][i] <= data['bunches'][i-1]:
+                    # A drop in bunch number indicates a new sequence
+                    sequences.append(current_seq)
+                    current_seq = [i]
+                else:
+                    current_seq.append(i)
+            sequences.append(current_seq)
+
+            # Select the sequence to keep
+            # Use the second full sequence if available, otherwise the first
+            target_seq_indices = sequences[1] if len(sequences) > 1 else sequences[0]
+
+            # Rebuild arrays keeping only the targeted sequence
+            data['bsrh_profiles'] = [data['bsrh_profiles'][i] for i in target_seq_indices]
+            data['bws_profiles'] = [data['bws_profiles'][i] for i in target_seq_indices]
+            data['fbct'] = [data['fbct'][i] for i in target_seq_indices]
+            data['bunches'] = [data['bunches'][i] for i in target_seq_indices]
+            data['included'] = [data['included'][i] for i in target_seq_indices]
 
     def find_closest_bws(self, bsrh_time, bunch_slot):
         best_diff = float('inf')
