@@ -355,6 +355,8 @@ class SecondaryPlotDialog(QDialog):
         self.canvas = FigureCanvas(self.figure)
         self.layout.addWidget(self.canvas)
 
+        self.ax = self.figure.add_subplot(111)
+
         self.motor_pos = motor_pos
         self.data = data
         self.is_horizontal = is_horizontal
@@ -367,8 +369,7 @@ class SecondaryPlotDialog(QDialog):
         self.plot_data()
 
     def plot_data(self):
-        ax = self.figure.add_subplot(111)
-        ax.clear()
+        self.ax.clear()
 
         self.valid_data_indices = []
 
@@ -387,7 +388,7 @@ class SecondaryPlotDialog(QDialog):
             return
 
         if len(bws_sizes) == 0:
-            ax.text(0.5, 0.5, 'No valid BWS data to correlate.', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
+            self.ax.text(0.5, 0.5, 'No valid BWS data to correlate.', horizontalalignment='center', verticalalignment='center', transform=self.ax.transAxes)
             self.canvas.draw()
             return
 
@@ -398,7 +399,7 @@ class SecondaryPlotDialog(QDialog):
         color = 'blue' if self.is_horizontal else 'red'
         plane_str = "Horizontal" if self.is_horizontal else "Vertical"
 
-        self.scatter_plot = ax.scatter(x_data, y_data, color=color, label=f'{plane_str} Data Points', picker=10)
+        self.scatter_plot = self.ax.scatter(x_data, y_data, color=color, label=f'{plane_str} Data Points', picker=10)
 
         # Perform linear fit
         try:
@@ -407,7 +408,7 @@ class SecondaryPlotDialog(QDialog):
             slope, intercept = coeffs[0], coeffs[1]
 
             fit_line = slope * x_data + intercept
-            ax.plot(x_data, fit_line, color='black', linestyle='--', label=f'Fit: y = {slope:.2f}x + {intercept:.2f}')
+            self.ax.plot(x_data, fit_line, color='black', linestyle='--', label=f'Fit: y = {slope:.2f}x + {intercept:.2f}')
 
             # Calculate Magnification and PSF
             if slope > 0:
@@ -424,16 +425,16 @@ class SecondaryPlotDialog(QDialog):
                              f"Magnification: {magnification:.2f}\n"
                              f"PSF: {psf*1000:.2f} μm")
 
-                ax.text(0.05, 0.95, info_text, transform=ax.transAxes, fontsize=10,
+                self.ax.text(0.05, 0.95, info_text, transform=self.ax.transAxes, fontsize=10,
                         verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
         except Exception as e:
             print(f"Fit error: {e}")
 
-        ax.set_xlabel('Scaled BWS Size Squared (Expected BSRH Size)')
-        ax.set_ylabel('BSRH Size Squared (px^2)')
-        ax.set_title(f'{plane_str} BSRH vs Scaled BWS Beam Size Squared')
-        ax.legend()
-        ax.grid(True)
+        self.ax.set_xlabel('Scaled BWS Size Squared (Expected BSRH Size)')
+        self.ax.set_ylabel('BSRH Size Squared (px^2)')
+        self.ax.set_title(f'{plane_str} BSRH vs Scaled BWS Beam Size Squared')
+        self.ax.legend()
+        self.ax.grid(True)
         self.canvas.draw()
 
     def on_pick(self, event):
@@ -854,6 +855,11 @@ class AnalysisGUI(QWidget):
 
         self.ax_params.clear()
         self.ax_params_twin.clear()
+
+        # Clearing twinx resets its ticks and labels to the left, we must explicitly reset them to the right
+        self.ax_params_twin.yaxis.tick_right()
+        self.ax_params_twin.yaxis.set_label_position("right")
+
         self.ax_params.set_xlabel(f"Motor Position ({self.motor_input.text().strip()})")
         self.ax_params.set_ylabel("PSF (\u03bcm)")
         self.ax_params_twin.set_ylabel("Pixel Size (\u03bcm/px)")
