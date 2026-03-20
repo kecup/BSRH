@@ -919,7 +919,7 @@ class AnalysisGUI(QWidget):
                 filtered_data = {
                     'bsrh_sizes_h': [], 'bws_sizes_h': [],
                     'bsrh_sizes_v': [], 'bws_sizes_v': [],
-                    'bunches': []
+                    'bunches': [], 'file_indices': []
                 }
 
                 for i, f_idx in enumerate(data['file_indices']):
