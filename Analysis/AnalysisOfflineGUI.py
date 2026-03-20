@@ -135,7 +135,7 @@ class PointDetailsDialog(QDialog):
 
             if not is_1d_profiles and image_2d is not None:
                 # Show 2D image and circle
-                self.ax.imshow(image_2d, cmap='gray')
+                self.ax.imshow(image_2d, cmap='jet')
                 circle = patches.Circle((maskX, maskY), maskR, color='r', fill=False)
                 self.ax.add_patch(circle)
                 self.ax.set_title("2D Raw Image with Mask")
@@ -201,7 +201,7 @@ class MaskValidationDialog(QDialog):
         self.initial_plot()
 
     def initial_plot(self):
-        self.ax.imshow(self.image, cmap='gray')
+        self.ax.imshow(self.image, cmap='jet')
         self.circle = patches.Circle((self.maskX, self.maskY), self.maskR, color='r', fill=False)
         self.ax.add_patch(self.circle)
         self.canvas.draw()
@@ -754,14 +754,14 @@ class AnalysisOfflineGUI(QWidget):
 
         self.param_inputs = {}
 
-        # Default values based on Offline_Sofia.py / OffineHalo.py
+        # Default values based on user feedback
         params = {
-            "sigma": "3.5",
-            "pixelSizeH": "18.5",
-            "pixelSizeV": "17.5",
-            "psfWidthH": "15.0", # PSF width in pixels for deconvolution
-            "psfWidthV": "15.0",
-            "rl_iterations": "10"
+            "sigma": "4.7",
+            "pixelSizeH": "21.4",
+            "pixelSizeV": "18.0",
+            "psfWidthH": "450", # PSF width in pixels for deconvolution
+            "psfWidthV": "270",
+            "rl_iterations": "5"
         }
 
         for p_name, p_val in params.items():
@@ -798,7 +798,16 @@ class AnalysisOfflineGUI(QWidget):
         view_layout.addLayout(plane_layout)
         exec_layout.addLayout(view_layout)
 
+        btn_action_layout = QHBoxLayout()
+        self.btn_refine_mask = QPushButton("Refine Mask Position")
+        self.btn_refine_mask.clicked.connect(self.refine_mask_position)
+        btn_action_layout.addWidget(self.btn_refine_mask)
+
         self.btn_start_bsrh = QPushButton("Start BSRH Analysis")
+        self.btn_start_bsrh.clicked.connect(self.start_bsrh_analysis)
+        btn_action_layout.addWidget(self.btn_start_bsrh)
+
+        exec_layout.addLayout(btn_action_layout)
         self.btn_start_bsrh.clicked.connect(self.start_bsrh_analysis)
         exec_layout.addWidget(self.btn_start_bsrh)
 
@@ -855,6 +864,8 @@ class AnalysisOfflineGUI(QWidget):
         self.worker = None
         self.canvas.mpl_connect('pick_event', self.on_pick)
 
+        self.current_mask = {'X': 455, 'Y': 300, 'R': 40}
+
     def add_directory(self):
         dir_path = QFileDialog.getExistingDirectory(self, "Select BSRH Directory")
         if not dir_path:
@@ -886,18 +897,13 @@ class AnalysisOfflineGUI(QWidget):
             QMessageBox.warning(self, "Input Error", "Please ensure all parameters are valid numbers.")
             return None
 
-    def start_bsrh_analysis(self):
+    def refine_mask_position(self):
         if len(self.dir_widgets) == 0:
-            QMessageBox.warning(self, "No Directories", "Please add at least one directory.")
-            return
-
-        params = self.get_params()
-        if not params:
+            QMessageBox.warning(self, "No Directories", "Please add at least one directory to search for mask images.")
             return
 
         directories = [widget.get_range() for widget in self.dir_widgets]
 
-        # Determine the mask from the first valid masked image in the selection
         dctx = zstd.ZstdDecompressor()
         all_files = []
         for d, start_idx, end_idx in directories:
@@ -909,12 +915,8 @@ class AnalysisOfflineGUI(QWidget):
                     files_in_range = files[start_idx:end_idx+1]
                     all_files.extend([os.path.join(d, f) for f in files_in_range])
 
-        if len(all_files) == 0:
-            QMessageBox.warning(self, "No files", "No data to process.")
-            return
-
-        maskX, maskY, maskR = 455, 300, 40 # defaults
         found_masked = False
+        maskX, maskY, maskR = self.current_mask['X'], self.current_mask['Y'], self.current_mask['R']
 
         for filepath in all_files:
             if found_masked: break
@@ -922,54 +924,62 @@ class AnalysisOfflineGUI(QWidget):
                 with open(filepath, 'rb') as f:
                     with dctx.stream_reader(f) as reader:
                         file_data = pickle.load(reader)
-                        for event in file_data:
+                        for event_idx, event in enumerate(file_data):
                             cmask_x = event.device_data.get('CMASK-X', None)
                             if cmask_x is not None:
                                 cmask_x_val = np.asarray(cmask_x).item() if isinstance(cmask_x, np.ndarray) else cmask_x
-                                if abs(cmask_x_val - 455) < 100:
-                                    is_1d_profiles = False
-                                    image_2d = None
+                                if abs(cmask_x_val - self.current_mask['X']) < 150: # broadened threshold slightly
 
-                                    if isinstance(event.cam_data, list) and len(event.cam_data) >= 2:
-                                        is_1d_profiles = True
-                                    elif isinstance(event.cam_data, dict) and 'image2D' in event.cam_data:
-                                        img_data = event.cam_data['image2D']
-                                        if isinstance(img_data, list) and len(img_data) >= 2:
-                                            is_1d_profiles = True
-                                        elif hasattr(img_data, 'shape') and img_data.shape[0] <= 2:
-                                            is_1d_profiles = True
-                                        else:
-                                            image_2d = img_data
+                                    img_data = event.cam_data.get('image2D') if isinstance(event.cam_data, dict) else event.cam_data
+                                    # Need a full 2D image for validation overlay
+                                    if isinstance(img_data, list) or (hasattr(img_data, 'shape') and img_data.shape[0] <= 2):
+                                        continue # Keep searching for a true 2D image
 
-                                    if is_1d_profiles or image_2d is None:
-                                        found_masked = True
-                                        break
+                                    image_2d = img_data
 
-                                    center_region = image_2d[154:454, 284:684]
-                                    min_idx = np.unravel_index(np.argmin(center_region, axis=None), center_region.shape)
-                                    guessedY = min_idx[0] + 154
-                                    guessedX = min_idx[1] + 284
+                                    # Auto-guess ONLY if we haven't touched defaults yet, else use current
+                                    if self.current_mask['X'] == 455 and self.current_mask['Y'] == 300:
+                                        center_region = image_2d[154:454, 284:684]
+                                        min_idx = np.unravel_index(np.argmin(center_region, axis=None), center_region.shape)
+                                        maskY = min_idx[0] + 154
+                                        maskX = min_idx[1] + 284
 
-                                    dialog = MaskValidationDialog(image_2d, guessedX, guessedY, maskR, self)
+                                    dialog = MaskValidationDialog(image_2d, maskX, maskY, maskR, self)
                                     if dialog.exec_() == QDialog.Accepted:
-                                        maskX, maskY, maskR = dialog.get_mask_params()
-                                        found_masked = True
+                                        nX, nY, nR = dialog.get_mask_params()
+                                        self.current_mask['X'] = nX
+                                        self.current_mask['Y'] = nY
+                                        self.current_mask['R'] = nR
+                                        QMessageBox.information(self, "Mask Validated", f"Mask position updated to: X={nX}, Y={nY}, R={nR}")
                                     else:
-                                        self.status_lbl.setText("Analysis aborted (mask validation cancelled).")
-                                        return
+                                        self.status_lbl.setText("Mask refinement cancelled.")
+
+                                    found_masked = True
                                     break
             except Exception as e:
                 pass
 
         if not found_masked:
-            QMessageBox.warning(self, "Warning", "Could not find a masked image to validate the mask. Using defaults.")
+            QMessageBox.warning(self, "Warning", "Could not find a 2D masked image to validate the mask.")
 
-        params['maskX'] = maskX
-        params['maskY'] = maskY
-        params['maskR'] = maskR
+    def start_bsrh_analysis(self):
+        if len(self.dir_widgets) == 0:
+            QMessageBox.warning(self, "No Directories", "Please add at least one directory.")
+            return
+
+        params = self.get_params()
+        if not params:
+            return
+
+        directories = [widget.get_range() for widget in self.dir_widgets]
+
+        params['maskX'] = self.current_mask['X']
+        params['maskY'] = self.current_mask['Y']
+        params['maskR'] = self.current_mask['R']
 
         self.btn_start_bsrh.setEnabled(False)
         self.btn_fetch_bws.setEnabled(False)
+        self.btn_refine_mask.setEnabled(False)
         self.status_lbl.setText("Analyzing BSRH...")
 
         self.worker = AnalysisWorker('BSRH', directories=directories, params=params)
@@ -1036,6 +1046,7 @@ class AnalysisOfflineGUI(QWidget):
         QMessageBox.critical(self, "Analysis Error", err_str)
         self.status_lbl.setText("Error occurred.")
         self.btn_start_bsrh.setEnabled(True)
+        self.btn_refine_mask.setEnabled(True)
         if HAS_PYTIMBER: self.btn_fetch_bws.setEnabled(True)
 
     def analysis_finished(self, new_results):
@@ -1065,6 +1076,7 @@ class AnalysisOfflineGUI(QWidget):
                 self.results[plane]['bws'][bunch]['rpi'].extend(data['rpi'])
 
         self.btn_start_bsrh.setEnabled(True)
+        self.btn_refine_mask.setEnabled(True)
         if HAS_PYTIMBER: self.btn_fetch_bws.setEnabled(True)
         self.update_bunch_list()
         self.update_plot()
