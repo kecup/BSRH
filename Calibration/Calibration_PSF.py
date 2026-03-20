@@ -333,37 +333,89 @@ class SecondaryPlotDialog(QDialog):
     def __init__(self, motor_pos, data, plane, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"Convolved Match for Motor Position: {motor_pos}")
-        self.resize(800, 600)
+        self.resize(1000, 800)
         self.plane = plane
+        self.data = data
+        self.motor_pos = motor_pos
 
         self.layout = QVBoxLayout(self)
 
-        self.figure = Figure()
+        # Global Information Header
+        if data['optimized']:
+            info_text = (f"Optimal Pixel Size: {data['pixel_size']:.2f} μm/px | "
+                         f"Magnification: {1000/data['pixel_size']:.2f} | "
+                         f"PSF: {data['psf']*1000:.2f} μm")
+            info_lbl = QLabel(info_text)
+            info_lbl.setAlignment(Qt.AlignCenter)
+            self.layout.addWidget(info_lbl)
+
+        # Combo boxes layout
+        self.combos_layout = QHBoxLayout()
+        self.combos = []
+        bunches = [str(b) for b in data['bunches']]
+
+        for i in range(5):
+            combo = QComboBox()
+            combo.addItems(bunches)
+            if i < len(bunches):
+                combo.setCurrentIndex(i)
+            # Connect the combo box to the plot updater
+            combo.currentIndexChanged.connect(lambda idx, panel_idx=i: self.update_subplot(panel_idx))
+            self.combos.append(combo)
+
+            lbl_layout = QVBoxLayout()
+            lbl_layout.addWidget(QLabel(f"Panel {i+1} Bunch:"))
+            lbl_layout.addWidget(combo)
+            self.combos_layout.addLayout(lbl_layout)
+
+        self.layout.addLayout(self.combos_layout)
+
+        # Figure and Canvas
+        self.figure = Figure(figsize=(8, 12))
         self.canvas = FigureCanvas(self.figure)
         self.layout.addWidget(self.canvas)
 
-        self.plot_data(data)
+        self.axes = []
+        for i in range(5):
+            ax = self.figure.add_subplot(5, 1, i+1)
+            self.axes.append(ax)
 
-    def plot_data(self, data):
-        if not data['optimized']:
+        self.figure.tight_layout()
+
+        self.plot_all()
+
+    def plot_all(self):
+        if not self.data['optimized']:
             return
 
-        ax = self.figure.add_subplot(111)
+        for i in range(5):
+            self.update_subplot(i, draw=False)
+        self.figure.tight_layout()
+        self.canvas.draw()
+
+    def update_subplot(self, panel_idx, draw=True):
+        if not self.data['optimized']:
+            return
+
+        ax = self.axes[panel_idx]
         ax.clear()
 
-        # Just plot the first bunch as an example of the match
-        bunch_idx = 0
+        combo = self.combos[panel_idx]
+        bunch_idx = combo.currentIndex()
+        if bunch_idx < 0 or bunch_idx >= len(self.data['bunches']):
+            return
 
-        psf_val = data['psf']
-        px_size = data['pixel_size']
+        bunch_slot = self.data['bunches'][bunch_idx]
+        psf_val = self.data['psf']
+        px_size = self.data['pixel_size']
 
         newX = np.linspace(-4, 4, 1000)
         tmpPSF = gaussian(newX, 1, 0, psf_val)
         tmpPSF = tmpPSF / np.sum(tmpPSF)
 
-        bsrh_x, bsrh_y = data['bsrh_profiles'][bunch_idx]
-        bws_y = data['bws_profiles'][bunch_idx]
-        fbct = data['fbct'][bunch_idx]
+        bsrh_x, bsrh_y = self.data['bsrh_profiles'][bunch_idx]
+        bws_y = self.data['bws_profiles'][bunch_idx]
+        fbct = self.data['fbct'][bunch_idx]
 
         bsrh = np.interp(newX, px_size / 1000 * bsrh_x, bsrh_y)
         bsrh_sum = np.sum(bsrh)
@@ -378,19 +430,13 @@ class SecondaryPlotDialog(QDialog):
         ax.plot(newX, bsrh, label="BSRH (Scaled)")
         ax.plot(newX, bws, label="BWS (Convolved)")
 
-        info_text = (f"Pixel Size: {px_size:.2f} μm/px\n"
-                     f"Magnification: {1000/px_size:.2f}\n"
-                     f"PSF: {psf_val*1000:.2f} μm")
-
-        ax.text(0.05, 0.95, info_text, transform=ax.transAxes, fontsize=10,
-                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-
-        ax.set_xlabel('Position (mm)')
         ax.set_ylabel('Intensity')
-        ax.set_title(f"BSRH and BWS Convolution Match (Bunch {data['bunches'][bunch_idx]})")
-        ax.legend()
+        ax.set_title(f"Panel {panel_idx+1}: Bunch {bunch_slot}")
+        ax.legend(loc='upper right')
         ax.grid(True)
-        self.canvas.draw()
+
+        if draw:
+            self.canvas.draw()
 
 class AnalysisGUI(QWidget):
     def __init__(self):
