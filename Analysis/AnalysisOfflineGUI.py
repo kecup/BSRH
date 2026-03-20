@@ -310,7 +310,7 @@ class AnalysisWorker(QThread):
                 print(f"Error reading {filepath}: {e}")
                 continue
 
-            for event in file_data:
+            for event_idx, event in enumerate(file_data):
                 try:
                     timestamp = event.timestamp
                     if timestamp.tzinfo is not None:
