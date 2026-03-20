@@ -13,7 +13,7 @@ from scipy import stats
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QLineEdit, QFileDialog, QProgressBar, QMessageBox, QDialog,
-    QComboBox, QSpinBox
+    QComboBox, QSpinBox, QCheckBox, QScrollArea
 )
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
 
@@ -278,13 +278,14 @@ class AnalysisThread(QThread):
                         if motor_pos not in self.bsrh_grouped_data:
                             self.bsrh_grouped_data[motor_pos] = {
                                 'bsrh_profiles': [], 'bws_profiles': [], 'fbct': [], 'bunches': [],
-                                'optimized': False, 'psf': None, 'pixel_size': None
+                                'included': [], 'optimized': False, 'psf': None, 'pixel_size': None
                             }
 
                         self.bsrh_grouped_data[motor_pos]['bsrh_profiles'].append([x, y])
                         self.bsrh_grouped_data[motor_pos]['bws_profiles'].append(closest_bws_profile)
                         self.bsrh_grouped_data[motor_pos]['fbct'].append(fbct_val)
                         self.bsrh_grouped_data[motor_pos]['bunches'].append(bunch_slot)
+                        self.bsrh_grouped_data[motor_pos]['included'].append(True)
                         self.bsrh_grouped_data[motor_pos]['optimized'] = False # Re-flag for optimization
 
             except Exception as e:
@@ -308,6 +309,15 @@ class AnalysisThread(QThread):
             if not data['optimized'] and len(data['bws_profiles']) > 4:
                 self.status_signal.emit(f"Running optimization for motor pos {pos}...")
 
+                # Filter profiles by 'included' boolean list
+                filtered_bws = [prof for i, prof in enumerate(data['bws_profiles']) if data['included'][i]]
+                filtered_bsrh = [prof for i, prof in enumerate(data['bsrh_profiles']) if data['included'][i]]
+                filtered_fbct = [val for i, val in enumerate(data['fbct']) if data['included'][i]]
+
+                if len(filtered_bws) == 0:
+                    self.status_signal.emit(f"Skipping motor pos {pos} - no bunches included.")
+                    continue
+
                 # Initial Guesses and Bounds
                 if self.plane == 'H':
                     initGuess = [0.6, 20.0, 1.0, 1]
@@ -318,7 +328,7 @@ class AnalysisThread(QThread):
 
                 try:
                     result = minimize(objFunc, initGuess,
-                                      args=(data['bws_profiles'], data['bsrh_profiles'], data['fbct'], self.plane),
+                                      args=(filtered_bws, filtered_bsrh, filtered_fbct, self.plane),
                                       bounds=bnds, method='TNC')
                     out = result.x
 
@@ -341,13 +351,40 @@ class SecondaryPlotDialog(QDialog):
         self.layout = QVBoxLayout(self)
 
         # Global Information Header
+        self.info_lbl = QLabel()
+        self.info_lbl.setAlignment(Qt.AlignCenter)
         if data['optimized']:
             info_text = (f"Optimal Pixel Size: {data['pixel_size']:.2f} μm/px | "
                          f"Magnification: {1000/data['pixel_size']:.2f} | "
                          f"PSF: {data['psf']*1000:.2f} μm")
-            info_lbl = QLabel(info_text)
-            info_lbl.setAlignment(Qt.AlignCenter)
-            self.layout.addWidget(info_lbl)
+            self.info_lbl.setText(info_text)
+        self.layout.addWidget(self.info_lbl)
+
+        # Checkbox selection layout
+        self.selection_layout = QHBoxLayout()
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFixedHeight(60)
+
+        scroll_content = QWidget()
+        self.checkbox_layout = QHBoxLayout(scroll_content)
+        self.checkboxes = []
+
+        for i, b in enumerate(data['bunches']):
+            cb = QCheckBox(f"Bunch {b}")
+            cb.setChecked(data['included'][i])
+            self.checkboxes.append(cb)
+            self.checkbox_layout.addWidget(cb)
+
+        scroll.setWidget(scroll_content)
+        self.selection_layout.addWidget(scroll)
+
+        self.recalc_btn = QPushButton("Re-calculate Fit")
+        self.recalc_btn.clicked.connect(self.reoptimize)
+        self.selection_layout.addWidget(self.recalc_btn)
+
+        self.layout.addLayout(self.selection_layout)
 
         # Combo boxes layout
         self.combos_layout = QHBoxLayout()
@@ -437,6 +474,59 @@ class SecondaryPlotDialog(QDialog):
 
         if draw:
             self.canvas.draw()
+
+    def reoptimize(self):
+        # Update included flags
+        for i, cb in enumerate(self.checkboxes):
+            self.data['included'][i] = cb.isChecked()
+
+        filtered_bws = [prof for i, prof in enumerate(self.data['bws_profiles']) if self.data['included'][i]]
+        filtered_bsrh = [prof for i, prof in enumerate(self.data['bsrh_profiles']) if self.data['included'][i]]
+        filtered_fbct = [val for i, val in enumerate(self.data['fbct']) if self.data['included'][i]]
+
+        if len(filtered_bws) == 0:
+            QMessageBox.warning(self, "Re-calculation Error", "No bunches selected!")
+            return
+
+        # Re-run minimization
+        self.recalc_btn.setEnabled(False)
+        self.recalc_btn.setText("Calculating...")
+        QApplication.processEvents()
+
+        if self.plane == 'H':
+            initGuess = [0.6, 20.0, 1.0, 1]
+            bnds = ((0.4, 0.7), (16, 24), (0.1, 2.0), (0, 5))
+        else:
+            initGuess = [0.25, 18.0, 1, 1]
+            bnds = ((0.2, 0.4), (15, 22), (0.1, 2.0), (0, 5))
+
+        try:
+            result = minimize(objFunc, initGuess,
+                              args=(filtered_bws, filtered_bsrh, filtered_fbct, self.plane),
+                              bounds=bnds, method='TNC')
+            out = result.x
+
+            self.data['psf'] = out[0]
+            self.data['pixel_size'] = out[1]
+
+            # Update GUI Elements
+            info_text = (f"Optimal Pixel Size: {out[1]:.2f} μm/px | "
+                         f"Magnification: {1000/out[1]:.2f} | "
+                         f"PSF: {out[0]*1000:.2f} μm")
+            self.info_lbl.setText(info_text)
+
+            self.plot_all()
+
+            # Update Main Window Plot
+            parent = self.parent()
+            if parent and hasattr(parent, 'update_plot') and hasattr(parent, 'grouped_data'):
+                parent.update_plot(parent.grouped_data)
+
+        except Exception as e:
+            QMessageBox.critical(self, "Re-calculation Error", f"Optimization failed: {str(e)}")
+
+        self.recalc_btn.setEnabled(True)
+        self.recalc_btn.setText("Re-calculate Fit")
 
 class AnalysisGUI(QWidget):
     def __init__(self):
