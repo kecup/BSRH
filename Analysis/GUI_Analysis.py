@@ -586,6 +586,7 @@ class AnalysisGUI(QWidget):
         self.scatter_plot_h = None
         self.scatter_plot_v = None
         self.active_dialogs = []
+        self.ignored_points = set() # Store tuples of (motor_pos, file_idx, bunch_slot)
 
     def select_bsrh_dir(self):
         dir_path = QFileDialog.getExistingDirectory(self, "Select BSRH Directory")
