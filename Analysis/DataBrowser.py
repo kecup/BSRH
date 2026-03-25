@@ -56,6 +56,7 @@ class DataBrowser(QWidget):
 
         self.all_events = [] # Store all loaded events: list of dicts/AllData objects
         self.filtered_events = [] # Store filtered events to display
+        self.bg_image = None      # Store selected background image
 
         self.init_ui()
 
@@ -135,7 +136,16 @@ class DataBrowser(QWidget):
         # --- RIGHT PANEL: Image Visualization ---
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
-        right_layout.addWidget(QLabel("Image 2D Visualization:"))
+        bg_layout = QHBoxLayout()
+        bg_layout.addWidget(QLabel("Image 2D Visualization:"))
+        self.btn_set_bg = QPushButton("Set Current as Background")
+        self.btn_set_bg.clicked.connect(self.set_current_as_bg)
+        self.btn_clear_bg = QPushButton("Clear Background")
+        self.btn_clear_bg.clicked.connect(self.clear_bg)
+        bg_layout.addWidget(self.btn_set_bg)
+        bg_layout.addWidget(self.btn_clear_bg)
+        bg_layout.addStretch()
+        right_layout.addLayout(bg_layout)
 
         self.figure = Figure()
         self.canvas = FigureCanvas(self.figure)
@@ -207,6 +217,33 @@ class DataBrowser(QWidget):
         self.lbl_img_stats.setText("Image Stats: None")
         self.filter_key_input.clear()
         self.filter_val_input.clear()
+        self.clear_bg()
+
+    def set_current_as_bg(self):
+        selected_items = self.event_list.selectedItems()
+        if not selected_items:
+            return
+
+        item = selected_items[0]
+        idx = item.data(Qt.UserRole)
+        event = self.filtered_events[idx]
+
+        if hasattr(event, "cam_data") and isinstance(event.cam_data, dict):
+            img = event.cam_data.get('image2D')
+            if img is not None and isinstance(img, np.ndarray) and len(img.shape) >= 2:
+                if len(img.shape) == 3:
+                    img = np.mean(img, axis=2)
+                self.bg_image = img.astype(float).copy()
+                self.plot_image(event)
+
+    def clear_bg(self):
+        self.bg_image = None
+        selected_items = self.event_list.selectedItems()
+        if selected_items:
+            item = selected_items[0]
+            idx = item.data(Qt.UserRole)
+            event = self.filtered_events[idx]
+            self.plot_image(event)
 
     def populate_event_list(self):
         self.event_list.clear()
@@ -366,8 +403,15 @@ class DataBrowser(QWidget):
                         # Convert to grayscale if RGB (just in case)
                         img = np.mean(img, axis=2)
 
+                    img = img.astype(float)
+                    title = "cam_data['image2D']"
+
+                    if self.bg_image is not None and self.bg_image.shape == img.shape:
+                        img = img - self.bg_image
+                        title += " (Background Subtracted)"
+
                     self.img_plot = self.ax.imshow(img, cmap='viridis', aspect='equal', interpolation='nearest')
-                    self.ax.set_title("cam_data['image2D']")
+                    self.ax.set_title(title)
 
                     # Update stats
                     stats_text = f"Stats: Min={np.min(img):.2f}, Max={np.max(img):.2f}, Mean={np.mean(img):.2f}, Sum={np.sum(img):.2f}"
