@@ -13,6 +13,12 @@ try:
 except ImportError:
     HAS_ZSTD = False
 
+try:
+    import pyjapc
+    HAS_PYJAPC = True
+except ImportError:
+    HAS_PYJAPC = False
+
 import numpy as np
 
 from PyQt5.QtWidgets import (
@@ -71,6 +77,10 @@ class DataBrowser(QWidget):
         self.btn_load.clicked.connect(self.load_files)
         load_layout.addWidget(self.btn_load)
 
+        self.btn_clear_data = QPushButton("Clear Data")
+        self.btn_clear_data.clicked.connect(self.clear_all_data)
+        load_layout.addWidget(self.btn_clear_data)
+
         self.lbl_loaded = QLabel("Loaded: 0 events")
         load_layout.addWidget(self.lbl_loaded)
         load_group.setLayout(load_layout)
@@ -119,6 +129,7 @@ class DataBrowser(QWidget):
         self.details_tree.setAlternatingRowColors(True)
         # Resize columns automatically
         self.details_tree.header().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.details_tree.itemDoubleClicked.connect(self.on_tree_item_double_clicked)
         middle_layout.addWidget(self.details_tree)
 
         # --- RIGHT PANEL: Image Visualization ---
@@ -184,6 +195,19 @@ class DataBrowser(QWidget):
         self.lbl_loaded.setText(f"Loaded: {len(self.all_events)} events")
         self.clear_filter() # Updates the list to show all events
 
+    def clear_all_data(self):
+        self.all_events.clear()
+        self.filtered_events.clear()
+        self.event_list.clear()
+        self.details_tree.clear()
+        self.ax.clear()
+        self.ax.axis('off')
+        self.canvas.draw()
+        self.lbl_loaded.setText("Loaded: 0 events")
+        self.lbl_img_stats.setText("Image Stats: None")
+        self.filter_key_input.clear()
+        self.filter_val_input.clear()
+
     def populate_event_list(self):
         self.event_list.clear()
         for i, event in enumerate(self.filtered_events):
@@ -235,7 +259,7 @@ class DataBrowser(QWidget):
                 # If val is list/array, maybe they want the first item or sum?
                 # For simplicity, we assume the path resolves to a scalar for comparison.
                 # Convert target_val back to matching type if needed
-                if isinstance(val, (int, float)):
+                if isinstance(val, (int, float, np.number)):
                     t_val = float(target_val)
                 else:
                     t_val = str(target_val)
@@ -276,6 +300,29 @@ class DataBrowser(QWidget):
 
         self.populate_details(event)
         self.plot_image(event)
+
+    def on_tree_item_double_clicked(self, item, column):
+        # Walk up to the root to build the full key path
+        path_parts = []
+        current_item = item
+        while current_item is not None:
+            # Check if this node represents a list/array index (simple check by seeing if it's digit)
+            # If so, it might need [] brackets instead of dict key access
+            # For simplicity, we assume dict keys, e.g. "device_data['FBCT1']"
+            part = current_item.text(0)
+            path_parts.insert(0, part)
+            current_item = current_item.parent()
+
+        if not path_parts:
+            return
+
+        # Build the python expression string
+        # root is usually 'device_data', 'cam_data', or 'timestamp'
+        expr = path_parts[0]
+        for p in path_parts[1:]:
+            expr += f"['{p}']"
+
+        self.filter_key_input.setText(expr)
 
     def populate_details(self, event):
         self.details_tree.clear()
@@ -319,7 +366,7 @@ class DataBrowser(QWidget):
                         # Convert to grayscale if RGB (just in case)
                         img = np.mean(img, axis=2)
 
-                    self.img_plot = self.ax.imshow(img, cmap='viridis', aspect='auto', interpolation='nearest')
+                    self.img_plot = self.ax.imshow(img, cmap='viridis', aspect='equal', interpolation='nearest')
                     self.ax.set_title("cam_data['image2D']")
 
                     # Update stats
@@ -337,6 +384,12 @@ class DataBrowser(QWidget):
 
 
 if __name__ == "__main__":
+    if HAS_PYJAPC:
+        try:
+            japc = pyjapc.PyJapc()
+        except Exception as e:
+            print(f"Warning: Failed to initialize pyjapc: {e}")
+
     app = QApplication(sys.argv)
     window = DataBrowser()
     window.show()
