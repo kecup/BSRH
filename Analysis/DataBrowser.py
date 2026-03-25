@@ -25,7 +25,7 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QLineEdit, QFileDialog, QListWidget, QListWidgetItem, QGroupBox,
     QFormLayout, QComboBox, QSplitter, QTreeWidget, QTreeWidgetItem,
-    QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView
+    QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox
 )
 from PyQt5.QtCore import Qt
 
@@ -33,6 +33,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
+from matplotlib.colors import LogNorm
 
 # Mock AllData class in case it's needed to unpickle files saved directly from Acquisition/GUI.py
 class AllData:
@@ -111,6 +112,10 @@ class DataBrowser(QWidget):
         self.btn_clear_filter.clicked.connect(self.clear_filter)
 
         filter_layout.addRow(self.btn_apply_filter, self.btn_clear_filter)
+
+        self.chk_filter_on_load = QCheckBox("Apply Filter on Load (Save RAM)")
+        filter_layout.addRow(self.chk_filter_on_load)
+
         filter_group.setLayout(filter_layout)
         left_layout.addWidget(filter_group)
 
@@ -159,6 +164,46 @@ class DataBrowser(QWidget):
         self.ax.axis('off')
         self.img_plot = None
 
+        # Image Manipulation Group
+        manip_group = QGroupBox("Image Manipulation & Profiling")
+        manip_layout = QHBoxLayout()
+
+        # Display options
+        display_layout = QVBoxLayout()
+        self.chk_log_scale = QCheckBox("Log Scale Colormap")
+        self.chk_log_scale.toggled.connect(self.replot_current)
+        self.chk_show_profiles = QCheckBox("Show Profiles")
+        self.chk_show_profiles.toggled.connect(self.replot_current)
+        display_layout.addWidget(self.chk_log_scale)
+        display_layout.addWidget(self.chk_show_profiles)
+        display_layout.addStretch()
+
+        # Circular Multiplier options
+        circ_layout = QFormLayout()
+        self.chk_circ_mult = QCheckBox("Apply Circular Multiplier")
+        self.chk_circ_mult.toggled.connect(self.replot_current)
+        self.input_cx = QLineEdit("300")
+        self.input_cy = QLineEdit("300")
+        self.input_r = QLineEdit("50")
+        self.input_mult = QLineEdit("2.0")
+
+        self.input_cx.textChanged.connect(self.replot_current)
+        self.input_cy.textChanged.connect(self.replot_current)
+        self.input_r.textChanged.connect(self.replot_current)
+        self.input_mult.textChanged.connect(self.replot_current)
+
+        circ_layout.addRow(self.chk_circ_mult)
+        circ_layout.addRow("Center X:", self.input_cx)
+        circ_layout.addRow("Center Y:", self.input_cy)
+        circ_layout.addRow("Radius:", self.input_r)
+        circ_layout.addRow("Multiplier:", self.input_mult)
+
+        manip_layout.addLayout(display_layout)
+        manip_layout.addLayout(circ_layout)
+        manip_group.setLayout(manip_layout)
+
+        right_layout.addWidget(manip_group)
+
         # Image stats labels
         self.lbl_img_stats = QLabel("Image Stats: None")
         right_layout.addWidget(self.lbl_img_stats)
@@ -193,17 +238,29 @@ class DataBrowser(QWidget):
                         data = pickle.load(reader)
 
                         # data could be a list of events or a single event
-                        if isinstance(data, list):
-                            self.all_events.extend(data)
-                            new_events += len(data)
+                        events_to_add = data if isinstance(data, list) else [data]
+
+                        if self.chk_filter_on_load.isChecked():
+                            # Evaluate match for each event before appending
+                            filtered = [ev for ev in events_to_add if self.check_filter_match(ev)]
+                            self.all_events.extend(filtered)
+                            new_events += len(filtered)
                         else:
-                            self.all_events.append(data)
-                            new_events += 1
+                            self.all_events.extend(events_to_add)
+                            new_events += len(events_to_add)
+
             except Exception as e:
                 QMessageBox.warning(self, "Load Error", f"Failed to load {file_path}:\n{str(e)}")
 
         self.lbl_loaded.setText(f"Loaded: {len(self.all_events)} events")
-        self.clear_filter() # Updates the list to show all events
+
+        if self.chk_filter_on_load.isChecked():
+            # Filter is already applied to all_events, just show them
+            self.filtered_events = self.all_events.copy()
+            self.populate_event_list()
+            self.lbl_loaded.setText(f"Showing: {len(self.filtered_events)} / {len(self.all_events)} events")
+        else:
+            self.clear_filter() # Updates the list to show all events
 
     def clear_all_data(self):
         self.all_events.clear()
@@ -259,65 +316,49 @@ class DataBrowser(QWidget):
             self.event_list.addItem(item)
 
     def apply_filter(self):
+        self.filtered_events = [ev for ev in self.all_events if self.check_filter_match(ev)]
+        self.populate_event_list()
+        self.lbl_loaded.setText(f"Showing: {len(self.filtered_events)} / {len(self.all_events)} events")
+
+    def check_filter_match(self, event):
         key_path = self.filter_key_input.text().strip()
         op = self.filter_op_combo.currentText()
         val_str = self.filter_val_input.text().strip()
 
         if not key_path or not val_str:
-            self.filtered_events = self.all_events.copy()
-            self.populate_event_list()
-            return
+            return True
 
         try:
             target_val = float(val_str)
         except ValueError:
             target_val = val_str # fallback to string comparison if needed
 
-        filtered = []
-        for event in self.all_events:
-            try:
-                # Safely evaluate the key path against the event object.
-                # E.g. key_path = "device_data['GATE-INT']['delaySlots']"
-                # event is accessible as `event` in eval context.
-                # To be safer, we can create a local dict.
-                local_env = {"event": event}
+        try:
+            local_env = {"event": event}
 
-                # If user didn't prepend "event.", let's try to handle standard properties:
-                if key_path.startswith("device_data") or key_path.startswith("cam_data"):
-                    eval_str = "event." + key_path
-                elif key_path.startswith("event."):
-                    eval_str = key_path
-                else:
-                    # Generic fallback
-                    eval_str = "event." + key_path
+            if key_path.startswith("device_data") or key_path.startswith("cam_data"):
+                eval_str = "event." + key_path
+            elif key_path.startswith("event."):
+                eval_str = key_path
+            else:
+                eval_str = "event." + key_path
 
-                val = eval(eval_str, {"__builtins__": {}}, local_env)
+            val = eval(eval_str, {"__builtins__": {}}, local_env)
 
-                # If val is list/array, maybe they want the first item or sum?
-                # For simplicity, we assume the path resolves to a scalar for comparison.
-                # Convert target_val back to matching type if needed
-                if isinstance(val, (int, float, np.number)):
-                    t_val = float(target_val)
-                else:
-                    t_val = str(target_val)
+            if isinstance(val, (int, float, np.number)):
+                t_val = float(target_val)
+            else:
+                t_val = str(target_val)
 
-                if op == ">": match = val > t_val
-                elif op == "<": match = val < t_val
-                elif op == ">=": match = val >= t_val
-                elif op == "<=": match = val <= t_val
-                elif op == "==": match = val == t_val
-                elif op == "!=": match = val != t_val
-                else: match = False
-
-                if match:
-                    filtered.append(event)
-            except Exception as e:
-                # If key doesn't exist or evaluation fails, we just skip it
-                continue
-
-        self.filtered_events = filtered
-        self.populate_event_list()
-        self.lbl_loaded.setText(f"Showing: {len(self.filtered_events)} / {len(self.all_events)} events")
+            if op == ">": return val > t_val
+            elif op == "<": return val < t_val
+            elif op == ">=": return val >= t_val
+            elif op == "<=": return val <= t_val
+            elif op == "==": return val == t_val
+            elif op == "!=": return val != t_val
+            else: return False
+        except Exception:
+            return False
 
     def clear_filter(self):
         self.filter_key_input.clear()
@@ -389,41 +430,116 @@ class DataBrowser(QWidget):
             add_nodes(cam_node, event.cam_data)
             cam_node.setExpanded(True)
 
+    def replot_current(self):
+        selected_items = self.event_list.selectedItems()
+        if not selected_items:
+            return
+        item = selected_items[0]
+        idx = item.data(Qt.UserRole)
+        event = self.filtered_events[idx]
+        self.plot_image(event)
+
     def plot_image(self, event):
-        self.ax.clear()
+        self.figure.clear()
         self.img_plot = None
         self.lbl_img_stats.setText("Image Stats: None")
 
-        if hasattr(event, "cam_data") and isinstance(event.cam_data, dict):
-            img = event.cam_data.get('image2D')
-            if img is not None and isinstance(img, np.ndarray):
-                # Ensure 2D
-                if len(img.shape) >= 2:
-                    if len(img.shape) == 3:
-                        # Convert to grayscale if RGB (just in case)
-                        img = np.mean(img, axis=2)
+        if not (hasattr(event, "cam_data") and isinstance(event.cam_data, dict)):
+            self.ax = self.figure.add_subplot(111)
+            self.ax.axis('off')
+            self.ax.set_title("No cam_data found")
+            self.canvas.draw()
+            return
 
-                    img = img.astype(float)
-                    title = "cam_data['image2D']"
+        img = event.cam_data.get('image2D')
+        if img is None or not isinstance(img, np.ndarray):
+            self.ax = self.figure.add_subplot(111)
+            self.ax.axis('off')
+            self.ax.set_title("No image2D data found")
+            self.canvas.draw()
+            return
 
-                    if self.bg_image is not None and self.bg_image.shape == img.shape:
-                        img = img - self.bg_image
-                        title += " (Background Subtracted)"
+        # Handle 1D profiles
+        if len(img.shape) < 2:
+            self.ax = self.figure.add_subplot(111)
+            self.ax.plot(img)
+            self.ax.set_title("Image is 1D (Projections)")
+            self.canvas.draw()
+            return
 
-                    self.img_plot = self.ax.imshow(img, cmap='viridis', aspect='equal', interpolation='nearest')
-                    self.ax.set_title(title)
+        # Preprocess 2D image
+        if len(img.shape) == 3:
+            img = np.mean(img, axis=2)
+        img = img.astype(float)
 
-                    # Update stats
-                    stats_text = f"Stats: Min={np.min(img):.2f}, Max={np.max(img):.2f}, Mean={np.mean(img):.2f}, Sum={np.sum(img):.2f}"
-                    self.lbl_img_stats.setText(stats_text)
-                else:
-                    self.ax.set_title("Image is 1D (Projections)")
-                    self.ax.plot(img)
-            else:
-                self.ax.set_title("No image2D data found")
+        # Keep original image reference to calculate unmodified profiles
+        original_img = img.copy()
+
+        title = "cam_data['image2D']"
+
+        if self.bg_image is not None and self.bg_image.shape == img.shape:
+            img = img - self.bg_image
+            original_img = original_img - self.bg_image
+            title += " (Background Subtracted)"
+
+        # Apply circular multiplier if checked
+        if self.chk_circ_mult.isChecked():
+            try:
+                cx = float(self.input_cx.text())
+                cy = float(self.input_cy.text())
+                r = float(self.input_r.text())
+                mult = float(self.input_mult.text())
+
+                y, x = np.ogrid[:img.shape[0], :img.shape[1]]
+                mask = ((x - cx)**2 + (y - cy)**2) <= r**2
+                img[mask] = img[mask] * mult
+            except ValueError:
+                pass # Invalid input, ignore multiplier
+
+        # Configure subplots based on profile toggle
+        if self.chk_show_profiles.isChecked():
+            gs = self.figure.add_gridspec(2, 2, width_ratios=[3, 1], height_ratios=[3, 1])
+            self.ax = self.figure.add_subplot(gs[0, 0])
+            ax_x_prof = self.figure.add_subplot(gs[1, 0], sharex=self.ax)
+            ax_y_prof = self.figure.add_subplot(gs[0, 1], sharey=self.ax)
         else:
-             self.ax.set_title("No cam_data found")
+            self.ax = self.figure.add_subplot(111)
 
+        # Plot Main Image
+        norm = LogNorm(vmin=max(1e-3, np.min(img)), vmax=max(1e-2, np.max(img))) if self.chk_log_scale.isChecked() else None
+        self.img_plot = self.ax.imshow(img, cmap='viridis', aspect='equal', interpolation='nearest', norm=norm)
+        self.ax.set_title(title)
+
+        # Plot Profiles
+        if self.chk_show_profiles.isChecked():
+            # Horizontal Profile (X)
+            prof_x_mod = np.sum(img, axis=0)
+            prof_x_orig = np.sum(original_img, axis=0)
+            ax_x_prof.plot(prof_x_orig, label="Original", color='blue', alpha=0.5)
+            if self.chk_circ_mult.isChecked():
+                ax_x_prof.plot(prof_x_mod, label="Multiplied", color='red', linestyle='--')
+            ax_x_prof.grid(True)
+            ax_x_prof.set_ylabel('Sum')
+
+            # Vertical Profile (Y)
+            prof_y_mod = np.sum(img, axis=1)
+            prof_y_orig = np.sum(original_img, axis=1)
+            ax_y_prof.plot(prof_y_orig, range(len(prof_y_orig)), label="Original", color='blue', alpha=0.5)
+            if self.chk_circ_mult.isChecked():
+                ax_y_prof.plot(prof_y_mod, range(len(prof_y_mod)), label="Multiplied", color='red', linestyle='--')
+            ax_y_prof.grid(True)
+            ax_y_prof.set_xlabel('Sum')
+
+            # Add legends if multiplier is active
+            if self.chk_circ_mult.isChecked():
+                ax_x_prof.legend()
+                ax_y_prof.legend()
+
+        # Update stats
+        stats_text = f"Stats: Min={np.min(img):.2f}, Max={np.max(img):.2f}, Mean={np.mean(img):.2f}, Sum={np.sum(img):.2f}"
+        self.lbl_img_stats.setText(stats_text)
+
+        self.figure.tight_layout()
         self.canvas.draw()
 
 
