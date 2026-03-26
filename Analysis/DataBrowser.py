@@ -25,7 +25,8 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QLineEdit, QFileDialog, QListWidget, QListWidgetItem, QGroupBox,
     QFormLayout, QComboBox, QSplitter, QTreeWidget, QTreeWidgetItem,
-    QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox
+    QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox,
+    QDialog
 )
 from PyQt5.QtCore import Qt
 
@@ -58,6 +59,7 @@ class DataBrowser(QWidget):
         self.all_events = [] # Store all loaded events: list of dicts/AllData objects
         self.filtered_events = [] # Store filtered events to display
         self.bg_image = None      # Store selected background image
+        self.pinned_params = []   # List of string expressions to pin
 
         self.init_ui()
 
@@ -128,15 +130,45 @@ class DataBrowser(QWidget):
         # --- MIDDLE PANEL: Event Details (Tree) ---
         middle_panel = QWidget()
         middle_layout = QVBoxLayout(middle_panel)
-        middle_layout.addWidget(QLabel("Event Details:"))
 
+        # Pinned Parameters Group
+        pinned_group = QGroupBox("Pinned Parameters")
+        pinned_layout = QVBoxLayout()
+
+        btn_layout = QHBoxLayout()
+        self.btn_pin = QPushButton("Pin from Filter Input")
+        self.btn_pin.clicked.connect(self.pin_parameter)
+        self.btn_clear_pin = QPushButton("Clear Pinned")
+        self.btn_clear_pin.clicked.connect(self.clear_pinned)
+        self.btn_plot_pin = QPushButton("Plot Pinned")
+        self.btn_plot_pin.clicked.connect(self.plot_pinned)
+
+        btn_layout.addWidget(self.btn_pin)
+        btn_layout.addWidget(self.btn_clear_pin)
+        btn_layout.addWidget(self.btn_plot_pin)
+        pinned_layout.addLayout(btn_layout)
+
+        self.pinned_tree = QTreeWidget()
+        self.pinned_tree.setHeaderLabels(["Pinned Expression", "Value"])
+        self.pinned_tree.setAlternatingRowColors(True)
+        self.pinned_tree.header().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        pinned_layout.addWidget(self.pinned_tree)
+
+        middle_layout.addWidget(pinned_group)
+
+        # Event Details Group
+        details_group = QGroupBox("Event Details")
+        details_layout = QVBoxLayout()
         self.details_tree = QTreeWidget()
         self.details_tree.setHeaderLabels(["Key", "Value"])
         self.details_tree.setAlternatingRowColors(True)
         # Resize columns automatically
         self.details_tree.header().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.details_tree.itemDoubleClicked.connect(self.on_tree_item_double_clicked)
-        middle_layout.addWidget(self.details_tree)
+        details_layout.addWidget(self.details_tree)
+        details_group.setLayout(details_layout)
+
+        middle_layout.addWidget(details_group)
 
         # --- RIGHT PANEL: Image Visualization ---
         right_panel = QWidget()
@@ -290,10 +322,14 @@ class DataBrowser(QWidget):
 
         if hasattr(event, "cam_data") and isinstance(event.cam_data, dict):
             img = event.cam_data.get('image2D')
-            if img is not None and isinstance(img, np.ndarray) and len(img.shape) >= 2:
-                if len(img.shape) == 3:
-                    img = np.mean(img, axis=2)
-                self.bg_image = img.astype(float).copy()
+            if img is not None:
+                if isinstance(img, np.ndarray):
+                    if len(img.shape) == 3:
+                        img = np.mean(img, axis=2)
+                    self.bg_image = img.astype(float).copy()
+                elif isinstance(img, list):
+                    # Keep as list/array depending on internal structure, cast inner arrays
+                    self.bg_image = [np.array(p).astype(float).copy() for p in img]
                 self.plot_image(event)
 
     def clear_bg(self):
@@ -380,7 +416,107 @@ class DataBrowser(QWidget):
         event = self.filtered_events[idx]
 
         self.populate_details(event)
+        self.populate_pinned(event)
         self.plot_image(event)
+
+    def pin_parameter(self):
+        expr = self.filter_key_input.text().strip()
+        if expr and expr not in self.pinned_params:
+            self.pinned_params.append(expr)
+            selected_items = self.event_list.selectedItems()
+            if selected_items:
+                item = selected_items[0]
+                idx = item.data(Qt.UserRole)
+                event = self.filtered_events[idx]
+                self.populate_pinned(event)
+
+    def clear_pinned(self):
+        self.pinned_params.clear()
+        self.pinned_tree.clear()
+
+    def plot_pinned(self):
+        if not self.pinned_params:
+            QMessageBox.information(self, "No Pinned Parameters", "Please pin at least one numerical parameter to plot.")
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Pinned Parameters vs Events")
+        dialog.resize(800, 600)
+
+        layout = QVBoxLayout(dialog)
+        fig = Figure()
+        canvas = FigureCanvas(fig)
+        toolbar = NavigationToolbar(canvas, dialog)
+        layout.addWidget(toolbar)
+        layout.addWidget(canvas)
+
+        ax = fig.add_subplot(111)
+
+        events_plotted = False
+
+        for expr in self.pinned_params:
+            y_data = []
+            x_data = []
+
+            for i, event in enumerate(self.filtered_events):
+                local_env = {"event": event}
+
+                # Build correct eval string
+                if expr.startswith("device_data") or expr.startswith("cam_data"):
+                    eval_str = "event." + expr
+                elif expr.startswith("event."):
+                    eval_str = expr
+                else:
+                    eval_str = "event." + expr
+
+                try:
+                    val = eval(eval_str, {"__builtins__": {}}, local_env)
+                    if isinstance(val, (int, float, np.number)):
+                        y_data.append(float(val))
+                        # Use timestamp if available, otherwise index
+                        if hasattr(event, "timestamp"):
+                            x_data.append(event.timestamp)
+                        else:
+                            x_data.append(i)
+                except Exception:
+                    continue # Skip events where this parameter can't be found or isn't a number
+
+            if y_data:
+                ax.plot(x_data, y_data, marker='o', label=expr)
+                events_plotted = True
+
+        if events_plotted:
+            ax.set_title("Pinned Parameters across Filtered Events")
+            ax.set_xlabel("Event Time / Index")
+            ax.set_ylabel("Parameter Value")
+            ax.legend()
+            ax.grid(True)
+            canvas.draw()
+            dialog.exec_()
+        else:
+            QMessageBox.information(self, "No Plot Data", "None of the pinned parameters resulted in numerical data across the current events.")
+
+    def populate_pinned(self, event):
+        self.pinned_tree.clear()
+        for expr in self.pinned_params:
+            local_env = {"event": event}
+            if expr.startswith("device_data") or expr.startswith("cam_data"):
+                eval_str = "event." + expr
+            elif expr.startswith("event."):
+                eval_str = expr
+            else:
+                eval_str = "event." + expr
+
+            try:
+                val = eval(eval_str, {"__builtins__": {}}, local_env)
+                if isinstance(val, np.ndarray):
+                    val_str = f"Array {val.shape} {val.dtype}"
+                else:
+                    val_str = str(val)
+            except Exception:
+                val_str = "N/A"
+
+            QTreeWidgetItem(self.pinned_tree, [expr, val_str])
 
     def on_tree_item_double_clicked(self, item, column):
         # Walk up to the root to build the full key path
@@ -471,15 +607,34 @@ class DataBrowser(QWidget):
             is_profiles_only = True
             prof_x, prof_y = img[0], img[1]
         elif isinstance(img, np.ndarray) and img.ndim < 2:
+            img = img.astype(float)
+            title = "Image is 1D (Single Projection)"
+            if self.bg_image is not None and isinstance(self.bg_image, np.ndarray) and self.bg_image.shape == img.shape:
+                img = img - self.bg_image
+                title += " (BG Subtracted)"
             self.ax = self.figure.add_subplot(111)
             self.ax.plot(img)
-            self.ax.set_title("Image is 1D (Single Projection)")
+            self.ax.set_title(title)
             if self.chk_log_profiles.isChecked():
                 self.ax.set_yscale('log')
             self.canvas.draw()
             return
 
         if is_profiles_only:
+            title_prefix = "Pre-calculated Profiles Only (No 2D Image)"
+            # Handle list/array backgrounds
+            if self.bg_image is not None:
+                if isinstance(self.bg_image, list) and len(self.bg_image) == 2:
+                    if self.bg_image[0].shape == prof_x.shape and self.bg_image[1].shape == prof_y.shape:
+                        prof_x = prof_x.astype(float) - self.bg_image[0]
+                        prof_y = prof_y.astype(float) - self.bg_image[1]
+                        title_prefix += " - BG Subtracted"
+                elif isinstance(self.bg_image, np.ndarray) and self.bg_image.ndim == 2 and self.bg_image.shape[0] == 2:
+                    if self.bg_image[0].shape == prof_x.shape and self.bg_image[1].shape == prof_y.shape:
+                        prof_x = prof_x.astype(float) - self.bg_image[0]
+                        prof_y = prof_y.astype(float) - self.bg_image[1]
+                        title_prefix += " - BG Subtracted"
+
             gs = self.figure.add_gridspec(2, 1)
             ax1 = self.figure.add_subplot(gs[0, 0])
             ax2 = self.figure.add_subplot(gs[1, 0])
@@ -487,7 +642,7 @@ class DataBrowser(QWidget):
             ax1.plot(prof_x, label="Horizontal Profile", color='blue')
             ax2.plot(prof_y, label="Vertical Profile", color='green')
 
-            ax1.set_title("Pre-calculated Profiles Only (No 2D Image)")
+            ax1.set_title(title_prefix)
             ax1.grid(True)
             ax2.grid(True)
             ax1.legend()
