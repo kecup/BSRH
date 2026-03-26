@@ -174,8 +174,11 @@ class DataBrowser(QWidget):
         self.chk_log_scale.toggled.connect(self.replot_current)
         self.chk_show_profiles = QCheckBox("Show Profiles")
         self.chk_show_profiles.toggled.connect(self.replot_current)
+        self.chk_log_profiles = QCheckBox("Log Scale Profiles")
+        self.chk_log_profiles.toggled.connect(self.replot_current)
         display_layout.addWidget(self.chk_log_scale)
         display_layout.addWidget(self.chk_show_profiles)
+        display_layout.addWidget(self.chk_log_profiles)
         display_layout.addStretch()
 
         # Circular Multiplier options
@@ -452,18 +455,57 @@ class DataBrowser(QWidget):
             return
 
         img = event.cam_data.get('image2D')
-        if img is None or not isinstance(img, np.ndarray):
+        if img is None:
             self.ax = self.figure.add_subplot(111)
             self.ax.axis('off')
             self.ax.set_title("No image2D data found")
             self.canvas.draw()
             return
 
-        # Handle 1D profiles
-        if len(img.shape) < 2:
+        # Handle pre-calculated 1D profiles (list or array with shape[0] == 2)
+        is_profiles_only = False
+        if isinstance(img, list) and len(img) == 2:
+            is_profiles_only = True
+            prof_x, prof_y = np.array(img[0]), np.array(img[1])
+        elif isinstance(img, np.ndarray) and img.ndim == 2 and img.shape[0] == 2:
+            is_profiles_only = True
+            prof_x, prof_y = img[0], img[1]
+        elif isinstance(img, np.ndarray) and img.ndim < 2:
             self.ax = self.figure.add_subplot(111)
             self.ax.plot(img)
-            self.ax.set_title("Image is 1D (Projections)")
+            self.ax.set_title("Image is 1D (Single Projection)")
+            if self.chk_log_profiles.isChecked():
+                self.ax.set_yscale('log')
+            self.canvas.draw()
+            return
+
+        if is_profiles_only:
+            gs = self.figure.add_gridspec(2, 1)
+            ax1 = self.figure.add_subplot(gs[0, 0])
+            ax2 = self.figure.add_subplot(gs[1, 0])
+
+            ax1.plot(prof_x, label="Horizontal Profile", color='blue')
+            ax2.plot(prof_y, label="Vertical Profile", color='green')
+
+            ax1.set_title("Pre-calculated Profiles Only (No 2D Image)")
+            ax1.grid(True)
+            ax2.grid(True)
+            ax1.legend()
+            ax2.legend()
+
+            if self.chk_log_profiles.isChecked():
+                ax1.set_yscale('log')
+                ax2.set_yscale('log')
+
+            self.lbl_img_stats.setText("Image Stats: Profile data only")
+            self.figure.tight_layout()
+            self.canvas.draw()
+            return
+
+        if not isinstance(img, np.ndarray):
+            self.ax = self.figure.add_subplot(111)
+            self.ax.axis('off')
+            self.ax.set_title("Invalid image format")
             self.canvas.draw()
             return
 
@@ -520,6 +562,8 @@ class DataBrowser(QWidget):
                 ax_x_prof.plot(prof_x_mod, label="Multiplied", color='red', linestyle='--')
             ax_x_prof.grid(True)
             ax_x_prof.set_ylabel('Sum')
+            if self.chk_log_profiles.isChecked():
+                ax_x_prof.set_yscale('log')
 
             # Vertical Profile (Y)
             prof_y_mod = np.sum(img, axis=1)
@@ -529,6 +573,8 @@ class DataBrowser(QWidget):
                 ax_y_prof.plot(prof_y_mod, range(len(prof_y_mod)), label="Multiplied", color='red', linestyle='--')
             ax_y_prof.grid(True)
             ax_y_prof.set_xlabel('Sum')
+            if self.chk_log_profiles.isChecked():
+                ax_y_prof.set_xscale('log')
 
             # Add legends if multiplier is active
             if self.chk_circ_mult.isChecked():
