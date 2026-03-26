@@ -154,6 +154,7 @@ class DataBrowser(QWidget):
         self.pinned_tree.header().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         pinned_layout.addWidget(self.pinned_tree)
 
+        pinned_group.setLayout(pinned_layout)
         middle_layout.addWidget(pinned_group)
 
         # Event Details Group
