@@ -11,6 +11,14 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QSpinBox, QDoubleSpinBox, QGroupBox, QPushButton, QFileDialog)
 from PyQt5.QtCore import QTimer, Qt, QObject, pyqtSignal
 import pyqtgraph as pg
+
+try:
+    from accwidgets import rbac
+    import pyrbac
+except ImportError:
+    rbac = None
+    pyrbac = None
+
 from scipy.optimize import curve_fit
 
 def gaussian(x, amp, cen, wid):
@@ -101,6 +109,14 @@ class DataAcquisition(QObject):
         self.camera_device = 'LHC.BSRH.BTVDC-CAM.MAIN/LastImage'
         self.gate_device = 'LHC.BSRH.GATE-GEN.5L4.B2/Setting1'
         self.fbct_device = 'LHC.BCTFR.A6R4.B2/Acquisition'
+
+    def set_token(self, token):
+        if self.japc and pyrbac:
+            try:
+                self.japc.rbacLogin(token=token)
+                self.start_subscriptions()
+            except Exception as e:
+                print(f"RBAC Login failed: {e}")
 
     def start_subscriptions(self):
         if not self.japc:
@@ -347,7 +363,7 @@ class OnlineAnalysisGUI(QWidget):
             self.start_offline_replay(offline_dir)
         else:
             self.acq = DataAcquisition(self.data_queue)
-            self.acq.start_subscriptions()
+            # Subscriptions will start upon successful RBAC login
 
         self.update_timer = QTimer()
         self.update_timer.timeout.connect(self.update_gui)
@@ -389,12 +405,25 @@ class OnlineAnalysisGUI(QWidget):
         self.spin_sigma.setSingleStep(0.1)
         config_layout.addWidget(self.spin_sigma)
 
+        if rbac:
+            self.cred_widget = rbac.RbaButton()
+            self.cred_widget.loginSucceeded.connect(self.on_login_succeed)
+            config_layout.addWidget(self.cred_widget)
+            try:
+                self.cred_widget.model.login_with_kerberos(False)
+            except:
+                pass
+
         self.btn_offline = QPushButton("Run Offline Data")
         self.btn_offline.clicked.connect(self.open_offline_dialog)
         config_layout.addWidget(self.btn_offline)
 
         config_group.setLayout(config_layout)
         self.layout.addWidget(config_group)
+
+    def on_login_succeed(self, token):
+        if self.acq:
+            self.acq.set_token(token)
 
     def open_offline_dialog(self):
         dir_path = QFileDialog.getExistingDirectory(self, "Select Offline Data Directory")
