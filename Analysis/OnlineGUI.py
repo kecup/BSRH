@@ -323,6 +323,20 @@ class OnlineAnalysisGUI(QWidget):
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
 
+        self.data_queue = queue.Queue(maxsize=5)
+        self.latest_image = None
+
+        self.worker = AnalysisWorker(self.data_queue, self)
+        self.worker.start()
+
+        self.acq = None
+        self.replayer = None
+
+        if offline_dir:
+            self.start_offline_replay(offline_dir)
+        else:
+            self.acq = DataAcquisition(self.data_queue)
+
         self.setup_config_panel()
 
         self.image_view = pg.ImageView()
@@ -350,80 +364,77 @@ class OnlineAnalysisGUI(QWidget):
         self.plot_v.sigRangeChanged.connect(self.update_label_positions)
         self.plot_h.sigRangeChanged.connect(self.update_label_positions)
 
-        self.data_queue = queue.Queue(maxsize=5)
-        self.latest_image = None
-
-        self.worker = AnalysisWorker(self.data_queue, self)
-        self.worker.start()
-
-        self.acq = None
-        self.replayer = None
-
-        if offline_dir:
-            self.start_offline_replay(offline_dir)
-        else:
-            self.acq = DataAcquisition(self.data_queue)
-            # Subscriptions will start upon successful RBAC login
-
         self.update_timer = QTimer()
         self.update_timer.timeout.connect(self.update_gui)
         self.update_timer.start(1000)
 
     def setup_config_panel(self):
         config_group = QGroupBox("Configuration")
-        config_layout = QHBoxLayout()
+        main_config_layout = QVBoxLayout()
 
-        config_layout.addWidget(QLabel("maskX:"))
+        # Row 1: Parameters
+        params_layout = QHBoxLayout()
+
+        params_layout.addWidget(QLabel("maskX:"))
         self.spin_maskX = QSpinBox()
         self.spin_maskX.setRange(0, 2000)
         self.spin_maskX.setValue(474)
-        config_layout.addWidget(self.spin_maskX)
+        params_layout.addWidget(self.spin_maskX)
 
-        config_layout.addWidget(QLabel("maskY:"))
+        params_layout.addWidget(QLabel("maskY:"))
         self.spin_maskY = QSpinBox()
         self.spin_maskY.setRange(0, 2000)
         self.spin_maskY.setValue(307)
-        config_layout.addWidget(self.spin_maskY)
+        params_layout.addWidget(self.spin_maskY)
 
-        config_layout.addWidget(QLabel("maskR:"))
+        params_layout.addWidget(QLabel("maskR:"))
         self.spin_maskR = QSpinBox()
         self.spin_maskR.setRange(0, 1000)
         self.spin_maskR.setValue(55)
-        config_layout.addWidget(self.spin_maskR)
+        params_layout.addWidget(self.spin_maskR)
 
-        config_layout.addWidget(QLabel("mask factor:"))
+        params_layout.addWidget(QLabel("mask factor:"))
         self.spin_mask_factor = QDoubleSpinBox()
         self.spin_mask_factor.setRange(0.1, 100.0)
         self.spin_mask_factor.setValue(8.3)
         self.spin_mask_factor.setSingleStep(0.1)
-        config_layout.addWidget(self.spin_mask_factor)
+        params_layout.addWidget(self.spin_mask_factor)
 
-        config_layout.addWidget(QLabel("sigma:"))
+        params_layout.addWidget(QLabel("sigma:"))
         self.spin_sigma = QDoubleSpinBox()
         self.spin_sigma.setRange(0.1, 10.0)
         self.spin_sigma.setValue(3.5)
         self.spin_sigma.setSingleStep(0.1)
-        config_layout.addWidget(self.spin_sigma)
+        params_layout.addWidget(self.spin_sigma)
+
+        main_config_layout.addLayout(params_layout)
+
+        # Row 2: Controls
+        controls_layout = QHBoxLayout()
 
         self.btn_live = QPushButton("Start Live Data")
         self.btn_live.setCheckable(True)
         self.btn_live.clicked.connect(self.toggle_live_data)
-        config_layout.addWidget(self.btn_live)
+        controls_layout.addWidget(self.btn_live)
+
+        self.btn_offline = QPushButton("Run Offline Data")
+        self.btn_offline.clicked.connect(self.open_offline_dialog)
+        controls_layout.addWidget(self.btn_offline)
 
         if rbac:
             self.cred_widget = rbac.RbaButton()
             self.cred_widget.loginSucceeded.connect(self.on_login_succeed)
-            config_layout.addWidget(self.cred_widget)
+            controls_layout.addWidget(self.cred_widget)
             try:
                 self.cred_widget.model.login_with_kerberos(False)
             except:
                 pass
 
-        self.btn_offline = QPushButton("Run Offline Data")
-        self.btn_offline.clicked.connect(self.open_offline_dialog)
-        config_layout.addWidget(self.btn_offline)
+        controls_layout.addStretch()
 
-        config_group.setLayout(config_layout)
+        main_config_layout.addLayout(controls_layout)
+
+        config_group.setLayout(main_config_layout)
         self.layout.addWidget(config_group)
 
     def on_login_succeed(self, token):
