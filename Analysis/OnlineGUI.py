@@ -362,6 +362,9 @@ class OnlineAnalysisGUI(QWidget):
         self.setup_config_panel()
 
         self.image_view = pg.ImageView()
+        # Apply 'jet' colormap
+        cmap = pg.colormap.get('jet')
+        self.image_view.setColorMap(cmap)
         self.layout.addWidget(self.image_view, stretch=2)
 
         self.plot_v = pg.PlotWidget(title="Vertical Halo")
@@ -548,7 +551,9 @@ class OnlineAnalysisGUI(QWidget):
                 break
 
         if getattr(self, 'latest_image', None) is not None:
-            self.image_view.setImage(self.latest_image, autoRange=False, autoLevels=False)
+            # Rotate image 90 degrees anti-clockwise for visualization only
+            rotated_image = np.rot90(self.latest_image, k=1)
+            self.image_view.setImage(rotated_image, autoRange=False, autoLevels=False)
 
         x_axis = np.arange(3564)
         self.curve_h.setData(x_axis, self.halo_h_data)
