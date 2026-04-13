@@ -10,7 +10,7 @@ import numpy as np
 import dill as pickle
 import zstandard as zstd
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
-                             QLabel, QSpinBox, QDoubleSpinBox, QGroupBox, QPushButton, QFileDialog)
+                             QLabel, QSpinBox, QDoubleSpinBox, QGroupBox, QPushButton, QFileDialog, QToolBar)
 from PyQt5.QtCore import QTimer, Qt, QObject, pyqtSignal
 import pyqtgraph as pg
 
@@ -90,7 +90,7 @@ class OfflineDataReplayer(threading.Thread):
         print("Offline replay finished.")
 
     def stop(self):
-        self.running_flag.value = False
+        self.running = False
 
 
 class DataAcquisition(QObject):
@@ -320,7 +320,7 @@ class AnalysisWorker(mp.Process):
             pass
 
     def stop(self):
-        self.running_flag.value = False
+        self.running = False
 
 
 class OnlineAnalysisGUI(QWidget):
@@ -345,8 +345,7 @@ class OnlineAnalysisGUI(QWidget):
 
         self.latest_image = None
 
-        self.worker = AnalysisWorker(self.data_queue, self.result_queue, self.worker_running, self.config_vals)
-        self.worker.start()
+        self.worker = None
 
         self.acq = None
         self.replayer = None
@@ -446,21 +445,23 @@ class OnlineAnalysisGUI(QWidget):
         self.btn_offline.clicked.connect(self.open_offline_dialog)
         controls_layout.addWidget(self.btn_offline)
 
-        if rbac:
-            self.cred_widget = rbac.RbaButton()
-            self.cred_widget.loginSucceeded.connect(self.on_login_succeed)
-            controls_layout.addWidget(self.cred_widget)
-            try:
-                self.cred_widget.model.login_with_kerberos(False)
-            except:
-                pass
-
         controls_layout.addStretch()
 
         main_config_layout.addLayout(controls_layout)
 
         config_group.setLayout(main_config_layout)
         self.layout.addWidget(config_group)
+
+        if rbac:
+            self.toolbar = QToolBar()
+            self.cred_widget = rbac.RbaButton()
+            self.cred_widget.loginSucceeded.connect(self.on_login_succeed)
+            self.toolbar.addWidget(self.cred_widget)
+            self.layout.insertWidget(0, self.toolbar)
+            try:
+                self.cred_widget.model.login_with_kerberos(False)
+            except:
+                pass
 
     def on_login_succeed(self, token):
         if self.acq and hasattr(self, 'btn_live') and self.btn_live.isChecked():
@@ -469,9 +470,11 @@ class OnlineAnalysisGUI(QWidget):
     def toggle_live_data(self, checked):
         if checked:
             self.btn_live.setText("Stop Live Data")
+            if not self.worker:
+                self.worker_running.value = True
+                self.worker = AnalysisWorker(self.data_queue, self.result_queue, self.worker_running, self.config_vals)
+                self.worker.start()
             if self.acq:
-                # If we have a token, start. If not, it should wait for RBAC.
-                # Here we blindly attempt, the acq layer should handle it safely.
                 if rbac and hasattr(self, 'cred_widget') and self.cred_widget.model.token:
                     self.acq.set_token(self.cred_widget.model.token)
                 else:
@@ -480,6 +483,12 @@ class OnlineAnalysisGUI(QWidget):
             self.btn_live.setText("Start Live Data")
             if self.acq:
                 self.acq.stop_subscriptions()
+            if self.worker:
+                self.worker_running.value = False
+                self.worker.join(timeout=1.0)
+                if self.worker.is_alive():
+                    self.worker.terminate()
+                self.worker = None
 
     def open_offline_dialog(self):
         dir_path = QFileDialog.getExistingDirectory(self, "Select Offline Data Directory")
@@ -507,6 +516,7 @@ class OnlineAnalysisGUI(QWidget):
             self.worker.join(timeout=1.0)
             if self.worker.is_alive():
                 self.worker.terminate()
+            self.worker = None
 
         # drain queues
         while not self.data_queue.empty():
@@ -556,10 +566,12 @@ class OnlineAnalysisGUI(QWidget):
         self.label_sum_v.setText(f"Total Vertical Halo: {sum_v:.4e}")
 
     def closeEvent(self, event):
-        self.worker_running.value = False
-        self.worker.join(timeout=1.0)
-        if self.worker.is_alive():
-            self.worker.terminate()
+        if self.worker:
+            self.worker_running.value = False
+            self.worker.join(timeout=1.0)
+            if self.worker.is_alive():
+                self.worker.terminate()
+            self.worker = None
         if self.acq:
             self.acq.stop_subscriptions()
         if self.replayer:
