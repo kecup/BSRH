@@ -1,6 +1,8 @@
 import sys
 import os
 import threading
+import multiprocessing as mp
+import ctypes
 import queue
 import time
 import argparse
@@ -88,7 +90,7 @@ class OfflineDataReplayer(threading.Thread):
         print("Offline replay finished.")
 
     def stop(self):
-        self.running = False
+        self.running_flag.value = False
 
 
 class DataAcquisition(QObject):
@@ -183,12 +185,13 @@ class DataAcquisition(QObject):
         except queue.Full:
             pass
 
-class AnalysisWorker(threading.Thread):
-    def __init__(self, data_queue, gui_ref):
+class AnalysisWorker(mp.Process):
+    def __init__(self, data_queue, result_queue, running_flag, config_vals):
         super().__init__()
         self.data_queue = data_queue
-        self.gui_ref = gui_ref
-        self.running = True
+        self.result_queue = result_queue
+        self.running_flag = running_flag
+        self.config_vals = config_vals
         self.daemon = True
 
         self.background_image = None
@@ -198,7 +201,7 @@ class AnalysisWorker(threading.Thread):
         self.y1, self.y2 = 154, 454
 
     def run(self):
-        while self.running:
+        while self.running_flag.value:
             try:
                 event = self.data_queue.get(timeout=0.1)
                 self.process_event(event)
@@ -220,11 +223,11 @@ class AnalysisWorker(threading.Thread):
         if self.background_image is None:
             return
 
-        maskX = self.gui_ref.spin_maskX.value()
-        maskY = self.gui_ref.spin_maskY.value()
-        maskR = self.gui_ref.spin_maskR.value()
-        mask_factor = self.gui_ref.spin_mask_factor.value()
-        sigma_val = self.gui_ref.spin_sigma.value()
+        maskX = self.config_vals['maskX'].value
+        maskY = self.config_vals['maskY'].value
+        maskR = self.config_vals['maskR'].value
+        mask_factor = self.config_vals['mask_factor'].value
+        sigma_val = self.config_vals['sigma'].value
 
         try:
             bg_subtracted = image - self.background_image
@@ -244,7 +247,7 @@ class AnalysisWorker(threading.Thread):
         if cPc == 0.0:
             return
 
-        self.gui_ref.latest_image = bg_subtracted
+        # We will pack the image and halos at the end and put in result_queue
 
         try:
             projection_x = np.sum(bg_subtracted[self.y1:self.y2, :], axis=0)
@@ -306,12 +309,18 @@ class AnalysisWorker(threading.Thread):
 
         haloY = chargeY * cPc * self.intensifier_gain / num_pulses
 
-        if 0 <= bunch_index < len(self.gui_ref.halo_h_data):
-            self.gui_ref.halo_h_data[bunch_index] = haloX
-            self.gui_ref.halo_v_data[bunch_index] = haloY
+        try:
+            self.result_queue.put_nowait({
+                'bunch_index': bunch_index,
+                'haloX': haloX,
+                'haloY': haloY,
+                'image': bg_subtracted
+            })
+        except queue.Full:
+            pass
 
     def stop(self):
-        self.running = False
+        self.running_flag.value = False
 
 
 class OnlineAnalysisGUI(QWidget):
@@ -323,10 +332,20 @@ class OnlineAnalysisGUI(QWidget):
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
 
-        self.data_queue = queue.Queue(maxsize=5)
+        self.data_queue = mp.Queue(maxsize=5)
+        self.result_queue = mp.Queue(maxsize=50)
+        self.worker_running = mp.Value(ctypes.c_bool, True)
+        self.config_vals = {
+            'maskX': mp.Value('i', 474),
+            'maskY': mp.Value('i', 307),
+            'maskR': mp.Value('i', 55),
+            'mask_factor': mp.Value('d', 8.3),
+            'sigma': mp.Value('d', 3.5)
+        }
+
         self.latest_image = None
 
-        self.worker = AnalysisWorker(self.data_queue, self)
+        self.worker = AnalysisWorker(self.data_queue, self.result_queue, self.worker_running, self.config_vals)
         self.worker.start()
 
         self.acq = None
@@ -407,6 +426,12 @@ class OnlineAnalysisGUI(QWidget):
         self.spin_sigma.setSingleStep(0.1)
         params_layout.addWidget(self.spin_sigma)
 
+        self.spin_maskX.valueChanged.connect(lambda v: setattr(self.config_vals['maskX'], 'value', v))
+        self.spin_maskY.valueChanged.connect(lambda v: setattr(self.config_vals['maskY'], 'value', v))
+        self.spin_maskR.valueChanged.connect(lambda v: setattr(self.config_vals['maskR'], 'value', v))
+        self.spin_mask_factor.valueChanged.connect(lambda v: setattr(self.config_vals['mask_factor'], 'value', v))
+        self.spin_sigma.valueChanged.connect(lambda v: setattr(self.config_vals['sigma'], 'value', v))
+
         main_config_layout.addLayout(params_layout)
 
         # Row 2: Controls
@@ -474,7 +499,24 @@ class OnlineAnalysisGUI(QWidget):
         self.halo_h_data = np.zeros(3564)
         self.halo_v_data = np.zeros(3564)
         self.latest_image = None
-        self.worker.background_image = None
+        # Cannot directly reset background in another process easily without signal,
+        # but worker restarts or we ignore since offline run is new.
+        # Actually let's stop and recreate worker so state is clean
+        if self.worker:
+            self.worker_running.value = False
+            self.worker.join(timeout=1.0)
+            if self.worker.is_alive():
+                self.worker.terminate()
+
+        # drain queues
+        while not self.data_queue.empty():
+            self.data_queue.get()
+        while not self.result_queue.empty():
+            self.result_queue.get()
+
+        self.worker_running.value = True
+        self.worker = AnalysisWorker(self.data_queue, self.result_queue, self.worker_running, self.config_vals)
+        self.worker.start()
 
         print(f"Starting offline replay from {dir_path}")
         self.replayer = OfflineDataReplayer(dir_path, self.data_queue, self)
@@ -488,6 +530,18 @@ class OnlineAnalysisGUI(QWidget):
         self.label_sum_h.setPos(view_rect_h.right(), view_rect_h.top())
 
     def update_gui(self):
+        # Drain result queue
+        while True:
+            try:
+                res = self.result_queue.get_nowait()
+                b_idx = res['bunch_index']
+                if 0 <= b_idx < 3564:
+                    self.halo_h_data[b_idx] = res['haloX']
+                    self.halo_v_data[b_idx] = res['haloY']
+                self.latest_image = res['image']
+            except queue.Empty:
+                break
+
         if getattr(self, 'latest_image', None) is not None:
             self.image_view.setImage(self.latest_image, autoRange=False, autoLevels=False)
 
@@ -502,7 +556,10 @@ class OnlineAnalysisGUI(QWidget):
         self.label_sum_v.setText(f"Total Vertical Halo: {sum_v:.4e}")
 
     def closeEvent(self, event):
-        self.worker.stop()
+        self.worker_running.value = False
+        self.worker.join(timeout=1.0)
+        if self.worker.is_alive():
+            self.worker.terminate()
         if self.acq:
             self.acq.stop_subscriptions()
         if self.replayer:
@@ -511,6 +568,7 @@ class OnlineAnalysisGUI(QWidget):
 
 
 if __name__ == "__main__":
+    mp.set_start_method('spawn', force=True)
     parser = argparse.ArgumentParser(description="Online Halo Analysis GUI")
     parser.add_argument("--test-dir", type=str, default=None, help="Directory containing offline data (.pkl.zst) to replay")
     args = parser.parse_args()
