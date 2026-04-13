@@ -77,7 +77,7 @@ class OfflineDataReplayer(threading.Thread):
                         self.data_queue.put(event_data, block=True, timeout=5.0)
 
                         # Small sleep to yield to GUI (simulating arrival)
-                        time.sleep(0.01)
+                        time.sleep(0.05)
                     except queue.Full:
                         pass
                     except Exception as e:
@@ -350,7 +350,7 @@ class OnlineAnalysisGUI(QWidget):
         self.plot_v.sigRangeChanged.connect(self.update_label_positions)
         self.plot_h.sigRangeChanged.connect(self.update_label_positions)
 
-        self.data_queue = queue.Queue(maxsize=100)
+        self.data_queue = queue.Queue(maxsize=5)
         self.latest_image = None
 
         self.worker = AnalysisWorker(self.data_queue, self)
@@ -405,6 +405,11 @@ class OnlineAnalysisGUI(QWidget):
         self.spin_sigma.setSingleStep(0.1)
         config_layout.addWidget(self.spin_sigma)
 
+        self.btn_live = QPushButton("Start Live Data")
+        self.btn_live.setCheckable(True)
+        self.btn_live.clicked.connect(self.toggle_live_data)
+        config_layout.addWidget(self.btn_live)
+
         if rbac:
             self.cred_widget = rbac.RbaButton()
             self.cred_widget.loginSucceeded.connect(self.on_login_succeed)
@@ -422,8 +427,23 @@ class OnlineAnalysisGUI(QWidget):
         self.layout.addWidget(config_group)
 
     def on_login_succeed(self, token):
-        if self.acq:
+        if self.acq and hasattr(self, 'btn_live') and self.btn_live.isChecked():
             self.acq.set_token(token)
+
+    def toggle_live_data(self, checked):
+        if checked:
+            self.btn_live.setText("Stop Live Data")
+            if self.acq:
+                # If we have a token, start. If not, it should wait for RBAC.
+                # Here we blindly attempt, the acq layer should handle it safely.
+                if rbac and hasattr(self, 'cred_widget') and self.cred_widget.model.token:
+                    self.acq.set_token(self.cred_widget.model.token)
+                else:
+                    self.acq.start_subscriptions()
+        else:
+            self.btn_live.setText("Start Live Data")
+            if self.acq:
+                self.acq.stop_subscriptions()
 
     def open_offline_dialog(self):
         dir_path = QFileDialog.getExistingDirectory(self, "Select Offline Data Directory")
