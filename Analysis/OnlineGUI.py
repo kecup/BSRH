@@ -1,7 +1,7 @@
 import sys
 import os
 import threading
-import multiprocessing as mp
+import queue
 import ctypes
 import queue
 import time
@@ -185,7 +185,7 @@ class DataAcquisition(QObject):
         except queue.Full:
             pass
 
-class AnalysisWorker(mp.Process):
+class AnalysisWorker(threading.Thread):
     def __init__(self, data_queue, result_queue, running_flag, config_vals):
         super().__init__()
         self.data_queue = data_queue
@@ -223,11 +223,11 @@ class AnalysisWorker(mp.Process):
         if self.background_image is None:
             return
 
-        maskX = self.config_vals['maskX'].value
-        maskY = self.config_vals['maskY'].value
-        maskR = self.config_vals['maskR'].value
-        mask_factor = self.config_vals['mask_factor'].value
-        sigma_val = self.config_vals['sigma'].value
+        maskX = self.config_vals.maskX
+        maskY = self.config_vals.maskY
+        maskR = self.config_vals.maskR
+        mask_factor = self.config_vals.mask_factor
+        sigma_val = self.config_vals.sigma
 
         try:
             bg_subtracted = image - self.background_image
@@ -332,16 +332,20 @@ class OnlineAnalysisGUI(QWidget):
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
 
-        self.data_queue = mp.Queue(maxsize=5)
-        self.result_queue = mp.Queue(maxsize=50)
-        self.worker_running = mp.Value(ctypes.c_bool, True)
-        self.config_vals = {
-            'maskX': mp.Value('i', 474),
-            'maskY': mp.Value('i', 307),
-            'maskR': mp.Value('i', 55),
-            'mask_factor': mp.Value('d', 8.3),
-            'sigma': mp.Value('d', 3.5)
-        }
+        self.data_queue = queue.Queue(maxsize=5)
+        self.result_queue = queue.Queue(maxsize=50)
+        class RunFlag:
+            def __init__(self):
+                self.value = True
+        self.worker_running = RunFlag()
+        class ConfigVals:
+            def __init__(self):
+                self.maskX = 474
+                self.maskY = 307
+                self.maskR = 55
+                self.mask_factor = 8.3
+                self.sigma = 3.5
+        self.config_vals = ConfigVals()
 
         self.latest_image = None
 
@@ -364,23 +368,20 @@ class OnlineAnalysisGUI(QWidget):
         self.plot_v.setLabel('bottom', 'Bunch Slot')
         self.plot_v.setLabel('left', 'Halo Charge')
         self.curve_v = self.plot_v.plot(pen=None, symbol='o')
-        self.label_sum_v = pg.TextItem(text="Total Vertical Halo: 0", anchor=(1, 0), color=(200, 200, 200))
-        self.plot_v.addItem(self.label_sum_v)
+
         self.layout.addWidget(self.plot_v, stretch=1)
 
         self.plot_h = pg.PlotWidget(title="Horizontal Halo")
         self.plot_h.setLabel('bottom', 'Bunch Slot')
         self.plot_h.setLabel('left', 'Halo Charge')
         self.curve_h = self.plot_h.plot(pen=None, symbol='o')
-        self.label_sum_h = pg.TextItem(text="Total Horizontal Halo: 0", anchor=(1, 0), color=(200, 200, 200))
-        self.plot_h.addItem(self.label_sum_h)
+
         self.layout.addWidget(self.plot_h, stretch=1)
 
         self.halo_h_data = np.zeros(3564)
         self.halo_v_data = np.zeros(3564)
 
-        self.plot_v.sigRangeChanged.connect(self.update_label_positions)
-        self.plot_h.sigRangeChanged.connect(self.update_label_positions)
+
 
         self.update_timer = QTimer()
         self.update_timer.timeout.connect(self.update_gui)
@@ -425,11 +426,11 @@ class OnlineAnalysisGUI(QWidget):
         self.spin_sigma.setSingleStep(0.1)
         params_layout.addWidget(self.spin_sigma)
 
-        self.spin_maskX.valueChanged.connect(lambda v: setattr(self.config_vals['maskX'], 'value', v))
-        self.spin_maskY.valueChanged.connect(lambda v: setattr(self.config_vals['maskY'], 'value', v))
-        self.spin_maskR.valueChanged.connect(lambda v: setattr(self.config_vals['maskR'], 'value', v))
-        self.spin_mask_factor.valueChanged.connect(lambda v: setattr(self.config_vals['mask_factor'], 'value', v))
-        self.spin_sigma.valueChanged.connect(lambda v: setattr(self.config_vals['sigma'], 'value', v))
+        self.spin_maskX.valueChanged.connect(lambda v: setattr(self.config_vals, 'maskX', v))
+        self.spin_maskY.valueChanged.connect(lambda v: setattr(self.config_vals, 'maskY', v))
+        self.spin_maskR.valueChanged.connect(lambda v: setattr(self.config_vals, 'maskR', v))
+        self.spin_mask_factor.valueChanged.connect(lambda v: setattr(self.config_vals, 'mask_factor', v))
+        self.spin_sigma.valueChanged.connect(lambda v: setattr(self.config_vals, 'sigma', v))
 
         main_config_layout.addLayout(params_layout)
 
@@ -486,8 +487,7 @@ class OnlineAnalysisGUI(QWidget):
             if self.worker:
                 self.worker_running.value = False
                 self.worker.join(timeout=1.0)
-                if self.worker.is_alive():
-                    self.worker.terminate()
+
                 self.worker = None
 
     def open_offline_dialog(self):
@@ -514,8 +514,7 @@ class OnlineAnalysisGUI(QWidget):
         if self.worker:
             self.worker_running.value = False
             self.worker.join(timeout=1.0)
-            if self.worker.is_alive():
-                self.worker.terminate()
+
             self.worker = None
 
         # drain queues
@@ -533,11 +532,7 @@ class OnlineAnalysisGUI(QWidget):
         self.replayer.start()
 
     def update_label_positions(self):
-        view_rect_v = self.plot_v.viewRect()
-        self.label_sum_v.setPos(view_rect_v.right(), view_rect_v.top())
-
-        view_rect_h = self.plot_h.viewRect()
-        self.label_sum_h.setPos(view_rect_h.right(), view_rect_h.top())
+        pass
 
     def update_gui(self):
         # Drain result queue
@@ -562,15 +557,14 @@ class OnlineAnalysisGUI(QWidget):
         sum_h = np.sum(self.halo_h_data)
         sum_v = np.sum(self.halo_v_data)
 
-        self.label_sum_h.setText(f"Total Horizontal Halo: {sum_h:.4e}")
-        self.label_sum_v.setText(f"Total Vertical Halo: {sum_v:.4e}")
+        self.plot_h.setTitle(f"Horizontal Halo (Total: {sum_h:.4e})")
+        self.plot_v.setTitle(f"Vertical Halo (Total: {sum_v:.4e})")
 
     def closeEvent(self, event):
         if self.worker:
             self.worker_running.value = False
             self.worker.join(timeout=1.0)
-            if self.worker.is_alive():
-                self.worker.terminate()
+
             self.worker = None
         if self.acq:
             self.acq.stop_subscriptions()
@@ -580,7 +574,6 @@ class OnlineAnalysisGUI(QWidget):
 
 
 if __name__ == "__main__":
-    mp.set_start_method('spawn', force=True)
     parser = argparse.ArgumentParser(description="Online Halo Analysis GUI")
     parser.add_argument("--test-dir", type=str, default=None, help="Directory containing offline data (.pkl.zst) to replay")
     args = parser.parse_args()
