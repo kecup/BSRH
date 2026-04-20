@@ -362,8 +362,17 @@ class OnlineAnalysisGUI(QWidget):
         self.setup_config_panel()
 
         self.image_view = pg.ImageView()
-        # Apply 'jet' colormap
-        cmap = pg.colormap.get('jet')
+        # Manually create 'jet' colormap
+        pos = np.array([0.0, 0.11, 0.34, 0.65, 0.89, 1.0])
+        color = np.array([
+            [0, 0, 143, 255],     # Dark blue
+            [0, 0, 255, 255],     # Blue
+            [0, 255, 255, 255],   # Cyan
+            [255, 255, 0, 255],   # Yellow
+            [255, 0, 0, 255],     # Red
+            [128, 0, 0, 255]      # Dark red
+        ], dtype=np.ubyte)
+        cmap = pg.ColorMap(pos, color)
         self.image_view.setColorMap(cmap)
         self.layout.addWidget(self.image_view, stretch=2)
 
