@@ -25,6 +25,41 @@ def parse_args():
     parser.add_argument("--out", type=str, default="halo_trends.png", help="Output plot filename")
     return parser.parse_args()
 
+def remove_outliers(data, window_size=10, threshold=3.0):
+    """
+    Removes outliers using a rolling variance/std-dev filter.
+    window_size=10 looks 10 elements forward and backward (total window ~20).
+    Values outside threshold * local_std are replaced with linear interpolation.
+    """
+    data = np.array(data, dtype=float)
+    if len(data) == 0:
+        return data
+
+    cleaned = data.copy()
+
+    # 1. Identify outliers
+    for i in range(len(data)):
+        start = max(0, i - window_size)
+        end = min(len(data), i + window_size + 1)
+        window = np.concatenate((data[start:i], data[i+1:end]))
+
+        if len(window) < 2:
+            continue
+
+        local_mean = np.mean(window)
+        local_std = np.std(window)
+
+        if abs(data[i] - local_mean) > threshold * local_std:
+            cleaned[i] = np.nan
+
+    # 2. Linearly interpolate NaNs
+    nans = np.isnan(cleaned)
+    if np.any(nans):
+        x = lambda z: z.nonzero()[0]
+        cleaned[nans] = np.interp(x(nans), x(~nans), cleaned[~nans])
+
+    return cleaned
+
 def analyze_event(image, fbct_charge, num_pulses, background_image):
     # Hardcoded parameters based on OnlineGUI
     maskX = 474
@@ -209,14 +244,16 @@ def main():
         data_h.sort(key=lambda x: x[0]) # Sort by time
         times_h = [d[0] for d in data_h]
         vals_h = [d[1] for d in data_h]
-        ax1.plot(times_h, vals_h, marker='o', linestyle='-', markersize=2, label=f"Bunch {bunch_idx}")
+        vals_h_filtered = remove_outliers(vals_h, window_size=10, threshold=3.0)
+        ax1.plot(times_h, vals_h_filtered, marker='o', linestyle='-', markersize=2, label=f"Bunch {bunch_idx}")
 
         # V Data
         data_v = trends_v[bunch_idx]
         data_v.sort(key=lambda x: x[0])
         times_v = [d[0] for d in data_v]
         vals_v = [d[1] for d in data_v]
-        ax2.plot(times_v, vals_v, marker='o', linestyle='-', markersize=2, label=f"Bunch {bunch_idx}")
+        vals_v_filtered = remove_outliers(vals_v, window_size=10, threshold=3.0)
+        ax2.plot(times_v, vals_v_filtered, marker='o', linestyle='-', markersize=2, label=f"Bunch {bunch_idx}")
 
     ax1.set_title("Horizontal Halo Trends")
     ax1.set_ylabel("Halo Charge")
