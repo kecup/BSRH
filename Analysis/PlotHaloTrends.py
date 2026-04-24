@@ -20,7 +20,7 @@ def gaussian(x, amp, cen, wid):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Plot Halo Trends from offline BSRH files")
-    parser.add_argument("directory", help="Directory containing .pkl.zst files")
+    parser.add_argument("--directory", type=str, default="/user/jpucek/BSRH/Data/2025/08/04/", help="Directory containing .pkl.zst files")
     parser.add_argument("--bunches", type=int, nargs="*", default=None, help="Specific bunch slots to plot. If omitted, plots all discovered bunches.")
     parser.add_argument("--out", type=str, default="halo_trends.png", help="Output plot filename")
     return parser.parse_args()
